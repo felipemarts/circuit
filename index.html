@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Circuit Simulator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #111827;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background: #0f172a;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #1e293b;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #22d3ee;
+      white-space: nowrap;
+      letter-spacing: -0.3px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+    }
+
+    .toolbar button {
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+
+    .toolbar button:hover {
+      background: #334155;
+      color: #e2e8f0;
+    }
+
+    .toolbar button.active {
+      background: #22d3ee;
+      color: #0f172a;
+      border-color: #22d3ee;
+      font-weight: 600;
+    }
+
+    .toolbar .sep {
+      width: 1px;
+      height: 20px;
+      background: #334155;
+      margin: 0 3px;
+    }
+
+    .actions {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+    }
+
+    .actions button {
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.12s;
+    }
+
+    .actions .simulate {
+      background: #059669;
+      color: #fff;
+      border-color: #059669;
+      font-weight: 600;
+    }
+
+    .actions .simulate:hover {
+      background: #10b981;
+    }
+
+    .actions .transient-btn {
+      background: #7c3aed;
+      color: #fff;
+      border-color: #7c3aed;
+      font-weight: 600;
+    }
+
+    .actions .transient-btn:hover {
+      background: #8b5cf6;
+    }
+
+    .actions .demo-btn {
+      background: #0284c7;
+      color: #fff;
+      border-color: #0284c7;
+      font-weight: 600;
+    }
+
+    .actions .demo-btn:hover {
+      background: #0ea5e9;
+    }
+
+    .actions .danger { color: #f87171; }
+    .actions .danger:hover { background: #dc2626; color: white; border-color: #dc2626; }
+
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .canvas-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #canvas {
+      flex: 1;
+      display: block;
+      cursor: crosshair;
+    }
+
+    .bottom-panel {
+      height: 260px;
+      border-top: 1px solid #1e293b;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .bottom-tabs {
+      display: flex;
+      align-items: center;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      padding: 0 8px;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .bottom-tabs .tab {
+      background: transparent;
+      color: #64748b;
+      border: none;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      border-bottom: 2px solid transparent;
+      transition: all 0.12s;
+    }
+
+    .bottom-tabs .tab:hover {
+      color: #94a3b8;
+    }
+
+    .bottom-tabs .tab.active {
+      color: #22d3ee;
+      border-bottom-color: #22d3ee;
+    }
+
+    .bottom-tabs .tab-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+    }
+
+    .bottom-tabs .tab-actions button {
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.12s;
+    }
+
+    .bottom-tabs .tab-actions button:hover {
+      background: #334155;
+      color: #e2e8f0;
+    }
+
+    .bottom-tabs .tab-actions .run-btn {
+      background: #059669;
+      color: #fff;
+      border-color: #059669;
+      font-weight: 600;
+    }
+
+    .bottom-tabs .tab-actions .run-btn:hover {
+      background: #10b981;
+    }
+
+    .bottom-tabs .tab-actions .gen-btn {
+      background: #7c3aed;
+      color: #fff;
+      border-color: #7c3aed;
+      font-weight: 600;
+    }
+
+    .bottom-tabs .tab-actions .gen-btn:hover {
+      background: #8b5cf6;
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow: hidden;
+      display: none;
+    }
+
+    .tab-content.active {
+      display: flex;
+    }
+
+    .editor-area {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #code-editor {
+      flex: 3;
+      background: #0f172a;
+      color: #e2e8f0;
+      border: none;
+      padding: 10px 12px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+    }
+
+    #console-output {
+      flex: 2;
+      background: #080e1a;
+      border-left: 1px solid #1e293b;
+      padding: 8px 12px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      color: #94a3b8;
+    }
+
+    #console-output .log-line { color: #e2e8f0; }
+    #console-output .error-line { color: #f87171; }
+    #console-output .warn-line { color: #fbbf24; }
+
+    #chart-content {
+      position: relative;
+    }
+
+    #chart-content .chart-close-btn {
+      position: absolute;
+      top: 4px;
+      right: 8px;
+      z-index: 5;
+      background: #334155;
+      color: #94a3b8;
+      border: none;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    #chart-content .chart-close-btn:hover {
+      background: #475569;
+      color: #e2e8f0;
+    }
+
+    #chart-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .sidebar {
+      width: 260px;
+      background: #0f172a;
+      border-left: 1px solid #1e293b;
+      padding: 12px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+
+    .sidebar h2 {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .sidebar .prop-group { margin-bottom: 10px; }
+
+    .sidebar label {
+      display: block;
+      font-size: 10px;
+      color: #64748b;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .sidebar input {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .sidebar input:focus {
+      outline: none;
+      border-color: #22d3ee;
+      box-shadow: 0 0 0 2px rgba(34,211,238,0.15);
+    }
+
+    .results { margin-top: 16px; }
+
+    .results .result-item {
+      background: #1e293b;
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .results .result-item .comp-name {
+      color: #22d3ee;
+      font-weight: 600;
+      min-width: 50px;
+    }
+
+    .results .result-item .value {
+      color: #fbbf24;
+    }
+
+    .status-bar {
+      background: #0f172a;
+      padding: 3px 12px;
+      font-size: 10px;
+      color: #475569;
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid #1e293b;
+    }
+
+    #value-dialog {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    #value-dialog.visible { display: flex; }
+
+    #value-dialog .dialog-box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      min-width: 300px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    }
+
+    #value-dialog .dialog-box h3 {
+      color: #e2e8f0;
+      margin-bottom: 16px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    #value-dialog .dialog-box input {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 16px;
+    }
+
+    #value-dialog .dialog-box input:focus {
+      outline: none;
+      border-color: #22d3ee;
+      box-shadow: 0 0 0 3px rgba(34,211,238,0.15);
+    }
+
+    #value-dialog .dialog-buttons {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    #value-dialog .dialog-buttons button {
+      padding: 8px 20px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    #value-dialog .dialog-buttons .btn-ok {
+      background: #059669;
+      color: #fff;
+    }
+
+    #value-dialog .dialog-buttons .btn-ok:hover { background: #10b981; }
+
+    .sidebar .sim-controls {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #1e293b;
+    }
+
+    .sidebar .sim-controls h2 {
+      color: #7c3aed;
+    }
+
+    #value-dialog .dialog-buttons .btn-cancel {
+      background: #334155;
+      color: #94a3b8;
+    }
+
+    #value-dialog .dialog-buttons .btn-cancel:hover { background: #475569; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Circuit Simulator</h1>
+    <div class="toolbar" id="toolbar">
+      <button data-tool="select" class="active">Selecionar</button>
+      <div class="sep"></div>
+      <button data-tool="VoltageSource">Fonte V</button>
+      <button data-tool="Resistor">Resistor</button>
+      <button data-tool="Capacitor">Capacitor</button>
+      <button data-tool="Inductor">Indutor</button>
+      <button data-tool="Diode">Diodo</button>
+      <button data-tool="LED">LED</button>
+      <button data-tool="CurrentSource">Fonte I</button>
+      <div class="sep"></div>
+      <button data-tool="wire">Fio</button>
+      <button data-tool="ground">GND</button>
+      <button data-tool="probe">Probe</button>
+      <div class="sep"></div>
+      <button id="btn-rotate" title="Rotacionar 90° (R)">&#8635; Rotacionar</button>
+    </div>
+    <div class="actions">
+      <button class="simulate" id="btn-simulate">&#9654; Simular DC</button>
+      <button class="transient-btn" id="btn-transient">&#9654; Transiente</button>
+      <button class="demo-btn" id="btn-demo">Demo RLC</button>
+      <button class="danger" id="btn-clear">Limpar</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="canvas-area">
+      <canvas id="canvas"></canvas>
+      <div class="bottom-panel" id="bottom-panel">
+        <div class="bottom-tabs">
+          <button class="tab active" data-tab="editor">Editor</button>
+          <button class="tab" data-tab="chart">Grafico</button>
+          <div class="tab-actions">
+            <button class="run-btn" id="btn-run-code">&#9654; Executar</button>
+            <button class="gen-btn" id="btn-gen-code">Gerar Codigo</button>
+          </div>
+        </div>
+        <div class="tab-content active" id="editor-content" data-tab="editor">
+          <div class="editor-area">
+            <textarea id="code-editor" spellcheck="false">const circuit = new Circuit();
+const gnd = new Ground();
+
+const v1 = new VoltageSource(10);
+const r1 = new Resistor(1);
+const l1 = new Inductor(0.001);
+const c1 = new Capacitor(0.00001);
+
+v1.pin('+').connect(r1.pin('1'));
+r1.pin('2').connect(l1.pin('1'));
+l1.pin('2').connect(c1.pin('1'));
+c1.pin('2').connect(gnd.pin('1'));
+v1.pin('-').connect(gnd.pin('1'));
+
+circuit.probe(c1, 'voltage');
+
+circuit.analyze('transient', {
+  timeStep: 1e-6,
+  duration: 5e-3,
+});
+</textarea>
+            <div id="console-output"></div>
+          </div>
+        </div>
+        <div class="tab-content" id="chart-content" data-tab="chart">
+          <canvas id="chart-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar" id="sidebar">
+      <h2>Propriedades</h2>
+      <div id="props-content">
+        <p style="color:#475569; font-size:12px;">Selecione um componente</p>
+      </div>
+      <div class="results" id="results"></div>
+      <div class="sim-controls">
+        <h2>Transiente</h2>
+        <div class="prop-group">
+          <label>Passo (s)</label>
+          <input type="text" id="sim-dt" value="1e-6" />
+        </div>
+        <div class="prop-group">
+          <label>Duracaoo (s)</label>
+          <input type="text" id="sim-duration" value="5e-3" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span id="status-text">Pronto</span>
+    <span id="mouse-pos">0, 0</span>
+  </div>
+
+  <div id="value-dialog">
+    <div class="dialog-box">
+      <h3 id="dialog-title">Valor do componente</h3>
+      <input type="text" id="dialog-input" />
+      <div class="dialog-buttons">
+        <button class="btn-cancel" id="dialog-cancel">Cancelar</button>
+        <button class="btn-ok" id="dialog-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/ui/main.ts"></script>
+</body>
+</html>
