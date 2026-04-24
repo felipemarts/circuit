@@ -1,4 +1,4 @@
-import { type PlacedComponent, type Point, COMPONENT_DEFS, formatValue, getPinWorldPos, GRID_SIZE } from './types';
+import { type PlacedComponent, type Point, getComponentDef, formatValue, getPinWorldPos, GRID_SIZE } from './types';
 
 const PIN_RADIUS = 4;
 const PIN_HIT_RADIUS = 12;
@@ -97,13 +97,22 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
     case 'Inductor': drawInductor(ctx); break;
     case 'Diode': drawDiode(ctx, color); break;
     case 'LED': drawLED(ctx, color); break;
+    default: {
+      const customDef = getComponentDef(comp.type);
+      if (customDef?.draw) {
+        customDef.draw(ctx, 60, 40);
+      } else {
+        drawGenericBox(ctx, comp.label, color);
+      }
+      break;
+    }
   }
 
   ctx.restore();
 
   // Labels positioned based on rotation
   const isHorizontal = comp.rotation === 0 || comp.rotation === 180;
-  const def = COMPONENT_DEFS[comp.type];
+  const def = getComponentDef(comp.type);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -118,7 +127,7 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
   }
 
   // Value
-  if (def.unit && comp.value) {
+  if (def?.unit && comp.value) {
     ctx.font = '10px "SF Mono", "Fira Code", monospace';
     ctx.fillStyle = COLORS.textValue;
     if (isHorizontal) {
@@ -301,6 +310,24 @@ function drawLED(ctx: CanvasRenderingContext2D, color: string) {
   ctx.moveTo(15, -18); ctx.lineTo(15, -13);
   ctx.stroke();
   ctx.lineWidth = 2.5;
+}
+
+function drawGenericBox(ctx: CanvasRenderingContext2D, label: string, color: string) {
+  // Generic rectangle with label for custom components
+  ctx.strokeRect(-25, -18, 50, 36);
+
+  // Draw component name inside
+  ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, 0, 0);
+
+  // Draw pin leads at the edges
+  ctx.beginPath();
+  ctx.moveTo(-40, 0); ctx.lineTo(-25, 0);
+  ctx.moveTo(25, 0); ctx.lineTo(40, 0);
+  ctx.stroke();
 }
 
 // ─── Wires ───────────────────────────────────────────────────────────────────

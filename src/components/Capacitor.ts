@@ -37,4 +37,32 @@ export class Capacitor extends TwoTerminalComponent {
     matrix.stampConductance(this._n1Index, this._n2Index, g_eq);
     matrix.stampCurrentSource(this._n1Index, this._n2Index, g_eq * this._prevVoltage);
   }
+
+  // --- Protocol methods ---
+
+  prepareTransientStep(dt: number): void {
+    if (dt === 0) {
+      // Enter transient mode, cold start
+      this._transient = true;
+      this._prevVoltage = 0;
+      return;
+    }
+    this.setTransientState(dt, this._prevVoltage);
+  }
+
+  updateState(solution: number[], matrix: MNAMatrix): void {
+    const v1 = matrix.getNodeVoltage(solution, this._n1Index);
+    const v2 = matrix.getNodeVoltage(solution, this._n2Index);
+    this._prevVoltage = v1 - v2;
+  }
+
+  readResults(solution: number[], matrix: MNAMatrix): { voltage: number; current: number } {
+    const v1 = matrix.getNodeVoltage(solution, this._n1Index);
+    const v2 = matrix.getNodeVoltage(solution, this._n2Index);
+    const voltage = v1 - v2;
+    return {
+      voltage,
+      current: this._transient ? this.capacitance * (voltage - this._prevVoltage) / this._dt : 0,
+    };
+  }
 }

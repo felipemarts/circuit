@@ -239,6 +239,13 @@
 
     .editor-area {
       display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .editor-area-content {
+      display: flex;
       flex: 1;
       overflow: hidden;
     }
@@ -466,6 +473,297 @@
     }
 
     #value-dialog .dialog-buttons .btn-cancel:hover { background: #475569; }
+
+    /* ─── File tabs bar ─────────────────────────────────────────────── */
+
+    .file-tabs-bar {
+      display: flex;
+      align-items: center;
+      background: #0a0f1a;
+      border-bottom: 1px solid #1e293b;
+      height: 28px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+
+    .file-tabs-bar::-webkit-scrollbar { display: none; }
+
+    .file-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      font-size: 11px;
+      color: #64748b;
+      cursor: pointer;
+      border-right: 1px solid #1e293b;
+      white-space: nowrap;
+      user-select: none;
+      transition: all 0.12s;
+    }
+
+    .file-tab:hover { color: #94a3b8; background: #111827; }
+    .file-tab.active { color: #22d3ee; background: #1e293b; }
+    .file-tab.drag-over { border-left: 2px solid #22d3ee; }
+    .file-tab.dragging { opacity: 0.4; }
+
+    .file-tab .close-btn {
+      font-size: 13px;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.12s;
+      color: #64748b;
+    }
+
+    .file-tab:hover .close-btn { opacity: 0.7; }
+    .file-tab .close-btn:hover { opacity: 1; color: #f87171; }
+
+    .file-tab-add {
+      color: #475569;
+      font-size: 14px;
+      font-weight: bold;
+      padding: 4px 10px;
+      cursor: pointer;
+      border-right: none;
+    }
+
+    .file-tab-add:hover { color: #22d3ee; background: #111827; }
+
+    /* ─── Code editor wrapper with line numbers ─────────────────────── */
+
+    .code-editor-wrapper {
+      flex: 3;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+      background: #0f172a;
+    }
+
+    .line-numbers {
+      width: 40px;
+      background: #0a0f1a;
+      color: #334155;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 10px 8px 10px 0;
+      text-align: right;
+      overflow: hidden;
+      user-select: none;
+      flex-shrink: 0;
+      white-space: pre;
+      border-right: 1px solid #1e293b;
+    }
+
+    .editor-highlight {
+      position: absolute;
+      top: 0;
+      left: 40px;
+      right: 0;
+      bottom: 0;
+      margin: 0;
+      padding: 10px 12px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow: hidden;
+      pointer-events: none;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      color: #e2e8f0;
+      tab-size: 2;
+      z-index: 1;
+    }
+
+    .editor-highlight .hl-keyword { color: #c084fc; }
+    .editor-highlight .hl-string { color: #86efac; }
+    .editor-highlight .hl-number { color: #fbbf24; }
+    .editor-highlight .hl-comment { color: #475569; font-style: italic; }
+
+    #code-editor {
+      flex: 1;
+      background: transparent;
+      color: transparent;
+      caret-color: #e2e8f0;
+      border: none;
+      padding: 10px 12px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+      position: relative;
+      z-index: 2;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    /* ─── Project menu ──────────────────────────────────────────────── */
+
+    .project-menu-wrapper {
+      position: relative;
+    }
+
+    #btn-project {
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.12s;
+    }
+
+    #btn-project:hover { background: #334155; color: #e2e8f0; }
+
+    .project-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      min-width: 180px;
+      z-index: 50;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+
+    .project-dropdown.visible { display: block; }
+
+    .project-dropdown button {
+      display: block;
+      width: 100%;
+      background: none;
+      color: #94a3b8;
+      border: none;
+      padding: 8px 14px;
+      text-align: left;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.12s;
+    }
+
+    .project-dropdown button:hover {
+      background: #334155;
+      color: #e2e8f0;
+    }
+
+    .project-dropdown hr {
+      border: none;
+      border-top: 1px solid #334155;
+      margin: 0;
+    }
+
+    /* ─── Project dialog ────────────────────────────────────────────── */
+
+    #project-dialog {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    #project-dialog.visible { display: flex; }
+
+    #project-dialog .dialog-box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      min-width: 360px;
+      max-width: 500px;
+      max-height: 70vh;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    }
+
+    #project-dialog .dialog-box h3 {
+      color: #e2e8f0;
+      margin-bottom: 16px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    #project-dialog .dialog-buttons {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+
+    #project-dialog .dialog-buttons button {
+      padding: 8px 20px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    #project-dialog .dialog-buttons .btn-ok {
+      background: #059669;
+      color: #fff;
+    }
+
+    #project-dialog .dialog-buttons .btn-ok:hover { background: #10b981; }
+
+    #project-dialog .dialog-buttons .btn-cancel {
+      background: #334155;
+      color: #94a3b8;
+    }
+
+    #project-dialog .dialog-buttons .btn-cancel:hover { background: #475569; }
+
+    .project-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .project-list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      background: #0f172a;
+    }
+
+    .project-list-item:hover { background: #111827; }
+
+    .project-list-name {
+      color: #e2e8f0;
+      font-size: 13px;
+    }
+
+    .project-list-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .project-list-open, .project-list-delete {
+      background: none;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 4px 10px !important;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px !important;
+      min-width: auto !important;
+      width: auto !important;
+    }
+
+    .project-list-open:hover { border-color: #059669; color: #10b981; background: none !important; }
+    .project-list-delete:hover { border-color: #dc2626; color: #f87171; background: none !important; }
   </style>
 </head>
 <body>
@@ -489,6 +787,21 @@
       <button id="btn-rotate" title="Rotacionar 90° (R)">&#8635; Rotacionar</button>
     </div>
     <div class="actions">
+      <div class="project-menu-wrapper">
+        <button id="btn-project">Projeto &#9662;</button>
+        <div class="project-dropdown" id="project-dropdown">
+          <button data-action="new">Novo Projeto</button>
+          <button data-action="save">Salvar</button>
+          <button data-action="save-as">Salvar Como...</button>
+          <hr/>
+          <button data-action="open">Abrir Projeto...</button>
+          <hr/>
+          <button data-action="export">Exportar JSON</button>
+          <button data-action="import">Importar JSON</button>
+          <hr/>
+          <button data-action="examples">Exemplos</button>
+        </div>
+      </div>
       <button class="simulate" id="btn-simulate">&#9654; Simular DC</button>
       <button class="transient-btn" id="btn-transient">&#9654; Transiente</button>
       <button class="demo-btn" id="btn-demo">Demo RLC</button>
@@ -510,27 +823,7 @@
         </div>
         <div class="tab-content active" id="editor-content" data-tab="editor">
           <div class="editor-area">
-            <textarea id="code-editor" spellcheck="false">const circuit = new Circuit();
-const gnd = new Ground();
-
-const v1 = new VoltageSource(10);
-const r1 = new Resistor(1);
-const l1 = new Inductor(0.001);
-const c1 = new Capacitor(0.00001);
-
-v1.pin('+').connect(r1.pin('1'));
-r1.pin('2').connect(l1.pin('1'));
-l1.pin('2').connect(c1.pin('1'));
-c1.pin('2').connect(gnd.pin('1'));
-v1.pin('-').connect(gnd.pin('1'));
-
-circuit.probe(c1, 'voltage');
-
-circuit.analyze('transient', {
-  timeStep: 1e-6,
-  duration: 5e-3,
-});
-</textarea>
+            <textarea id="code-editor" spellcheck="false"></textarea>
             <div id="console-output"></div>
           </div>
         </div>
@@ -574,6 +867,19 @@ circuit.analyze('transient', {
       </div>
     </div>
   </div>
+
+  <div id="project-dialog">
+    <div class="dialog-box">
+      <h3 id="project-dialog-title">Projeto</h3>
+      <div id="project-dialog-body"></div>
+      <div class="dialog-buttons">
+        <button class="btn-cancel" id="project-dialog-cancel">Cancelar</button>
+        <button class="btn-ok" id="project-dialog-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="import-file-input" accept=".json" style="display:none" />
 
   <script type="module" src="/src/ui/main.ts"></script>
 </body>

@@ -1,9 +1,6 @@
 import type { Circuit } from '../core/Circuit';
-import type { Component } from '../core/Component';
 import type { Node } from '../core/Node';
 import { MNAMatrix } from '../solver/MNAMatrix';
-import { VoltageSource } from '../components/VoltageSource';
-import { Inductor } from '../components/Inductor';
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import { NewtonRaphson } from '../solver/NewtonRaphson';
 
@@ -28,13 +25,13 @@ export class DCAnalysis {
     }
     const nodeCount = nodeIndex; // total nodes including ground
 
-    // Assign voltage source indices (VoltageSource and Inductor both use extra MNA variables)
+    // Assign voltage source indices via protocol
     let vsCount = 0;
     for (const comp of components) {
-      if (comp instanceof VoltageSource) {
-        comp._vsIndex = vsCount++;
-      } else if (comp instanceof Inductor) {
-        comp._vsIndex = vsCount++;
+      const count = comp.getVSourceCount();
+      if (count > 0) {
+        comp.assignVSourceIndices(vsCount);
+        vsCount += count;
       }
     }
 
@@ -62,24 +59,11 @@ export class DCAnalysis {
       nodeVoltages.set(node, v);
     }
 
-    // Update component results
+    // Update component results via protocol
     for (const comp of components) {
-      if (comp instanceof TwoTerminalComponent) {
-        const v1 = matrix.getNodeVoltage(solution, comp._n1Index);
-        const v2 = matrix.getNodeVoltage(solution, comp._n2Index);
-        const voltage = v1 - v2;
-
-        let current: number;
-        if (comp instanceof VoltageSource) {
-          current = matrix.getVSourceCurrent(solution, comp._vsIndex);
-        } else if (comp instanceof Inductor) {
-          current = matrix.getVSourceCurrent(solution, comp._vsIndex);
-        } else {
-          // For resistors: I = V/R, for others derive from voltage
-          current = this.computeCurrent(comp, voltage);
-        }
-
-        comp._setResults(voltage, current);
+      const result = comp.readResults(solution, matrix);
+      if (result && comp instanceof TwoTerminalComponent) {
+        comp._setResults(result.voltage, result.current);
       }
     }
 
@@ -89,19 +73,5 @@ export class DCAnalysis {
     }
 
     return { nodeVoltages };
-  }
-
-  private computeCurrent(comp: TwoTerminalComponent, voltage: number): number {
-    // Import dynamically avoided — use duck typing
-    if ('resistance' in comp) {
-      return voltage / (comp as { resistance: number }).resistance;
-    }
-    if ('currentValue' in comp) {
-      return (comp as { currentValue: number }).currentValue;
-    }
-    if ('computeDiodeCurrent' in comp) {
-      return (comp as { computeDiodeCurrent(v: number): number }).computeDiodeCurrent(voltage);
-    }
-    return 0;
   }
 }

@@ -31,4 +31,29 @@ export class VoltageSource extends TwoTerminalComponent {
   stamp(matrix: MNAMatrix): void {
     matrix.stampVoltageSource(this._n1Index, this._n2Index, this._vsIndex, this._effectiveVoltage);
   }
+
+  // --- Protocol methods ---
+
+  getVSourceCount(): number { return 1; }
+
+  assignVSourceIndices(startIndex: number): void {
+    this._vsIndex = startIndex;
+  }
+
+  setTime(t: number): void {
+    this._effectiveVoltage = this.voltageAtTime(t);
+  }
+
+  resetToDC(): void {
+    this._effectiveVoltage = this.declaredVoltage;
+  }
+
+  readResults(solution: number[], matrix: MNAMatrix): { voltage: number; current: number } {
+    const v1 = matrix.getNodeVoltage(solution, this._n1Index);
+    const v2 = matrix.getNodeVoltage(solution, this._n2Index);
+    return {
+      voltage: v1 - v2,
+      current: matrix.getVSourceCurrent(solution, this._vsIndex),
+    };
+  }
 }

@@ -42,4 +42,46 @@ export class Inductor extends TwoTerminalComponent {
     matrix.stampConductance(this._n1Index, this._n2Index, g_eq);
     matrix.stampCurrentSource(this._n2Index, this._n1Index, this._prevCurrent);
   }
+
+  // --- Protocol methods ---
+
+  getVSourceCount(): number {
+    return this._transient ? 0 : 1;
+  }
+
+  assignVSourceIndices(startIndex: number): void {
+    this._vsIndex = startIndex;
+  }
+
+  prepareTransientStep(dt: number): void {
+    if (dt === 0) {
+      // Enter transient mode, cold start
+      this._transient = true;
+      this._prevCurrent = 0;
+      return;
+    }
+    this.setTransientState(dt, this._prevCurrent);
+  }
+
+  updateState(solution: number[], matrix: MNAMatrix): void {
+    const v1 = matrix.getNodeVoltage(solution, this._n1Index);
+    const v2 = matrix.getNodeVoltage(solution, this._n2Index);
+    const g_eq = this._dt / this.inductance;
+    this._prevCurrent = g_eq * (v1 - v2) + this._prevCurrent;
+  }
+
+  readResults(solution: number[], matrix: MNAMatrix): { voltage: number; current: number } {
+    const v1 = matrix.getNodeVoltage(solution, this._n1Index);
+    const v2 = matrix.getNodeVoltage(solution, this._n2Index);
+    if (!this._transient) {
+      return {
+        voltage: v1 - v2,
+        current: matrix.getVSourceCurrent(solution, this._vsIndex),
+      };
+    }
+    return {
+      voltage: v1 - v2,
+      current: this._prevCurrent,
+    };
+  }
 }

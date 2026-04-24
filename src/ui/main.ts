@@ -1,7 +1,8 @@
 import {
   type PlacedComponent, type Wire, type GroundNode, type ToolType, type ComponentType, type Point,
-  type Probe,
+  type Probe, type PinDef, type ProjectData,
   COMPONENT_DEFS, GRID_SIZE, formatValue, getPinWorldPos, PROBE_COLORS,
+  getComponentDef, customComponentDefs,
 } from './types';
 import {
   drawGrid, drawComponent, drawComponentMask, drawWire, drawWirePreview, drawGroundSymbol,
@@ -9,6 +10,7 @@ import {
 } from './renderer';
 import { drawChart, type WaveformData } from './chartRenderer';
 import { Circuit } from '../core/Circuit';
+import { Component } from '../core/Component';
 import { Resistor } from '../components/Resistor';
 import { VoltageSource } from '../components/VoltageSource';
 import { CurrentSource } from '../components/CurrentSource';
@@ -17,7 +19,12 @@ import { Inductor } from '../components/Inductor';
 import { Diode } from '../components/Diode';
 import { LED } from '../components/LED';
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
+import { defineComponent as realDefineComponent, CustomComponent } from '../core/CustomComponent';
+import type { ComponentDef } from '../core/CustomComponent';
 import type { ProbeSpec, TransientResult } from '../analysis/TransientAnalysis';
+import { initCodeEditor, type CodeEditorAPI } from './codeEditor';
+import { initProjectManager, type ProjectBridge } from './projectManager';
+import { autoSave, loadAutoSave, clearAutoSave } from './projectStore';
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -63,8 +70,36 @@ const resultsDiv = document.getElementById('results')!;
 const bottomPanel = document.getElementById('bottom-panel')!;
 const chartCanvas = document.getElementById('chart-canvas') as HTMLCanvasElement;
 const chartCtx = chartCanvas.getContext('2d')!;
-const codeEditor = document.getElementById('code-editor') as HTMLTextAreaElement;
 const consoleOutput = document.getElementById('console-output')!;
+const editorContent = document.getElementById('editor-content')!;
+
+// Initialize multi-file code editor
+const editorAPI: CodeEditorAPI = initCodeEditor(editorContent);
+
+// Set default content for main.js
+const DEFAULT_CODE = `const circuit = new Circuit();
+const gnd = new Ground();
+
+const v1 = new VoltageSource(10);
+const r1 = new Resistor(1);
+const l1 = new Inductor(0.001);
+const c1 = new Capacitor(0.00001);
+
+v1.pin('+').connect(r1.pin('1'));
+r1.pin('2').connect(l1.pin('1'));
+l1.pin('2').connect(c1.pin('1'));
+c1.pin('2').connect(gnd.pin('1'));
+v1.pin('-').connect(gnd.pin('1'));
+
+circuit.probe(c1, 'voltage');
+
+circuit.analyze('transient', {
+  timeStep: 1e-6,
+  duration: 5e-3,
+});`;
+
+// Project name
+let projectName = 'Sem titulo';
 
 function resize() {
   const canvasArea = canvas.parentElement!;
@@ -397,7 +432,7 @@ canvas.addEventListener('wheel', (e) => {
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
   if (document.getElementById('value-dialog')!.classList.contains('visible')) return;
-  if (document.activeElement === codeEditor) return;
+  if ((document.activeElement as HTMLElement)?.id === 'code-editor') return;
 
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (selectedId) {
@@ -469,7 +504,7 @@ function updateProps() {
   const comp = components.find(c => c.id === selectedId);
   if (!comp) return;
 
-  const def = COMPONENT_DEFS[comp.type];
+  const def = getComponentDef(comp.type);
   let html = `
     <div class="prop-group">
       <label>Tipo</label>
@@ -480,7 +515,7 @@ function updateProps() {
       <input type="text" id="prop-label" value="${comp.label}" />
     </div>`;
 
-  if (def.unit) {
+  if (def?.unit) {
     html += `
     <div class="prop-group">
       <label>Valor (${def.unit})</label>
@@ -586,8 +621,9 @@ function buildCircuit() {
       case 'Inductor': simComp = new Inductor(comp.value); break;
       case 'Diode': simComp = new Diode(); break;
       case 'LED': simComp = new LED(); break;
+      default: continue; // Skip custom components in visual-only simulation
     }
-    simComponents.set(comp.id, simComp);
+    simComponents.set(comp.id, simComp!);
   }
 
   function getSimPin(compId: string, pinName: string) {
@@ -738,22 +774,23 @@ bottomPanel.querySelectorAll('.tab').forEach(tab => {
 // ─── Code execution ──────────────────────────────────────────────────────────
 
 interface TrackedComponent {
-  instance: TwoTerminalComponent;
+  instance: Component;
   type: ComponentType;
   value: number;
   label: string;
   varName: string;
+  customDef?: ComponentDef;
 }
 
 interface TrackedConnection {
-  fromInstance: TwoTerminalComponent;
+  fromInstance: Component;
   fromPin: string;
-  toInstance: TwoTerminalComponent;
+  toInstance: Component;
   toPin: string;
 }
 
 interface TrackedGround {
-  instance: TwoTerminalComponent;
+  instance: Component;
   pinName: string;
 }
 
@@ -762,7 +799,7 @@ function executeUserCode(code: string) {
   const tracked: TrackedComponent[] = [];
   const connections: TrackedConnection[] = [];
   const trackedGrounds: TrackedGround[] = [];
-  const trackedProbes: { instance: TwoTerminalComponent; type: 'voltage' | 'current'; label: string; color: string }[] = [];
+  const trackedProbes: { instance: Component; type: 'voltage' | 'current'; label: string; color: string }[] = [];
   const state = { transientResult: null as TransientResult | null };
   let compCounter: Record<string, number> = {};
 
@@ -792,16 +829,16 @@ function executeUserCode(code: string) {
   };
 
   // Resolve the real instance behind a proxy
-  function resolveInstance(obj: any): TwoTerminalComponent | null {
+  function resolveInstance(obj: any): Component | null {
     if (obj && obj._isComponentProxy) return obj._target;
-    if (obj instanceof TwoTerminalComponent) return obj;
+    if (obj instanceof Component) return obj;
     return null;
   }
 
   // Pin proxy that intercepts .connect()
   let groundPin: any = null;
 
-  function makePinProxy(instance: TwoTerminalComponent, pinName: string) {
+  function makePinProxy(instance: Component, pinName: string) {
     const realPin = instance.pin(pinName);
     return {
       connect(other: any) {
@@ -854,7 +891,7 @@ function executeUserCode(code: string) {
         const t = tracked.find(t => t.instance === inst);
         const autoLabel = label ?? `${type === 'voltage' ? 'V' : 'I'}(${t?.label ?? '?'})`;
         const autoColor = color ?? PROBE_COLORS[trackedProbes.length % PROBE_COLORS.length];
-        trackedProbes.push({ instance: inst, type, label: autoLabel, color: autoColor });
+        trackedProbes.push({ instance: inst as Component, type, label: autoLabel, color: autoColor });
       },
       analyze: (type: string, config?: any) => {
         if (type === 'transient') {
@@ -925,10 +962,86 @@ function executeUserCode(code: string) {
     };
   }
 
+  // Wrapped defineComponent that registers custom components and returns tracked wrappers
+  function wrappedDefineComponent(def: ComponentDef) {
+    const CompClass = realDefineComponent(def);
+
+    // Register in UI custom component registry
+    const pinDefs: PinDef[] = def.pins.map(name => {
+      const layout = def.pinLayout?.[name];
+      return {
+        name,
+        offset: layout ? { x: layout.dx, y: layout.dy } : { x: 0, y: 0 },
+      };
+    });
+
+    // Auto-generate pin layout if not provided
+    if (!def.pinLayout && def.pins.length >= 2) {
+      const count = def.pins.length;
+      // 2 pins: horizontal like resistor
+      if (count === 2) {
+        pinDefs[0].offset = { x: -40, y: 0 };
+        pinDefs[1].offset = { x: 40, y: 0 };
+      } else {
+        // Multi-pin: left side inputs, right side outputs
+        const leftCount = Math.ceil(count / 2);
+        const rightCount = count - leftCount;
+        for (let i = 0; i < leftCount; i++) {
+          const ySpacing = 30;
+          const yOffset = -(leftCount - 1) * ySpacing / 2 + i * ySpacing;
+          pinDefs[i].offset = { x: -40, y: yOffset };
+        }
+        for (let i = 0; i < rightCount; i++) {
+          const ySpacing = 30;
+          const yOffset = -(rightCount - 1) * ySpacing / 2 + i * ySpacing;
+          pinDefs[leftCount + i].offset = { x: 40, y: yOffset };
+        }
+      }
+    }
+
+    const firstParam = def.params ? Object.values(def.params)[0] : undefined;
+    customComponentDefs.set(def.name, {
+      defaultValue: firstParam?.default ?? 0,
+      unit: firstParam?.unit ?? '',
+      label: def.label ?? def.name.substring(0, 3),
+      pins: pinDefs,
+      draw: def.draw,
+    });
+
+    // Return a tracked wrapper constructor
+    const prefix = def.label ?? def.name.substring(0, 3);
+    return function (params?: Record<string, number>) {
+      const instance = new CompClass(params);
+      compCounter[def.name] = (compCounter[def.name] || 0) + 1;
+      const num = compCounter[def.name];
+      const label = `${prefix}${num}`;
+      const value = params ? Object.values(params)[0] ?? 0 : 0;
+      tracked.push({
+        instance, type: def.name, value, label,
+        varName: `${prefix.toLowerCase().replace(/[^a-z0-9]/g, '')}${num}`,
+        customDef: def,
+      });
+
+      const proxy = new Proxy(instance, {
+        get(target, prop) {
+          if (prop === '_isComponentProxy') return true;
+          if (prop === '_target') return target;
+          if (prop === 'pin') {
+            return (name: string) => makePinProxy(target, name);
+          }
+          const val = (target as any)[prop];
+          return typeof val === 'function' ? val.bind(target) : val;
+        },
+      });
+      return proxy;
+    };
+  }
+
   try {
     const fn = new Function(
       'Circuit', 'Resistor', 'VoltageSource', 'CurrentSource',
-      'Capacitor', 'Inductor', 'Diode', 'LED', 'Ground', 'console',
+      'Capacitor', 'Inductor', 'Diode', 'LED', 'Ground',
+      'defineComponent', 'console',
       code
     );
 
@@ -942,6 +1055,7 @@ function executeUserCode(code: string) {
       makeTrackedWrapper(Diode, 'Diode', 'D'),
       makeTrackedWrapper(LED, 'LED', 'LED'),
       GroundWrapper,
+      wrappedDefineComponent,
       customConsole,
     );
 
@@ -971,7 +1085,7 @@ function syncTrackedToCanvas(
   tracked: TrackedComponent[],
   connections: TrackedConnection[],
   trackedGrounds: TrackedGround[],
-  trackedProbes: { instance: TwoTerminalComponent; type: 'voltage' | 'current'; label: string; color: string }[] = [],
+  trackedProbes: { instance: Component; type: 'voltage' | 'current'; label: string; color: string }[] = [],
 ) {
   // Clear existing
   components = [];
@@ -981,7 +1095,7 @@ function syncTrackedToCanvas(
   selectedId = null;
   showResults = false;
 
-  const instanceToId = new Map<TwoTerminalComponent, string>();
+  const instanceToId = new Map<Component, string>();
   const ORIGIN_X = 180;
   const ORIGIN_Y = 160;
   const SPACING_X = 160;
@@ -994,12 +1108,13 @@ function syncTrackedToCanvas(
 
   // Place sources vertically in left column
   sources.forEach((t, i) => {
-    const def = COMPONENT_DEFS[t.type];
+    const def = getComponentDef(t.type);
+    const pins = def ? [...def.pins] : t.instance.allPins().map(p => ({ name: p.name, offset: { x: 0, y: 0 } }));
     const comp: PlacedComponent = {
       id: `c${nextId++}`, type: t.type,
       x: ORIGIN_X, y: ORIGIN_Y + i * SPACING_Y,
       rotation: 0, value: t.value,
-      label: t.label, pins: [...def.pins],
+      label: t.label, pins,
     };
     if (t.type === 'VoltageSource' && t.instance instanceof VoltageSource) {
       comp.acAmplitude = t.instance.acAmplitude;
@@ -1013,13 +1128,14 @@ function syncTrackedToCanvas(
   others.forEach((t, i) => {
     const col = Math.floor(i / MAX_PER_COL);
     const row = i % MAX_PER_COL;
-    const def = COMPONENT_DEFS[t.type];
+    const def = getComponentDef(t.type);
+    const pins = def ? [...def.pins] : t.instance.allPins().map(p => ({ name: p.name, offset: { x: 0, y: 0 } }));
     const comp: PlacedComponent = {
       id: `c${nextId++}`, type: t.type,
       x: ORIGIN_X + SPACING_X * (col + 1),
       y: ORIGIN_Y + row * SPACING_Y,
       rotation: 0, value: t.value,
-      label: t.label, pins: [...def.pins],
+      label: t.label, pins,
     };
     components.push(comp);
     instanceToId.set(t.instance, comp.id);
@@ -1082,8 +1198,8 @@ function generateCode(): string {
     const varName = comp.label.toLowerCase().replace(/[^a-z0-9]/g, '');
     idToVar.set(comp.id, varName);
 
-    const def = COMPONENT_DEFS[comp.type];
-    if (def.unit) {
+    const def = getComponentDef(comp.type);
+    if (def?.unit) {
       lines.push(`const ${varName} = new ${comp.type}(${comp.value});`);
     } else {
       lines.push(`const ${varName} = new ${comp.type}();`);
@@ -1143,8 +1259,8 @@ function generateCode(): string {
     // Add console.log for each component
     for (const comp of components) {
       const varName = idToVar.get(comp.id)!;
-      const def = COMPONENT_DEFS[comp.type];
-      if (def.unit) {
+      const def = getComponentDef(comp.type);
+      if (def?.unit) {
         lines.push("console.log('" + comp.label + ":', " + varName + ".voltage.toFixed(3) + 'V', " + varName + ".current.toFixed(6) + 'A');");
       }
     }
@@ -1156,28 +1272,21 @@ function generateCode(): string {
 // ─── Button handlers for code panel ─────────────────────────────────────────
 
 document.getElementById('btn-run-code')!.addEventListener('click', () => {
-  executeUserCode(codeEditor.value);
+  executeUserCode(editorAPI.getCombinedCode());
 });
 
 document.getElementById('btn-gen-code')!.addEventListener('click', () => {
-  codeEditor.value = generateCode();
+  editorAPI.setActiveContent(generateCode());
   switchTab('editor');
   statusText.textContent = 'Codigo gerado a partir do circuito visual';
 });
 
-// Handle Ctrl+Enter in code editor
-codeEditor.addEventListener('keydown', (e) => {
+// Handle Ctrl+Enter in code editor (textarea still exists in DOM)
+const codeTextarea = document.getElementById('code-editor') as HTMLTextAreaElement;
+codeTextarea.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
-    executeUserCode(codeEditor.value);
-  }
-  // Handle Tab key for indentation
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    const start = codeEditor.selectionStart;
-    const end = codeEditor.selectionEnd;
-    codeEditor.value = codeEditor.value.substring(0, start) + '  ' + codeEditor.value.substring(end);
-    codeEditor.selectionStart = codeEditor.selectionEnd = start + 2;
+    executeUserCode(editorAPI.getCombinedCode());
   }
 });
 
@@ -1434,6 +1543,117 @@ function drawGridPanZoom(ctx: CanvasRenderingContext2D, w: number, h: number) {
   },
   render,
 };
+
+// ─── Project Bridge & Manager ────────────────────────────────────────────────
+
+const projectBridge: ProjectBridge = {
+  getCanvasState() {
+    return {
+      components: JSON.parse(JSON.stringify(components)),
+      wires: JSON.parse(JSON.stringify(wires)),
+      grounds: JSON.parse(JSON.stringify(grounds)),
+      probes: JSON.parse(JSON.stringify(probes)),
+    };
+  },
+  setCanvasState(state) {
+    components = state.components || [];
+    wires = state.wires || [];
+    grounds = state.grounds || [];
+    probes = state.probes || [];
+    selectedId = null;
+    showResults = false;
+    transientResult = null;
+    // Update nextId to avoid collisions
+    const allIds = [...components.map(c => c.id), ...wires.map(w => w.id), ...grounds.map(g => g.id), ...probes.map(p => p.id)];
+    for (const id of allIds) {
+      const num = parseInt(id.replace(/\D/g, ''));
+      if (!isNaN(num) && num >= nextId) nextId = num + 1;
+    }
+    updateProps();
+    updateResults();
+  },
+  getEditorAPI() { return editorAPI; },
+  getSettings() {
+    return {
+      simDt: (document.getElementById('sim-dt') as HTMLInputElement).value,
+      simDuration: (document.getElementById('sim-duration') as HTMLInputElement).value,
+    };
+  },
+  setSettings(s) {
+    (document.getElementById('sim-dt') as HTMLInputElement).value = s.simDt;
+    (document.getElementById('sim-duration') as HTMLInputElement).value = s.simDuration;
+  },
+  getView() { return { panX, panY, zoom }; },
+  setView(v) { panX = v.panX; panY = v.panY; zoom = v.zoom; },
+  render,
+  getProjectName() { return projectName; },
+  setProjectName(name) { projectName = name; },
+};
+
+initProjectManager(projectBridge);
+
+// ─── Auto-save ──────────────────────────────────────────────────────────────
+
+let autoSaveTimer: number | undefined;
+
+function scheduleAutoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = window.setTimeout(() => {
+    const project: ProjectData = {
+      version: 1,
+      name: projectName,
+      files: editorAPI.getFiles(),
+      canvas: projectBridge.getCanvasState(),
+      settings: projectBridge.getSettings(),
+      view: { panX, panY, zoom },
+    };
+    autoSave(project);
+  }, 3000);
+}
+
+editorAPI.onDidChange(scheduleAutoSave);
+
+// Auto-save on canvas changes (hook into render)
+const originalRender = render;
+// Override render isn't practical, so we'll use a MutationObserver-free approach:
+// schedule auto-save whenever state-changing operations happen.
+// The simplest approach: schedule on mouseup (most canvas changes end with mouseup)
+canvas.addEventListener('mouseup', scheduleAutoSave);
+
+window.addEventListener('beforeunload', () => {
+  const project: ProjectData = {
+    version: 1,
+    name: projectName,
+    files: editorAPI.getFiles(),
+    canvas: projectBridge.getCanvasState(),
+    settings: projectBridge.getSettings(),
+    view: { panX, panY, zoom },
+  };
+  autoSave(project);
+});
+
+// ─── Restore auto-save or set default ───────────────────────────────────────
+
+const saved = loadAutoSave();
+if (saved && saved.files && saved.files.length > 0) {
+  projectName = saved.name || 'Sem titulo';
+  editorAPI.setFiles(saved.files);
+  if (saved.canvas) {
+    projectBridge.setCanvasState(saved.canvas);
+  }
+  if (saved.settings) {
+    projectBridge.setSettings(saved.settings);
+  }
+  if (saved.view) {
+    projectBridge.setView(saved.view);
+  }
+  // Update title
+  const h1 = document.querySelector('header h1')!;
+  h1.textContent = projectName !== 'Sem titulo' ? `Circuit Simulator — ${projectName}` : 'Circuit Simulator';
+} else {
+  // Set default content
+  editorAPI.setFiles([{ name: 'main.js', content: DEFAULT_CODE }]);
+}
 
 // Initial render
 updateStatus();

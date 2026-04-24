@@ -1,6 +1,5 @@
 import type { Component } from '../core/Component';
 import { MNAMatrix } from './MNAMatrix';
-import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 
 export interface NonlinearComponent {
   isNonlinear(): boolean;
@@ -8,7 +7,7 @@ export interface NonlinearComponent {
   getOperatingVoltage(): number;
 }
 
-function isNonlinearComponent(comp: Component): comp is Component & NonlinearComponent & TwoTerminalComponent {
+function isNonlinearComponent(comp: Component): comp is Component & NonlinearComponent {
   return comp.isNonlinear();
 }
 
@@ -42,17 +41,16 @@ export class NewtonRaphson {
 
       const newSolution = matrix.solve();
 
-      // Check convergence: the solution's nonlinear device voltages
-      // must match their operating points
+      // Check convergence: compare solution voltage with operating point
       if (solution) {
         let converged = true;
 
         for (const comp of components) {
           if (isNonlinearComponent(comp)) {
-            const v1 = matrix.getNodeVoltage(newSolution, comp._n1Index);
-            const v2 = matrix.getNodeVoltage(newSolution, comp._n2Index);
-            const solutionV = v1 - v2;
             const opV = comp.getOperatingVoltage();
+            // Use readResults to get the actual voltage from solution
+            const result = comp.readResults(newSolution, matrix);
+            const solutionV = result ? result.voltage : 0;
 
             if (Math.abs(solutionV - opV) > absTol) {
               converged = false;

@@ -14,4 +14,11 @@ export class Resistor extends TwoTerminalComponent {
     const g = 1 / this.resistance;
     matrix.stampConductance(this._n1Index, this._n2Index, g);
   }
+
+  readResults(solution: number[], matrix: MNAMatrix): { voltage: number; current: number } {
+    const v1 = matrix.getNodeVoltage(solution, this._n1Index);
+    const v2 = matrix.getNodeVoltage(solution, this._n2Index);
+    const voltage = v1 - v2;
+    return { voltage, current: voltage / this.resistance };
+  }
 }

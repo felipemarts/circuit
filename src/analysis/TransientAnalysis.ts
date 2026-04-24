@@ -1,8 +1,6 @@
 import type { Circuit } from '../core/Circuit';
+import type { Component } from '../core/Component';
 import { MNAMatrix } from '../solver/MNAMatrix';
-import { VoltageSource } from '../components/VoltageSource';
-import { Inductor } from '../components/Inductor';
-import { Capacitor } from '../components/Capacitor';
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import { NewtonRaphson } from '../solver/NewtonRaphson';
 
@@ -14,7 +12,7 @@ export interface TransientConfig {
 export interface ProbeSpec {
   label: string;
   color: string;
-  component?: TwoTerminalComponent;
+  component?: Component;
   type: 'voltage' | 'current';
 }
 
@@ -43,18 +41,22 @@ export class TransientAnalysis {
     // --- Phase 1: DC operating point ---
     let vsCount = 0;
     for (const comp of components) {
-      if (comp instanceof VoltageSource) {
-        comp._vsIndex = vsCount++;
-        comp._effectiveVoltage = comp.declaredVoltage;
-      } else if (comp instanceof Inductor) {
-        comp._vsIndex = vsCount++;
+      const count = comp.getVSourceCount();
+      if (count > 0) {
+        comp.assignVSourceIndices(vsCount);
+        vsCount += count;
       }
     }
 
     // Resolve probe node indices now that nodes are assigned
     const probeNodeIndices = probeSpecs.map(spec => {
-      if (spec.component) {
+      if (spec.component && spec.component instanceof TwoTerminalComponent) {
         return spec.component._n1Index;
+      }
+      // For multi-pin components, use first pin
+      if (spec.component) {
+        const pins = spec.component.allPins();
+        if (pins.length > 0) return pins[0].node.index;
       }
       return 0;
     });
@@ -72,25 +74,19 @@ export class TransientAnalysis {
       dcSolution = matrix.solve();
     }
 
-    // Initialize reactive components with zero state (cold start / step response)
+    // --- Phase 2: Switch to transient mode ---
+    // Each component switches itself to transient mode via prepareTransientStep
     for (const comp of components) {
-      if (comp instanceof Capacitor) {
-        comp._prevVoltage = 0;
-      } else if (comp instanceof Inductor) {
-        comp._prevCurrent = 0;
-      }
+      comp.prepareTransientStep(0); // dt=0 signals "enter transient mode"
     }
 
-    // --- Phase 2: Switch to transient mode ---
+    // Reassign vsource indices for transient (some components like Inductor drop their vsource)
     let transientVsCount = 0;
     for (const comp of components) {
-      if (comp instanceof VoltageSource) {
-        comp._vsIndex = transientVsCount++;
-      } else if (comp instanceof Inductor) {
-        comp._transient = true;
-        comp._vsIndex = -1;
-      } else if (comp instanceof Capacitor) {
-        comp._transient = true;
+      const count = comp.getVSourceCount();
+      if (count > 0) {
+        comp.assignVSourceIndices(transientVsCount);
+        transientVsCount += count;
       }
     }
 
@@ -106,18 +102,12 @@ export class TransientAnalysis {
 
       // Update time-dependent sources
       for (const comp of components) {
-        if (comp instanceof VoltageSource) {
-          comp._effectiveVoltage = comp.voltageAtTime(t);
-        }
+        comp.setTime(t);
       }
 
       // Set companion model parameters
       for (const comp of components) {
-        if (comp instanceof Capacitor) {
-          comp.setTransientState(dt, comp._prevVoltage);
-        } else if (comp instanceof Inductor) {
-          comp.setTransientState(dt, comp._prevCurrent);
-        }
+        comp.prepareTransientStep(dt);
       }
 
       // Build and solve
@@ -137,44 +127,34 @@ export class TransientAnalysis {
       // Record probe values
       for (let i = 0; i < probeSpecs.length; i++) {
         const probe = probeSpecs[i];
-        if (probe.type === 'voltage' && probe.component) {
-          // Record voltage at component's pin 1 node (relative to ground)
-          const nodeIdx = probeNodeIndices[i];
-          probeValues[i].push(readMatrix.getNodeVoltage(solution, nodeIdx));
-        } else if (probe.type === 'current' && probe.component) {
-          const comp = probe.component;
-          if (comp instanceof VoltageSource) {
-            probeValues[i].push(readMatrix.getVSourceCurrent(solution, comp._vsIndex));
-          } else {
-            const v1 = readMatrix.getNodeVoltage(solution, comp._n1Index);
-            const v2 = readMatrix.getNodeVoltage(solution, comp._n2Index);
-            probeValues[i].push(this.computeCurrent(comp, v1 - v2, dt));
+        if (probe.component) {
+          const result = probe.component.readResults(solution, readMatrix);
+          if (probe.type === 'voltage') {
+            if (result) {
+              probeValues[i].push(result.voltage);
+            } else {
+              const nodeIdx = probeNodeIndices[i];
+              probeValues[i].push(readMatrix.getNodeVoltage(solution, nodeIdx));
+            }
+          } else if (probe.type === 'current') {
+            if (result) {
+              probeValues[i].push(result.current);
+            } else {
+              probeValues[i].push(0);
+            }
           }
         }
       }
 
       // Update state for next timestep
       for (const comp of components) {
-        if (comp instanceof Capacitor) {
-          const v1 = readMatrix.getNodeVoltage(solution, comp._n1Index);
-          const v2 = readMatrix.getNodeVoltage(solution, comp._n2Index);
-          comp._prevVoltage = v1 - v2;
-        } else if (comp instanceof Inductor) {
-          const v1 = readMatrix.getNodeVoltage(solution, comp._n1Index);
-          const v2 = readMatrix.getNodeVoltage(solution, comp._n2Index);
-          const g_eq = dt / comp.inductance;
-          comp._prevCurrent = g_eq * (v1 - v2) + comp._prevCurrent;
-        }
+        comp.updateState(solution, readMatrix);
       }
     }
 
     // Reset components to DC mode
     for (const comp of components) {
-      if (comp instanceof Capacitor) comp.resetToDC();
-      else if (comp instanceof Inductor) comp.resetToDC();
-      if (comp instanceof VoltageSource) {
-        comp._effectiveVoltage = comp.declaredVoltage;
-      }
+      comp.resetToDC();
     }
 
     // Reset node indices
@@ -190,23 +170,5 @@ export class TransientAnalysis {
         values: probeValues[i],
       })),
     };
-  }
-
-  private computeCurrent(comp: TwoTerminalComponent, voltage: number, dt: number): number {
-    if ('resistance' in comp) {
-      return voltage / (comp as { resistance: number }).resistance;
-    }
-    if ('capacitance' in comp) {
-      const cap = comp as Capacitor;
-      return cap.capacitance * (voltage - cap._prevVoltage) / dt;
-    }
-    if ('inductance' in comp) {
-      const ind = comp as Inductor;
-      return ind._prevCurrent;
-    }
-    if ('computeDiodeCurrent' in comp) {
-      return (comp as { computeDiodeCurrent(v: number): number }).computeDiodeCurrent(voltage);
-    }
-    return 0;
   }
 }

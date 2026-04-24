@@ -1,5 +1,6 @@
-export type ComponentType = 'Resistor' | 'VoltageSource' | 'CurrentSource' | 'Capacitor' | 'Inductor' | 'Diode' | 'LED';
-export type ToolType = 'select' | ComponentType | 'wire' | 'ground' | 'probe';
+export type BuiltinComponentType = 'Resistor' | 'VoltageSource' | 'CurrentSource' | 'Capacitor' | 'Inductor' | 'Diode' | 'LED';
+export type ComponentType = string;
+export type ToolType = 'select' | BuiltinComponentType | 'wire' | 'ground' | 'probe';
 
 export interface Point {
   x: number;
@@ -42,7 +43,21 @@ export interface GroundNode {
 
 export const GRID_SIZE = 20;
 
-export const COMPONENT_DEFS: Record<ComponentType, { defaultValue: number; unit: string; label: string; pins: PinDef[] }> = {
+export interface ComponentDefUI {
+  defaultValue: number;
+  unit: string;
+  label: string;
+  pins: PinDef[];
+  draw?: (ctx: CanvasRenderingContext2D, w: number, h: number) => void;
+}
+
+export const customComponentDefs = new Map<string, ComponentDefUI>();
+
+export function getComponentDef(type: string): ComponentDefUI | undefined {
+  return COMPONENT_DEFS[type as BuiltinComponentType] ?? customComponentDefs.get(type);
+}
+
+export const COMPONENT_DEFS: Record<string, ComponentDefUI> = {
   Resistor: {
     defaultValue: 1000,
     unit: 'Ω',
@@ -115,6 +130,25 @@ export interface Probe {
   type: 'voltage' | 'current';
   color: string;
   label: string;
+}
+
+export interface ProjectFile {
+  name: string;
+  content: string;
+}
+
+export interface ProjectData {
+  version: 1;
+  name: string;
+  files: ProjectFile[];
+  canvas: {
+    components: PlacedComponent[];
+    wires: Wire[];
+    grounds: GroundNode[];
+    probes: Probe[];
+  };
+  settings: { simDt: string; simDuration: string };
+  view?: { panX: number; panY: number; zoom: number };
 }
 
 export const PROBE_COLORS = ['#22d3ee', '#f472b6', '#fbbf24', '#34d399', '#a78bfa', '#fb923c'];
