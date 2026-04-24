@@ -9,6 +9,7 @@ import {
   drawPinHighlight, drawProbeMarker, hitTestPin, hitTestComponent,
 } from './renderer';
 import { drawChart, type WaveformData } from './chartRenderer';
+import { showScopeOverlay, hideScopeOverlay } from './scopeOverlay';
 import { Circuit } from '../core/Circuit';
 import { Component } from '../core/Component';
 import { Resistor } from '../components/Resistor';
@@ -64,7 +65,9 @@ function worldToScreen(wx: number, wy: number): Point {
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const statusText = document.getElementById('status-text')!;
-const mousePosEl = document.getElementById('mouse-pos')!;
+const mouseXEl = document.getElementById('mouse-x')!;
+const mouseYEl = document.getElementById('mouse-y')!;
+const zoomLevelEl = document.getElementById('zoom-level')!;
 const propsContent = document.getElementById('props-content')!;
 const resultsDiv = document.getElementById('results')!;
 const bottomPanel = document.getElementById('bottom-panel')!;
@@ -151,10 +154,13 @@ document.getElementById('btn-clear')!.addEventListener('click', () => {
   selectedId = null;
   showResults = false;
   transientResult = null;
+  hideScopeOverlay();
   updateProps();
   updateResults();
   resize();
 });
+
+document.getElementById('scope-close')?.addEventListener('click', hideScopeOverlay);
 
 function rotateSelected() {
   if (selectedId) {
@@ -217,7 +223,8 @@ canvas.addEventListener('mousemove', (e) => {
   const screenY = e.clientY - rect.top;
   const world = screenToWorld(screenX, screenY);
   mousePos = world;
-  mousePosEl.textContent = `${snap(world.x)}, ${snap(world.y)}`;
+  mouseXEl.textContent = String(snap(world.x));
+  mouseYEl.textContent = String(snap(world.y));
 
   // Handle panning (middle mouse or space+drag)
   if (panning) {
@@ -426,6 +433,7 @@ canvas.addEventListener('wheel', (e) => {
   panX = screenX - worldBefore.x * zoom;
   panY = screenY - worldBefore.y * zoom;
 
+  zoomLevelEl.textContent = `${Math.round(zoom * 100)}%`;
   render();
 }, { passive: false });
 
@@ -722,8 +730,18 @@ function runTransientSimulation() {
       const result = circuit.analyze('transient', { timeStep: dt, duration }, specs);
       transientResult = result;
 
-      switchTab('chart');
-      resize();
+      // Show the oscilloscope overlay with waveforms + stats (primary unit from first probe)
+      const waveforms: WaveformData[] = result.probes.map(p => ({
+        label: p.label,
+        color: p.color,
+        values: p.values,
+        timePoints: result.timePoints,
+      }));
+      const primaryUnit = probes[0]?.type === 'current' ? 'A' : 'V';
+      showScopeOverlay(waveforms, primaryUnit);
+
+      // Also render into the bottom-panel chart tab
+      renderChart();
 
       statusText.textContent = `Transiente concluido: ${result.timePoints.length} pontos`;
     } catch (error) {
@@ -1584,7 +1602,10 @@ const projectBridge: ProjectBridge = {
     (document.getElementById('sim-duration') as HTMLInputElement).value = s.simDuration;
   },
   getView() { return { panX, panY, zoom }; },
-  setView(v) { panX = v.panX; panY = v.panY; zoom = v.zoom; },
+  setView(v) {
+    panX = v.panX; panY = v.panY; zoom = v.zoom;
+    zoomLevelEl.textContent = `${Math.round(zoom * 100)}%`;
+  },
   render,
   getProjectName() { return projectName; },
   setProjectName(name) { projectName = name; },
