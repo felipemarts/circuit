@@ -61,6 +61,22 @@ let simAnimFrame: number | null = null;
 let simLastWallTime = 0;
 let simChartLastUpdate = 0;
 
+// Per-wire flow animation state (accumulated phase, smoothed current)
+const wireFlowPhase = new Map<string, number>();
+const wireSmoothCurrent = new Map<string, number>();
+let lastRenderTime = 0;
+
+// Cached A* paths — recomputed only when topology/positions actually change
+let pathsCacheHash = '';
+let pathsCache: Point[][] = [];
+
+// Per-wire current "spec": list of components whose current contributes,
+// each with a sign, plus a divisor for multi-bridge cases.
+// Computed via DFS+KCL whenever topology changes.
+type WireContribution = { componentId: string; sign: 1 | -1 };
+type WireFlowSpec = { contribs: WireContribution[]; divisor: number };
+let wireFlowSpecs = new Map<string, WireFlowSpec>();
+
 /** Convert screen coordinates to world coordinates */
 function screenToWorld(sx: number, sy: number): Point {
   return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
@@ -689,6 +705,182 @@ function hasAnyGround(): boolean {
   return components.some(c => c.type === 'Ground');
 }
 
+// ─── Per-wire current via DFS + KCL ────────────────────────────────────────
+// Each wire's current depends on the topology around it. We can't read it
+// from `comp.current` alone (that's the total through the component). We
+// instead build a graph of pins, remove the wire, DFS one side, and apply
+// KCL: outflow_via_components + outflow_via_wires_crossing_cut = 0.
+
+const GND_KEY = '__GROUND__';
+
+/** Polarity of a 2-terminal component (positive pin → entry pin). */
+function getComponentPolarity(comp: PlacedComponent): { pos: string; neg: string } | null {
+  if (comp.pins.length !== 2) return null;
+  const names = comp.pins.map(p => p.name);
+  if (names.includes('1') && names.includes('2')) return { pos: '1', neg: '2' };
+  if (names.includes('+') && names.includes('-')) return { pos: '+', neg: '-' };
+  if (names.includes('anode') && names.includes('cathode')) return { pos: 'anode', neg: 'cathode' };
+  return null;
+}
+
+/** Vertex key for a (component, pin) pair. Ground pins all collapse to GND_KEY. */
+function pinKeyOf(comp: PlacedComponent, pinName: string): string {
+  if (comp.type === 'Ground') return GND_KEY;
+  return `${comp.id}:${pinName}`;
+}
+
+function computeWireFlowSpecs(): void {
+  wireFlowSpecs = new Map();
+  if (wires.length === 0) return;
+
+  const compById = new Map<string, PlacedComponent>();
+  for (const c of components) compById.set(c.id, c);
+
+  // Union-Find to cluster pins into electrical nodes (pins joined by wires
+  // and Ground markers belong to the same node).
+  const ufParent = new Map<string, string>();
+  const ufFind = (x: string): string => {
+    let p = ufParent.get(x);
+    if (p === undefined) { ufParent.set(x, x); return x; }
+    if (p === x) return x;
+    const r = ufFind(p);
+    ufParent.set(x, r);
+    return r;
+  };
+  const ufUnion = (a: string, b: string) => {
+    const ra = ufFind(a), rb = ufFind(b);
+    if (ra !== rb) ufParent.set(ra, rb);
+  };
+
+  // Pre-register every pin as its own node (Ground pins all become GND_KEY)
+  for (const c of components) {
+    if (c.type === 'Ground') {
+      ufUnion(pinKeyOf(c, c.pins[0].name), GND_KEY);
+    } else {
+      for (const p of c.pins) ufFind(pinKeyOf(c, p.name));
+    }
+  }
+  ufFind(GND_KEY);
+
+  // Wires merge their two pins into the same node
+  for (const wire of wires) {
+    const f = wire.from as { componentId: string; pinName: string };
+    const t = wire.to as { componentId: string; pinName: string };
+    const fc = compById.get(f.componentId);
+    const tc = compById.get(t.componentId);
+    if (!fc || !tc) continue;
+    ufUnion(pinKeyOf(fc, f.pinName), pinKeyOf(tc, t.pinName));
+  }
+  // Legacy ground markers
+  for (const g of grounds) {
+    const c = compById.get(g.componentId);
+    if (c) ufUnion(pinKeyOf(c, g.pinName), GND_KEY);
+  }
+
+  // For each wire, build a *local* adjacency restricted to the wire's node
+  // (only wires whose two endpoints are in the same node). DFS in that
+  // subgraph without W: components and other nodes are NOT traversed, so
+  // removing W can actually disconnect part of the node — that's the cut.
+  for (const wire of wires) {
+    const f = wire.from as { componentId: string; pinName: string };
+    const t = wire.to as { componentId: string; pinName: string };
+    const fc = compById.get(f.componentId);
+    const tc = compById.get(t.componentId);
+    if (!fc || !tc) {
+      wireFlowSpecs.set(wire.id, { contribs: [], divisor: 1 });
+      continue;
+    }
+    const startKey = pinKeyOf(fc, f.pinName);
+    const goalKey = pinKeyOf(tc, t.pinName);
+    const nodeId = ufFind(startKey);
+
+    // Build local adjacency (this node only)
+    const localAdj = new Map<string, { other: string; wireId: string }[]>();
+    const addLocal = (a: string, b: string, wId: string) => {
+      if (!localAdj.has(a)) localAdj.set(a, []);
+      if (!localAdj.has(b)) localAdj.set(b, []);
+      localAdj.get(a)!.push({ other: b, wireId: wId });
+      localAdj.get(b)!.push({ other: a, wireId: wId });
+    };
+    for (const w of wires) {
+      const wf = w.from as { componentId: string; pinName: string };
+      const wt = w.to as { componentId: string; pinName: string };
+      const wfc = compById.get(wf.componentId);
+      const wtc = compById.get(wt.componentId);
+      if (!wfc || !wtc) continue;
+      const a = pinKeyOf(wfc, wf.pinName);
+      const b = pinKeyOf(wtc, wt.pinName);
+      if (ufFind(a) !== nodeId) continue;
+      addLocal(a, b, w.id);
+    }
+
+    // DFS skipping W
+    const visited = new Set<string>();
+    const stack = [startKey];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const edges = localAdj.get(cur);
+      if (!edges) continue;
+      for (const e of edges) {
+        if (e.wireId === wire.id) continue;
+        if (!visited.has(e.other)) stack.push(e.other);
+      }
+    }
+
+    // Multi-bridge inside this node — current undetermined topologically
+    if (visited.has(goalKey)) {
+      wireFlowSpecs.set(wire.id, { contribs: [], divisor: 1 });
+      continue;
+    }
+
+    // Component contributions: a component touches S via one pin if that
+    // pin's key is in `visited`. The other pin is in a different node, so
+    // it's never in `visited`. Sign: +1 if posPin is in S, -1 if negPin.
+    const contribs: WireContribution[] = [];
+    for (const comp of components) {
+      const pol = getComponentPolarity(comp);
+      if (!pol) continue;
+      const posIn = visited.has(pinKeyOf(comp, pol.pos));
+      const negIn = visited.has(pinKeyOf(comp, pol.neg));
+      if (posIn && !negIn) contribs.push({ componentId: comp.id, sign: +1 });
+      else if (negIn && !posIn) contribs.push({ componentId: comp.id, sign: -1 });
+    }
+
+    // Divisor: this wire + any other local wires that also cross S↔(node\S)
+    let divisor = 1;
+    for (const w of wires) {
+      if (w.id === wire.id) continue;
+      const wf = w.from as { componentId: string; pinName: string };
+      const wt = w.to as { componentId: string; pinName: string };
+      const wfc = compById.get(wf.componentId);
+      const wtc = compById.get(wt.componentId);
+      if (!wfc || !wtc) continue;
+      const a = pinKeyOf(wfc, wf.pinName);
+      const b = pinKeyOf(wtc, wt.pinName);
+      if (ufFind(a) !== nodeId) continue;
+      if (visited.has(a) !== visited.has(b)) divisor++;
+    }
+
+    wireFlowSpecs.set(wire.id, { contribs, divisor });
+  }
+}
+
+/** Compute the current flowing through `wire` in its from→to direction. */
+function wireCurrentFor(wire: Wire): number {
+  const spec = wireFlowSpecs.get(wire.id);
+  if (!spec || spec.contribs.length === 0) return 0;
+  let sum = 0;
+  for (const c of spec.contribs) {
+    const comp = components.find(cc => cc.id === c.componentId);
+    if (comp) sum += c.sign * (comp.current ?? 0);
+  }
+  // KCL: outflow_via_wires = -outflow_via_components
+  // For this wire (from→to is "leaving S_from"): I = -sum / divisor
+  return -sum / spec.divisor;
+}
+
 // ─── Continuous simulation (Play / Pause) ──────────────────────────────────
 
 const SIM_FIXED_DT = 1e-5;            // 10µs default timestep
@@ -814,8 +1006,8 @@ function simulationLoop(): void {
     }
   }
 
-  // Throttle chart/scope updates to ~5 Hz
-  if (simProbeLabels.length > 0 && now - simChartLastUpdate > 200) {
+  // Throttle chart/scope updates to ~12 Hz
+  if (simProbeLabels.length > 0 && now - simChartLastUpdate > 80) {
     simChartLastUpdate = now;
     transientResult = {
       timePoints: [...simSession.timePoints],
@@ -1617,58 +1809,110 @@ function render() {
   ctx.translate(panX, panY);
   ctx.scale(zoom, zoom);
 
-  // Layer 1: Wires (below everything) — route around all component bodies
-  // (pins are outside each component's bbox, so wires can still leave/enter freely).
+  // Layer 1: Wires (below everything) — paths are cached and only recomputed
+  // when topology/positions change. Flow animation runs every frame using
+  // accumulated phase (so a fluctuating current near zero stays smooth).
   const allObstacles = buildComponentObstacles(components);
-  const routedSegments: Segment[] = [];
-  const animTime = isSimulating() ? performance.now() / 1000 : 0;
-  for (const wire of wires) {
+
+  // Build a topology hash to detect when paths must be recomputed
+  const topoHash = wires.map(w => {
+    const f = w.from as { componentId: string; pinName: string };
+    const t = w.to as { componentId: string; pinName: string };
+    return `${w.id}|${f.componentId}.${f.pinName}>${t.componentId}.${t.pinName}`;
+  }).join(';') + '||' + components.map(c => `${c.id}@${c.x},${c.y}r${c.rotation}`).join(',');
+
+  if (topoHash !== pathsCacheHash) {
+    pathsCache = [];
+    const segs: Segment[] = [];
+    for (const wire of wires) {
+      const from = wire.from as { componentId: string; pinName: string };
+      const to = wire.to as { componentId: string; pinName: string };
+      const fromComp = components.find(c => c.id === from.componentId);
+      const toComp = components.find(c => c.id === to.componentId);
+      if (!fromComp || !toComp) {
+        pathsCache.push([]);
+        continue;
+      }
+      const p = routeWire(
+        getPinWorldPos(fromComp, from.pinName),
+        getPinWorldPos(toComp, to.pinName),
+        allObstacles,
+        segs,
+      );
+      pathsCache.push(p);
+      segs.push(...pathToSegments(p));
+    }
+    computeWireFlowSpecs();
+    pathsCacheHash = topoHash;
+  }
+
+  // Per-frame timing for accumulated phase (independent of `animTime`)
+  const nowSec = performance.now() / 1000;
+  const frameDt = lastRenderTime > 0 ? Math.min(0.1, nowSec - lastRenderTime) : 0;
+  lastRenderTime = nowSec;
+  const sim = isSimulating();
+  // Smooth-current low-pass: ~120 ms time constant for stable direction
+  const smoothAlpha = sim ? 1 - Math.exp(-frameDt / 0.12) : 1;
+
+  // Reference current for the whole circuit so the animation speed is
+  // *relative*: the fastest wire goes ~REF_SPEED, others scale down.
+  // Use the actual per-wire currents (from KCL+DFS), not component totals.
+  let circuitMaxCurrent = 0;
+  if (sim) {
+    for (const wire of wires) {
+      const v = Math.abs(wireCurrentFor(wire));
+      if (v > circuitMaxCurrent) circuitMaxCurrent = v;
+    }
+    if (circuitMaxCurrent < 1e-12) circuitMaxCurrent = 1;
+  }
+  const REF_SPEED = 70;   // px/s for the wire with max current
+  const MIN_SPEED = 18;   // px/s floor (so faint currents still drift slowly)
+
+  for (let i = 0; i < wires.length; i++) {
+    const wire = wires[i];
     const from = wire.from as { componentId: string; pinName: string };
     const to = wire.to as { componentId: string; pinName: string };
     const fromComp = components.find(c => c.id === from.componentId);
     const toComp = components.find(c => c.id === to.componentId);
     if (!fromComp || !toComp) continue;
-    const path = routeWire(
-      getPinWorldPos(fromComp, from.pinName),
-      getPinWorldPos(toComp, to.pinName),
-      allObstacles,
-      routedSegments,
-    );
+    const path = pathsCache[i];
+    if (!path || path.length === 0) continue;
 
-    // Compute current-flow offset. Pin convention: '1', '+', 'anode' is the
-    // entry pin (positive terminal), so a positive comp.current means current
-    // enters there → flows from that pin into the component, i.e. the wire
-    // attached to that pin is delivering current toward the component.
     let flowOffset = 0;
-    if (animTime > 0) {
-      const sourceComp = fromComp.type !== 'Ground' ? fromComp : toComp;
-      const sourcePin = fromComp.type !== 'Ground' ? from.pinName : to.pinName;
-      const i = sourceComp.current ?? 0;
-      if (Math.abs(i) > 1e-9) {
-        const isEntryPin = sourcePin === '1' || sourcePin === '+' || sourcePin === 'anode';
-        // From `from` to `to`: positive offset moves dashes that direction.
-        // Direction sign: if the current at the FROM pin is flowing OUT of from-component,
-        // the dashes should travel from→to.
-        const flowsFromComp = isEntryPin ? -i : i;
-        const dirFromToTo = sourceComp === fromComp ? flowsFromComp : -flowsFromComp;
-        const sign = Math.sign(dirFromToTo);
-        const speed = Math.min(180, 30 + Math.abs(dirFromToTo) * 1500);
-        flowOffset = sign * (animTime * speed) % 18;
-      }
+    if (sim) {
+      // Real per-wire current (positive = direction from→to)
+      const dirFromToTo = wireCurrentFor(wire);
+
+      // Smooth the directional current so dashes don't flicker on AC
+      const prev = wireSmoothCurrent.get(wire.id) ?? 0;
+      const smoothed = prev + (dirFromToTo - prev) * smoothAlpha;
+      wireSmoothCurrent.set(wire.id, smoothed);
+
+      // Velocity normalised to the busiest wire in the circuit
+      const mag = Math.abs(smoothed);
+      const norm = Math.min(1, mag / circuitMaxCurrent);
+      const speed = mag > 1e-12 ? MIN_SPEED + norm * (REF_SPEED - MIN_SPEED) : 0;
+      const sign = smoothed >= 0 ? 1 : -1;
+
+      let phase = wireFlowPhase.get(wire.id) ?? 0;
+      phase += sign * speed * frameDt;
+      wireFlowPhase.set(wire.id, phase);
+      flowOffset = speed > 0 ? phase : 0;
     }
 
     drawWirePath(ctx, path, flowOffset);
-    routedSegments.push(...pathToSegments(path));
   }
 
-  // Wire preview
+  // Wire preview (live A*, not cached, since it depends on the moving cursor)
   if (wireStart) {
     const startComp = components.find(c => c.id === wireStart!.componentId)!;
+    const previewSegs: Segment[] = [];
+    for (const p of pathsCache) previewSegs.push(...pathToSegments(p));
     const path = routeWire(
       getPinWorldPos(startComp, wireStart.pinName),
       mousePos,
       allObstacles,
-      routedSegments,
+      previewSegs,
     );
     drawWirePreviewPath(ctx, path);
   }
