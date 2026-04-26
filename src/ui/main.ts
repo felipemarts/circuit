@@ -1487,6 +1487,43 @@ function executeUserCode(code: string) {
     };
   }
 
+  // Junction wrapper — collapses every pin connected through it into one node.
+  // Uses a no-op placeholder Component so we have a real Pin object to expose
+  // as `_realPin`; this guarantees `Pin.connect(other.node)` never trips.
+  class JunctionPlaceholder extends Component {
+    private _pinObj: import('../core/Pin').Pin;
+    constructor() {
+      super();
+      this._pinObj = (this as any).addPin('j');
+    }
+    stamp(): void { /* no-op: junction is just a node */ }
+    getPin(): import('../core/Pin').Pin { return this._pinObj; }
+  }
+  function JunctionWrapper() {
+    const placeholder = new JunctionPlaceholder();
+    const junctionPin = placeholder.getPin();
+    return {
+      _isJunctionProxy: true,
+      pin(_name: string) {
+        return {
+          _isProxy: true,
+          _isJunctionPin: true,
+          _instance: placeholder,
+          _pinName: 'j',
+          _realPin: junctionPin,
+          connect(other: any) {
+            if (other && other._realPin) {
+              junctionPin.connect(other._realPin);
+            } else if (other && typeof other.connect === 'function' && other.node) {
+              junctionPin.connect(other);
+            }
+            return this;
+          },
+        };
+      },
+    };
+  }
+
   // Wrapped defineComponent that registers custom components and returns tracked wrappers
   function wrappedDefineComponent(def: ComponentDef) {
     const CompClass = realDefineComponent(def);
@@ -1565,7 +1602,7 @@ function executeUserCode(code: string) {
   try {
     const fn = new Function(
       'Circuit', 'Resistor', 'VoltageSource', 'CurrentSource',
-      'Capacitor', 'Inductor', 'Diode', 'LED', 'Ground',
+      'Capacitor', 'Inductor', 'Diode', 'LED', 'Ground', 'Junction',
       'defineComponent', 'console',
       code
     );
@@ -1580,6 +1617,7 @@ function executeUserCode(code: string) {
       makeTrackedWrapper(Diode, 'Diode', 'D'),
       makeTrackedWrapper(LED, 'LED', 'LED'),
       GroundWrapper,
+      JunctionWrapper,
       wrappedDefineComponent,
       customConsole,
     );
@@ -1766,20 +1804,18 @@ function syncTrackedToCanvas(
 
 function generateCode(): string {
   const groundCompIds = new Set(components.filter(c => c.type === 'Ground').map(c => c.id));
+  const junctionCompIds = new Set(components.filter(c => c.type === 'Junction').map(c => c.id));
   const hasGrounds = groundCompIds.size > 0 || grounds.length > 0;
 
   const lines: string[] = ['const circuit = new Circuit();'];
   if (hasGrounds) lines.push('const gnd = new Ground();');
   lines.push('');
 
-  // Map component IDs to variable names. Ground components all share `gnd`.
+  // Declare real components only (skip Ground / Junction — they are nodes, not objects)
   const idToVar = new Map<string, string>();
   const usedNames = new Map<string, number>();
   for (const comp of components) {
-    if (groundCompIds.has(comp.id)) {
-      idToVar.set(comp.id, 'gnd');
-      continue;
-    }
+    if (groundCompIds.has(comp.id) || junctionCompIds.has(comp.id)) continue;
     let varName = comp.label.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!varName) {
       const prefix = comp.type.toLowerCase().slice(0, 3);
@@ -1805,32 +1841,63 @@ function generateCode(): string {
 
   lines.push('');
 
-  // Wires → .connect() calls. Wires that touch a Ground component pin become
-  // `.connect(gnd.pin('1'))` on the non-ground side.
+  // Cluster pins into electrical nodes (same approach as buildCircuit). Junctions
+  // and Grounds are passthroughs — multiple wires sharing them collapse into the
+  // same cluster and emit a single set of `.connect()` calls.
+  const ufParent = new Map<string, string>();
+  const ufFind = (x: string): string => {
+    let p = ufParent.get(x);
+    if (p === undefined) { ufParent.set(x, x); return x; }
+    if (p === x) return x;
+    const r = ufFind(p);
+    ufParent.set(x, r);
+    return r;
+  };
+  const ufUnion = (a: string, b: string) => {
+    const ra = ufFind(a), rb = ufFind(b);
+    if (ra !== rb) ufParent.set(ra, rb);
+  };
+  const GROUND_ROOT = '__GROUND_CLUSTER__';
+  ufFind(GROUND_ROOT);
+  for (const c of components) {
+    if (c.type === 'Ground') ufUnion(`${c.id}:1`, GROUND_ROOT);
+  }
   for (const wire of wires) {
-    const from = wire.from as { componentId: string; pinName: string };
-    const to = wire.to as { componentId: string; pinName: string };
-    const fromVar = idToVar.get(from.componentId);
-    const toVar = idToVar.get(to.componentId);
-    if (!fromVar || !toVar) continue;
+    const f = wire.from as { componentId: string; pinName: string };
+    const t = wire.to as { componentId: string; pinName: string };
+    ufUnion(`${f.componentId}:${f.pinName}`, `${t.componentId}:${t.pinName}`);
+  }
+  for (const g of grounds) {
+    ufUnion(`${g.componentId}:${g.pinName}`, GROUND_ROOT);
+  }
 
-    const fromIsGnd = groundCompIds.has(from.componentId);
-    const toIsGnd = groundCompIds.has(to.componentId);
-    if (fromIsGnd && toIsGnd) continue;
-    if (fromIsGnd) {
-      lines.push(`${toVar}.pin('${to.pinName}').connect(gnd.pin('1'));`);
-    } else if (toIsGnd) {
-      lines.push(`${fromVar}.pin('${from.pinName}').connect(gnd.pin('1'));`);
-    } else {
-      lines.push(`${fromVar}.pin('${from.pinName}').connect(${toVar}.pin('${to.pinName}'));`);
+  // Group real-component pins by cluster
+  const clusterPins = new Map<string, { compId: string; pinName: string }[]>();
+  for (const c of components) {
+    if (!idToVar.has(c.id)) continue; // skip ground/junction/custom
+    for (const pin of c.pins) {
+      const root = ufFind(`${c.id}:${pin.name}`);
+      if (!clusterPins.has(root)) clusterPins.set(root, []);
+      clusterPins.get(root)!.push({ compId: c.id, pinName: pin.name });
     }
   }
 
-  // Legacy ground nodes (compat with old projects) → .connect(gnd.pin('1'))
-  for (const g of grounds) {
-    const varName = idToVar.get(g.componentId);
-    if (varName && !groundCompIds.has(g.componentId)) {
-      lines.push(`${varName}.pin('${g.pinName}').connect(gnd.pin('1'));`);
+  const groundRoot = ufFind(GROUND_ROOT);
+  for (const [root, pins] of clusterPins) {
+    if (root === groundRoot) {
+      for (const p of pins) {
+        const v = idToVar.get(p.compId);
+        if (v) lines.push(`${v}.pin('${p.pinName}').connect(gnd.pin('1'));`);
+      }
+    } else if (pins.length >= 2) {
+      const head = pins[0];
+      const headVar = idToVar.get(head.compId);
+      if (!headVar) continue;
+      for (let i = 1; i < pins.length; i++) {
+        const p = pins[i];
+        const v = idToVar.get(p.compId);
+        if (v) lines.push(`${headVar}.pin('${head.pinName}').connect(${v}.pin('${p.pinName}'));`);
+      }
     }
   }
 
