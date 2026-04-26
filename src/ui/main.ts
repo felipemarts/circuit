@@ -1112,6 +1112,34 @@ function syncTrackedToCanvas(
   trackedGrounds: TrackedGround[],
   trackedProbes: { instance: Component; type: 'voltage' | 'current'; label: string; color: string }[] = [],
 ) {
+  // Snapshot existing positions so the user's manual layout survives a re-run.
+  // Key by `${type}:${label}` for normal components. For Ground components,
+  // key by the anchor pin reachable through a single wire.
+  const savedPositions = new Map<string, { x: number; y: number; rotation: number }>();
+  const savedGroundPositions = new Map<string, { x: number; y: number; rotation: number }>();
+  for (const c of components) {
+    if (c.type === 'Ground') {
+      const w = wires.find(w => {
+        const f = w.from as { componentId: string };
+        const t = w.to as { componentId: string };
+        return f.componentId === c.id || t.componentId === c.id;
+      });
+      if (w) {
+        const f = w.from as { componentId: string; pinName: string };
+        const t = w.to as { componentId: string; pinName: string };
+        const anchorRef = f.componentId === c.id ? t : f;
+        const anchor = components.find(cc => cc.id === anchorRef.componentId);
+        if (anchor) {
+          savedGroundPositions.set(`${anchor.type}:${anchor.label}:${anchorRef.pinName}`, {
+            x: c.x, y: c.y, rotation: c.rotation,
+          });
+        }
+      }
+    } else {
+      savedPositions.set(`${c.type}:${c.label}`, { x: c.x, y: c.y, rotation: c.rotation });
+    }
+  }
+
   // Clear existing
   components = [];
   wires = [];
@@ -1135,10 +1163,13 @@ function syncTrackedToCanvas(
   sources.forEach((t, i) => {
     const def = getComponentDef(t.type);
     const pins = def ? [...def.pins] : t.instance.allPins().map(p => ({ name: p.name, offset: { x: 0, y: 0 } }));
+    const saved = savedPositions.get(`${t.type}:${t.label}`);
     const comp: PlacedComponent = {
       id: `c${nextId++}`, type: t.type,
-      x: ORIGIN_X, y: ORIGIN_Y + i * SPACING_Y,
-      rotation: 0, value: t.value,
+      x: saved?.x ?? ORIGIN_X,
+      y: saved?.y ?? ORIGIN_Y + i * SPACING_Y,
+      rotation: saved?.rotation ?? 0,
+      value: t.value,
       label: t.label, pins,
     };
     if (t.type === 'VoltageSource' && t.instance instanceof VoltageSource) {
@@ -1155,11 +1186,13 @@ function syncTrackedToCanvas(
     const row = i % MAX_PER_COL;
     const def = getComponentDef(t.type);
     const pins = def ? [...def.pins] : t.instance.allPins().map(p => ({ name: p.name, offset: { x: 0, y: 0 } }));
+    const saved = savedPositions.get(`${t.type}:${t.label}`);
     const comp: PlacedComponent = {
       id: `c${nextId++}`, type: t.type,
-      x: ORIGIN_X + SPACING_X * (col + 1),
-      y: ORIGIN_Y + row * SPACING_Y,
-      rotation: 0, value: t.value,
+      x: saved?.x ?? ORIGIN_X + SPACING_X * (col + 1),
+      y: saved?.y ?? ORIGIN_Y + row * SPACING_Y,
+      rotation: saved?.rotation ?? 0,
+      value: t.value,
       label: t.label, pins,
     };
     components.push(comp);
@@ -1180,17 +1213,21 @@ function syncTrackedToCanvas(
   }
 
   // Convert grounds: each tracked ground becomes a Ground component placed
-  // below its anchor component, connected by a short wire.
+  // below its anchor component (or at its previous position if it existed),
+  // connected by a short wire.
   for (const g of trackedGrounds) {
     const anchorId = instanceToId.get(g.instance);
     if (!anchorId) continue;
     const anchor = components.find(c => c.id === anchorId);
     if (!anchor) continue;
 
+    const savedGnd = savedGroundPositions.get(`${anchor.type}:${anchor.label}:${g.pinName}`);
     const gndComp: PlacedComponent = {
       id: `c${nextId++}`, type: 'Ground',
-      x: anchor.x, y: anchor.y + 80,
-      rotation: 0, value: 0, label: '',
+      x: savedGnd?.x ?? anchor.x,
+      y: savedGnd?.y ?? anchor.y + 80,
+      rotation: savedGnd?.rotation ?? 0,
+      value: 0, label: '',
       pins: [...COMPONENT_DEFS.Ground.pins],
     };
     components.push(gndComp);
