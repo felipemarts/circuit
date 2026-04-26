@@ -1179,12 +1179,27 @@ function syncTrackedToCanvas(
     }
   }
 
-  // Convert grounds
+  // Convert grounds: each tracked ground becomes a Ground component placed
+  // below its anchor component, connected by a short wire.
   for (const g of trackedGrounds) {
-    const compId = instanceToId.get(g.instance);
-    if (compId) {
-      grounds.push({ id: `g${nextId++}`, componentId: compId, pinName: g.pinName });
-    }
+    const anchorId = instanceToId.get(g.instance);
+    if (!anchorId) continue;
+    const anchor = components.find(c => c.id === anchorId);
+    if (!anchor) continue;
+
+    const gndComp: PlacedComponent = {
+      id: `c${nextId++}`, type: 'Ground',
+      x: anchor.x, y: anchor.y + 80,
+      rotation: 0, value: 0, label: '',
+      pins: [...COMPONENT_DEFS.Ground.pins],
+    };
+    components.push(gndComp);
+
+    wires.push({
+      id: `w${nextId++}`,
+      from: { componentId: anchorId, pinName: g.pinName },
+      to: { componentId: gndComp.id, pinName: '1' },
+    });
   }
 
   // Convert probes
@@ -1212,18 +1227,24 @@ function syncTrackedToCanvas(
 // ─── Code generation ─────────────────────────────────────────────────────────
 
 function generateCode(): string {
-  const hasGrounds = grounds.length > 0;
+  const groundCompIds = new Set(components.filter(c => c.type === 'Ground').map(c => c.id));
+  const hasGrounds = groundCompIds.size > 0 || grounds.length > 0;
+
   const lines: string[] = ['const circuit = new Circuit();'];
   if (hasGrounds) lines.push('const gnd = new Ground();');
   lines.push('');
 
-  // Map component IDs to variable names
+  // Map component IDs to variable names. Ground components all share `gnd`.
   const idToVar = new Map<string, string>();
   const usedNames = new Map<string, number>();
   for (const comp of components) {
+    if (groundCompIds.has(comp.id)) {
+      idToVar.set(comp.id, 'gnd');
+      continue;
+    }
     let varName = comp.label.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!varName) {
-      const prefix = comp.type === 'Ground' ? 'gnd' : comp.type.toLowerCase().slice(0, 3);
+      const prefix = comp.type.toLowerCase().slice(0, 3);
       const n = (usedNames.get(prefix) ?? 0) + 1;
       usedNames.set(prefix, n);
       varName = `${prefix}${n}`;
@@ -1246,21 +1267,31 @@ function generateCode(): string {
 
   lines.push('');
 
-  // Wires → .connect() calls
+  // Wires → .connect() calls. Wires that touch a Ground component pin become
+  // `.connect(gnd.pin('1'))` on the non-ground side.
   for (const wire of wires) {
     const from = wire.from as { componentId: string; pinName: string };
     const to = wire.to as { componentId: string; pinName: string };
     const fromVar = idToVar.get(from.componentId);
     const toVar = idToVar.get(to.componentId);
-    if (fromVar && toVar) {
+    if (!fromVar || !toVar) continue;
+
+    const fromIsGnd = groundCompIds.has(from.componentId);
+    const toIsGnd = groundCompIds.has(to.componentId);
+    if (fromIsGnd && toIsGnd) continue;
+    if (fromIsGnd) {
+      lines.push(`${toVar}.pin('${to.pinName}').connect(gnd.pin('1'));`);
+    } else if (toIsGnd) {
+      lines.push(`${fromVar}.pin('${from.pinName}').connect(gnd.pin('1'));`);
+    } else {
       lines.push(`${fromVar}.pin('${from.pinName}').connect(${toVar}.pin('${to.pinName}'));`);
     }
   }
 
-  // Grounds → .connect(gnd.pin('1'))
+  // Legacy ground nodes (compat with old projects) → .connect(gnd.pin('1'))
   for (const g of grounds) {
     const varName = idToVar.get(g.componentId);
-    if (varName) {
+    if (varName && !groundCompIds.has(g.componentId)) {
       lines.push(`${varName}.pin('${g.pinName}').connect(gnd.pin('1'));`);
     }
   }
@@ -1358,7 +1389,13 @@ function loadDemoRLC() {
     label: 'C1', pins: [...COMPONENT_DEFS.Capacitor.pins],
   };
 
-  components.push(v1, r1, l1, c1);
+  // GND: placed just below V1, pin at y=360-10=350 lines up with V1.- via short wire
+  const gnd: PlacedComponent = {
+    id: `c${nextId++}`, type: 'Ground', x: 160, y: 360, rotation: 0, value: 0,
+    label: '', pins: [...COMPONENT_DEFS.Ground.pins],
+  };
+
+  components.push(v1, r1, l1, c1, gnd);
 
   // Wires: V1+ → R1.1
   wires.push({ id: `w${nextId++}`, from: { componentId: v1.id, pinName: '+' }, to: { componentId: r1.id, pinName: '1' } });
@@ -1368,9 +1405,8 @@ function loadDemoRLC() {
   wires.push({ id: `w${nextId++}`, from: { componentId: l1.id, pinName: '2' }, to: { componentId: c1.id, pinName: '1' } });
   // C1.2 → V1-
   wires.push({ id: `w${nextId++}`, from: { componentId: c1.id, pinName: '2' }, to: { componentId: v1.id, pinName: '-' } });
-
-  // Ground on V1-
-  grounds.push({ id: `g${nextId++}`, componentId: v1.id, pinName: '-' });
+  // V1- → GND.1
+  wires.push({ id: `w${nextId++}`, from: { componentId: v1.id, pinName: '-' }, to: { componentId: gnd.id, pinName: '1' } });
 
   // Probe on C1 pin 1 (voltage across capacitor)
   probes.push({
