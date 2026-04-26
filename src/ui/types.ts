@@ -1,6 +1,6 @@
-export type BuiltinComponentType = 'Resistor' | 'VoltageSource' | 'CurrentSource' | 'Capacitor' | 'Inductor' | 'Diode' | 'LED';
+export type BuiltinComponentType = 'Resistor' | 'VoltageSource' | 'CurrentSource' | 'Capacitor' | 'Inductor' | 'Diode' | 'LED' | 'Ground';
 export type ComponentType = string;
-export type ToolType = 'select' | BuiltinComponentType | 'wire' | 'ground' | 'probe';
+export type ToolType = 'select' | BuiltinComponentType | 'wire' | 'probe';
 
 export interface Point {
   x: number;
@@ -119,6 +119,14 @@ export const COMPONENT_DEFS: Record<string, ComponentDefUI> = {
     pins: [
       { name: 'anode', offset: { x: -30, y: 0 } },
       { name: 'cathode', offset: { x: 30, y: 0 } },
+    ],
+  },
+  Ground: {
+    defaultValue: 0,
+    unit: '',
+    label: '', // empty -> renderer skips drawing the label
+    pins: [
+      { name: '1', offset: { x: 0, y: -10 } },
     ],
   },
 };

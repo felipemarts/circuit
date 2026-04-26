@@ -5,8 +5,10 @@ import {
   getComponentDef, customComponentDefs,
 } from './types';
 import {
-  drawGrid, drawComponent, drawComponentMask, drawWire, drawWirePreview, drawGroundSymbol,
+  drawGrid, drawComponent, drawComponentMask, drawWirePath, drawWirePreviewPath, drawGroundSymbol,
   drawPinHighlight, drawProbeMarker, hitTestPin, hitTestComponent,
+  buildComponentObstacles, routeWire, pathToSegments,
+  type Segment,
 } from './renderer';
 import { drawChart, type WaveformData } from './chartRenderer';
 import { showScopeOverlay, hideScopeOverlay } from './scopeOverlay';
@@ -350,24 +352,6 @@ canvas.addEventListener('mousedown', (e) => {
     return;
   }
 
-  if (currentTool === 'ground') {
-    for (const comp of [...components].reverse()) {
-      const pinName = hitTestPin(comp, x, y);
-      if (pinName) {
-        const existing = grounds.findIndex(g => g.componentId === comp.id && g.pinName === pinName);
-        if (existing >= 0) {
-          grounds.splice(existing, 1);
-        } else {
-          grounds.push({ id: `g${nextId++}`, componentId: comp.id, pinName });
-        }
-        showResults = false;
-        render();
-        return;
-      }
-    }
-    return;
-  }
-
   placeComponent(currentTool as ComponentType, snap(x), snap(y));
 });
 
@@ -491,7 +475,8 @@ async function placeComponent(type: ComponentType, x: number, y: number) {
   const count = components.filter(c => c.type === type).length + 1;
   const comp: PlacedComponent = {
     id: `c${nextId++}`, type, x, y, rotation: 0, value,
-    label: `${def.label}${count}`, pins: [...def.pins],
+    label: def.label ? `${def.label}${count}` : '',
+    pins: [...def.pins],
   };
 
   components.push(comp);
@@ -612,8 +597,13 @@ document.addEventListener('delete-selected', () => {
 function buildCircuit() {
   const circuit = new Circuit();
   const simComponents = new Map<string, TwoTerminalComponent>();
+  const groundCompIds = new Set<string>();
 
   for (const comp of components) {
+    if (comp.type === 'Ground') {
+      groundCompIds.add(comp.id);
+      continue; // Ground is not a sim component, just a marker
+    }
     let simComp: TwoTerminalComponent;
     switch (comp.type) {
       case 'Resistor': simComp = new Resistor(comp.value); break;
@@ -641,14 +631,31 @@ function buildCircuit() {
   for (const wire of wires) {
     const from = wire.from as { componentId: string; pinName: string };
     const to = wire.to as { componentId: string; pinName: string };
-    getSimPin(from.componentId, from.pinName).connect(getSimPin(to.componentId, to.pinName));
+    const fromIsGround = groundCompIds.has(from.componentId);
+    const toIsGround = groundCompIds.has(to.componentId);
+    if (fromIsGround && toIsGround) continue;
+    if (fromIsGround) {
+      getSimPin(to.componentId, to.pinName).connect(circuit.ground);
+    } else if (toIsGround) {
+      getSimPin(from.componentId, from.pinName).connect(circuit.ground);
+    } else {
+      getSimPin(from.componentId, from.pinName).connect(getSimPin(to.componentId, to.pinName));
+    }
   }
 
+  // Legacy ground nodes (loaded from old projects)
   for (const gnd of grounds) {
-    getSimPin(gnd.componentId, gnd.pinName).connect(circuit.ground);
+    if (simComponents.has(gnd.componentId)) {
+      getSimPin(gnd.componentId, gnd.pinName).connect(circuit.ground);
+    }
   }
 
   return { circuit, simComponents };
+}
+
+function hasAnyGround(): boolean {
+  if (grounds.length > 0) return true;
+  return components.some(c => c.type === 'Ground');
 }
 
 // ─── DC Simulation ──────────────────────────────────────────────────────────
@@ -658,7 +665,7 @@ function runSimulation() {
     statusText.textContent = 'Nenhum componente no circuito';
     return;
   }
-  if (grounds.length === 0) {
+  if (!hasAnyGround()) {
     statusText.textContent = 'Adicione pelo menos um GND';
     return;
   }
@@ -692,7 +699,7 @@ function runTransientSimulation() {
     statusText.textContent = 'Nenhum componente no circuito';
     return;
   }
-  if (grounds.length === 0) {
+  if (!hasAnyGround()) {
     statusText.textContent = 'Adicione pelo menos um GND';
     return;
   }
@@ -1212,8 +1219,15 @@ function generateCode(): string {
 
   // Map component IDs to variable names
   const idToVar = new Map<string, string>();
+  const usedNames = new Map<string, number>();
   for (const comp of components) {
-    const varName = comp.label.toLowerCase().replace(/[^a-z0-9]/g, '');
+    let varName = comp.label.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!varName) {
+      const prefix = comp.type === 'Ground' ? 'gnd' : comp.type.toLowerCase().slice(0, 3);
+      const n = (usedNames.get(prefix) ?? 0) + 1;
+      usedNames.set(prefix, n);
+      varName = `${prefix}${n}`;
+    }
     idToVar.set(comp.id, varName);
 
     const def = getComponentDef(comp.type);
@@ -1405,8 +1419,6 @@ function updateStatus() {
     statusText.textContent = 'Arraste para mover | Pino→pino para conectar | R ou clique-direito para rotacionar';
   } else if (currentTool === 'wire') {
     statusText.textContent = 'Clique em um pino para iniciar um fio';
-  } else if (currentTool === 'ground') {
-    statusText.textContent = 'Clique em um pino para conectar ao GND';
   } else if (currentTool === 'probe') {
     statusText.textContent = 'Clique em um pino para adicionar/remover probe';
   } else {
@@ -1438,7 +1450,7 @@ function render() {
   const connectedPins = getConnectedPins();
 
   // Background (screen space)
-  ctx.fillStyle = '#111827';
+  ctx.fillStyle = '#0a0e17';
   ctx.fillRect(0, 0, w, h);
 
   // Draw grid in screen space, aligned to world grid
@@ -1449,20 +1461,36 @@ function render() {
   ctx.translate(panX, panY);
   ctx.scale(zoom, zoom);
 
-  // Layer 1: Wires (below everything)
+  // Layer 1: Wires (below everything) — route around all component bodies
+  // (pins are outside each component's bbox, so wires can still leave/enter freely).
+  const allObstacles = buildComponentObstacles(components);
+  const routedSegments: Segment[] = [];
   for (const wire of wires) {
     const from = wire.from as { componentId: string; pinName: string };
     const to = wire.to as { componentId: string; pinName: string };
     const fromComp = components.find(c => c.id === from.componentId);
     const toComp = components.find(c => c.id === to.componentId);
     if (!fromComp || !toComp) continue;
-    drawWire(ctx, getPinWorldPos(fromComp, from.pinName), getPinWorldPos(toComp, to.pinName));
+    const path = routeWire(
+      getPinWorldPos(fromComp, from.pinName),
+      getPinWorldPos(toComp, to.pinName),
+      allObstacles,
+      routedSegments,
+    );
+    drawWirePath(ctx, path);
+    routedSegments.push(...pathToSegments(path));
   }
 
   // Wire preview
   if (wireStart) {
     const startComp = components.find(c => c.id === wireStart!.componentId)!;
-    drawWirePreview(ctx, getPinWorldPos(startComp, wireStart.pinName), mousePos);
+    const path = routeWire(
+      getPinWorldPos(startComp, wireStart.pinName),
+      mousePos,
+      allObstacles,
+      routedSegments,
+    );
+    drawWirePreviewPath(ctx, path);
   }
 
   // Layer 2: Component background masks (hide wires under components)

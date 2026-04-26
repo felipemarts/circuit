@@ -4,7 +4,7 @@ const PIN_RADIUS = 4;
 const PIN_HIT_RADIUS = 12;
 
 const COLORS = {
-  bg: '#111827',
+  bg: '#0a0e17',
   gridDot: '#1e293b',
   wire: '#22d3ee',
   wireShadow: 'rgba(34,211,238,0.25)',
@@ -19,11 +19,11 @@ const COLORS = {
   text: '#94a3b8',
   textLabel: '#cbd5e1',
   textValue: '#fbbf24',
-  resultBg: 'rgba(15,23,42,0.85)',
+  resultBg: 'rgba(10,14,23,0.88)',
   resultV: '#22d3ee',
   resultI: '#34d399',
   wirePreview: 'rgba(34,211,238,0.4)',
-  compBg: '#111827',
+  compBg: '#0a0e17',
 };
 
 // ─── Grid ────────────────────────────────────────────────────────────────────
@@ -50,7 +50,10 @@ export function drawComponentMask(ctx: CanvasRenderingContext2D, comp: PlacedCom
 
   // Draw opaque background behind the component body so wires are hidden
   const isVertical = comp.type === 'VoltageSource' || comp.type === 'CurrentSource';
-  if (isVertical) {
+  const isGround = comp.type === 'Ground';
+  if (isGround) {
+    ctx.fillRect(-14, -4, 28, 16);
+  } else if (isVertical) {
     ctx.fillRect(-22, -22, 44, 44);
   } else {
     ctx.fillRect(-24, -16, 48, 32);
@@ -63,29 +66,13 @@ export function drawComponentMask(ctx: CanvasRenderingContext2D, comp: PlacedCom
 export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedComponent, selected: boolean, showResults: boolean, connectedPins: Set<string>) {
   const color = selected ? COLORS.componentSelected : COLORS.component;
 
-  // Glow for selected
-  if (selected) {
-    ctx.save();
-    ctx.translate(comp.x, comp.y);
-    ctx.shadowColor = COLORS.componentGlow;
-    ctx.shadowBlur = 16;
-    ctx.strokeStyle = COLORS.componentSelected;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, 0, 26, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = 'transparent';
-  }
-
   ctx.save();
   ctx.translate(comp.x, comp.y);
   ctx.rotate((comp.rotation * Math.PI) / 180);
 
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = selected ? 3 : 2.5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -97,6 +84,7 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
     case 'Inductor': drawInductor(ctx); break;
     case 'Diode': drawDiode(ctx, color); break;
     case 'LED': drawLED(ctx, color); break;
+    case 'Ground': drawGround(ctx, selected); break;
     default: {
       const customDef = getComponentDef(comp.type);
       if (customDef?.draw) {
@@ -110,37 +98,47 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
 
   ctx.restore();
 
-  // Labels positioned based on rotation
-  const isHorizontal = comp.rotation === 0 || comp.rotation === 180;
+  // Determine actual visual orientation: VoltageSource/CurrentSource are
+  // intrinsically vertical (pins top/bottom), so rotation 0/180 keeps them
+  // vertical; for everything else, rotation 0/180 means horizontal layout.
+  const isVerticalSource = comp.type === 'VoltageSource' || comp.type === 'CurrentSource';
+  const baseHorizontal = comp.rotation === 0 || comp.rotation === 180;
+  const landscape = isVerticalSource ? !baseHorizontal : baseHorizontal;
   const def = getComponentDef(comp.type);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // Component label
-  ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillStyle = COLORS.textLabel;
-  if (isHorizontal) {
-    ctx.fillText(comp.label, comp.x, comp.y - 22);
-  } else {
-    ctx.fillText(comp.label, comp.x - 28, comp.y);
+  // Component label — placed beyond the body so it never overlaps
+  if (comp.label) {
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = selected ? COLORS.componentSelected : COLORS.textLabel;
+    if (landscape) {
+      ctx.fillText(comp.label, comp.x, comp.y - 26);
+    } else {
+      ctx.textAlign = 'right';
+      ctx.fillText(comp.label, comp.x - 30, comp.y);
+      ctx.textAlign = 'center';
+    }
   }
 
   // Value
   if (def?.unit && comp.value) {
     ctx.font = '10px "SF Mono", "Fira Code", monospace';
     ctx.fillStyle = COLORS.textValue;
-    if (isHorizontal) {
-      ctx.fillText(formatValue(comp.value, def.unit), comp.x, comp.y + 22);
+    if (landscape) {
+      ctx.fillText(formatValue(comp.value, def.unit), comp.x, comp.y + 26);
     } else {
-      ctx.fillText(formatValue(comp.value, def.unit), comp.x + 28, comp.y);
+      ctx.textAlign = 'left';
+      ctx.fillText(formatValue(comp.value, def.unit), comp.x + 30, comp.y);
+      ctx.textAlign = 'center';
     }
   }
 
   // Draw results as floating badge
   if (showResults && comp.voltage !== undefined) {
-    const badgeX = comp.x + (isHorizontal ? 52 : 0);
-    const badgeY = comp.y + (isHorizontal ? 0 : 40);
+    const badgeX = comp.x + (landscape ? 52 : 0);
+    const badgeY = comp.y + (landscape ? 0 : 44);
 
     // Badge background
     ctx.fillStyle = COLORS.resultBg;
@@ -312,6 +310,33 @@ function drawLED(ctx: CanvasRenderingContext2D, color: string) {
   ctx.lineWidth = 2.5;
 }
 
+function drawGround(ctx: CanvasRenderingContext2D, selected: boolean) {
+  // Draw in component-local coords. Pin is at (0, -10) (top), so the symbol
+  // descends from y=-10 (pin) down to y=+10 (smallest bar).
+  const stroke = selected ? COLORS.componentSelected : COLORS.ground;
+  ctx.strokeStyle = stroke;
+  ctx.lineCap = 'round';
+
+  // Stem from pin to first bar
+  ctx.beginPath();
+  ctx.moveTo(0, -10);
+  ctx.lineTo(0, -2);
+  ctx.stroke();
+
+  // Three horizontal bars decreasing in width
+  const bars: Array<[number, number]> = [
+    [12, -2],
+    [8, 4],
+    [4, 10],
+  ];
+  for (const [w, y] of bars) {
+    ctx.beginPath();
+    ctx.moveTo(-w, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+}
+
 function drawGenericBox(ctx: CanvasRenderingContext2D, label: string, color: string) {
   // Generic rectangle with label for custom components
   ctx.strokeRect(-25, -18, 50, 36);
@@ -332,9 +357,10 @@ function drawGenericBox(ctx: CanvasRenderingContext2D, label: string, color: str
 
 // ─── Wires ───────────────────────────────────────────────────────────────────
 
-export function drawWire(ctx: CanvasRenderingContext2D, from: Point, to: Point) {
-  const path = routeWire(from, to);
+export interface Rect { minX: number; minY: number; maxX: number; maxY: number }
+export interface Segment { p1: Point; p2: Point }
 
+export function drawWirePath(ctx: CanvasRenderingContext2D, path: Point[]) {
   // Glow
   ctx.strokeStyle = COLORS.wireShadow;
   ctx.lineWidth = 6;
@@ -348,9 +374,7 @@ export function drawWire(ctx: CanvasRenderingContext2D, from: Point, to: Point) 
   drawPath(ctx, path);
 }
 
-export function drawWirePreview(ctx: CanvasRenderingContext2D, from: Point, to: Point) {
-  const path = routeWire(from, to);
-
+export function drawWirePreviewPath(ctx: CanvasRenderingContext2D, path: Point[]) {
   ctx.strokeStyle = COLORS.wirePreview;
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
@@ -360,25 +384,367 @@ export function drawWirePreview(ctx: CanvasRenderingContext2D, from: Point, to: 
   ctx.setLineDash([]);
 }
 
-function routeWire(from: Point, to: Point): Point[] {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
+// Convenience wrappers (back-compat)
+export function drawWire(
+  ctx: CanvasRenderingContext2D, from: Point, to: Point,
+  obstacles: Rect[] = [], blocked: Segment[] = [],
+) {
+  drawWirePath(ctx, routeWire(from, to, obstacles, blocked));
+}
+export function drawWirePreview(
+  ctx: CanvasRenderingContext2D, from: Point, to: Point,
+  obstacles: Rect[] = [], blocked: Segment[] = [],
+) {
+  drawWirePreviewPath(ctx, routeWire(from, to, obstacles, blocked));
+}
 
-  // If aligned, straight line
-  if (Math.abs(dx) < 2) return [from, to];
-  if (Math.abs(dy) < 2) return [from, to];
+/** Convert a polyline into a list of axis-aligned segments. */
+export function pathToSegments(path: Point[]): Segment[] {
+  const out: Segment[] = [];
+  for (let i = 1; i < path.length; i++) out.push({ p1: path[i - 1], p2: path[i] });
+  return out;
+}
 
-  // L-shape: go horizontal first then vertical, or vice versa
-  // Choose based on which makes a cleaner path
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    // Horizontal first
-    const mid = { x: to.x, y: from.y };
-    return [from, mid, to];
-  } else {
-    // Vertical first
-    const mid = { x: from.x, y: to.y };
-    return [from, mid, to];
+/** Build axis-aligned bounding boxes for components that wires should avoid. */
+export function buildComponentObstacles(
+  components: Array<{ x: number; y: number; type: string; rotation: number }>,
+): Rect[] {
+  const out: Rect[] = [];
+  for (const c of components) {
+    const isVertical = c.type === 'VoltageSource' || c.type === 'CurrentSource';
+    const isGround = c.type === 'Ground';
+    const rotated = c.rotation === 90 || c.rotation === 270;
+    let halfW: number, halfH: number;
+    if (isVertical) {
+      halfW = halfH = 22;
+    } else if (isGround) {
+      // Ground body sits below the pin (pin at y=-10, body y∈[-2, +10])
+      halfW = 14;
+      halfH = 12;
+      out.push({
+        minX: c.x - halfW,
+        minY: c.y - 4,
+        maxX: c.x + halfW,
+        maxY: c.y + halfH,
+      });
+      continue;
+    } else if (rotated) {
+      halfW = 16;
+      halfH = 24;
+    } else {
+      halfW = 24;
+      halfH = 16;
+    }
+    out.push({
+      minX: c.x - halfW,
+      minY: c.y - halfH,
+      maxX: c.x + halfW,
+      maxY: c.y + halfH,
+    });
   }
+  return out;
+}
+
+/** Classify how an axis-aligned candidate segment interacts with another. */
+type SegInteraction = 'none' | 'cross' | 'overlap';
+function classifySegments(p1: Point, p2: Point, s: Segment): SegInteraction {
+  const aH = p1.y === p2.y;
+  const aV = p1.x === p2.x;
+  const bH = s.p1.y === s.p2.y;
+  const bV = s.p1.x === s.p2.x;
+
+  if (aH && bH) {
+    if (p1.y !== s.p1.y) return 'none';
+    const xMin1 = Math.min(p1.x, p2.x);
+    const xMax1 = Math.max(p1.x, p2.x);
+    const xMin2 = Math.min(s.p1.x, s.p2.x);
+    const xMax2 = Math.max(s.p1.x, s.p2.x);
+    return xMax1 > xMin2 && xMin1 < xMax2 ? 'overlap' : 'none';
+  }
+  if (aV && bV) {
+    if (p1.x !== s.p1.x) return 'none';
+    const yMin1 = Math.min(p1.y, p2.y);
+    const yMax1 = Math.max(p1.y, p2.y);
+    const yMin2 = Math.min(s.p1.y, s.p2.y);
+    const yMax2 = Math.max(s.p1.y, s.p2.y);
+    return yMax1 > yMin2 && yMin1 < yMax2 ? 'overlap' : 'none';
+  }
+  // Perpendicular
+  let hY: number, vX: number, hMinX: number, hMaxX: number, vMinY: number, vMaxY: number;
+  if (aH) {
+    hY = p1.y; hMinX = Math.min(p1.x, p2.x); hMaxX = Math.max(p1.x, p2.x);
+    vX = s.p1.x; vMinY = Math.min(s.p1.y, s.p2.y); vMaxY = Math.max(s.p1.y, s.p2.y);
+  } else {
+    hY = s.p1.y; hMinX = Math.min(s.p1.x, s.p2.x); hMaxX = Math.max(s.p1.x, s.p2.x);
+    vX = p1.x; vMinY = Math.min(p1.y, p2.y); vMaxY = Math.max(p1.y, p2.y);
+  }
+  // Strict interior crossing (touching at endpoints is allowed, e.g. shared pin)
+  return vX > hMinX && vX < hMaxX && hY > vMinY && hY < vMaxY ? 'cross' : 'none';
+}
+
+/** True if axis-aligned segment (p1→p2) intersects rect interior. */
+function segmentHitsRect(p1: Point, p2: Point, r: Rect): boolean {
+  if (p1.y === p2.y) {
+    if (p1.y <= r.minY || p1.y >= r.maxY) return false;
+    const xMin = Math.min(p1.x, p2.x);
+    const xMax = Math.max(p1.x, p2.x);
+    return xMax > r.minX && xMin < r.maxX;
+  }
+  if (p1.x === p2.x) {
+    if (p1.x <= r.minX || p1.x >= r.maxX) return false;
+    const yMin = Math.min(p1.y, p2.y);
+    const yMax = Math.max(p1.y, p2.y);
+    return yMax > r.minY && yMin < r.maxY;
+  }
+  return false;
+}
+
+function pathHits(path: Point[], obstacles: Rect[]): number {
+  let hits = 0;
+  for (let i = 1; i < path.length; i++) {
+    for (const r of obstacles) {
+      if (segmentHitsRect(path[i - 1], path[i], r)) hits++;
+    }
+  }
+  return hits;
+}
+
+function pathLength(path: Point[]): number {
+  let len = 0;
+  for (let i = 1; i < path.length; i++) {
+    len += Math.abs(path[i].x - path[i - 1].x) + Math.abs(path[i].y - path[i - 1].y);
+  }
+  return len;
+}
+
+// ─── A* router ────────────────────────────────────────────────────────────
+// Grid-based pathfinding: routes around obstacles, prefers straight runs by
+// penalising bends, simplifies collinear segments at the end.
+
+type Dir = 0 | 1 | 2 | 3 | 4; // 0=none, 1=E, 2=W, 3=N, 4=S
+
+interface AStarNode {
+  x: number;
+  y: number;
+  dir: Dir;
+  g: number;
+  f: number;
+  parent: AStarNode | null;
+}
+
+class MinHeap<T> {
+  private items: T[] = [];
+  constructor(private less: (a: T, b: T) => boolean) {}
+  size(): number { return this.items.length; }
+  push(item: T): void {
+    this.items.push(item);
+    this.bubbleUp(this.items.length - 1);
+  }
+  pop(): T | undefined {
+    if (this.items.length === 0) return undefined;
+    const top = this.items[0];
+    const last = this.items.pop()!;
+    if (this.items.length > 0) {
+      this.items[0] = last;
+      this.bubbleDown(0);
+    }
+    return top;
+  }
+  private bubbleUp(i: number): void {
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.less(this.items[i], this.items[p])) {
+        [this.items[i], this.items[p]] = [this.items[p], this.items[i]];
+        i = p;
+      } else break;
+    }
+  }
+  private bubbleDown(i: number): void {
+    const n = this.items.length;
+    while (true) {
+      const l = 2 * i + 1;
+      const r = 2 * i + 2;
+      let s = i;
+      if (l < n && this.less(this.items[l], this.items[s])) s = l;
+      if (r < n && this.less(this.items[r], this.items[s])) s = r;
+      if (s === i) break;
+      [this.items[i], this.items[s]] = [this.items[s], this.items[i]];
+      i = s;
+    }
+  }
+}
+
+function manhattan(a: Point, b: Point): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function aStarRoute(
+  from: Point, to: Point, obstacles: Rect[], blocked: Segment[],
+): Point[] | null {
+  // STEP=5 divides every pin offset cleanly (±5, ±10, ±20, ±30, ±35, ±40),
+  // so snapped start/goal land exactly on the pin and no loop-back is added.
+  const STEP = 5;
+  const BEND_PENALTY = STEP * 1.2;
+  const CROSS_PENALTY = STEP * 8;
+  const MAX_ITER = 25000;
+
+  const start: Point = { x: Math.round(from.x / STEP) * STEP, y: Math.round(from.y / STEP) * STEP };
+  const goal: Point = { x: Math.round(to.x / STEP) * STEP, y: Math.round(to.y / STEP) * STEP };
+
+  if (start.x === goal.x && start.y === goal.y) return [from, to];
+
+  let minX = Math.min(start.x, goal.x);
+  let minY = Math.min(start.y, goal.y);
+  let maxX = Math.max(start.x, goal.x);
+  let maxY = Math.max(start.y, goal.y);
+  for (const r of obstacles) {
+    minX = Math.min(minX, r.minX);
+    minY = Math.min(minY, r.minY);
+    maxX = Math.max(maxX, r.maxX);
+    maxY = Math.max(maxY, r.maxY);
+  }
+  const PAD = 6 * STEP;
+  minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
+
+  const MOVES: Array<{ dx: number; dy: number; dir: Dir }> = [
+    { dx: STEP, dy: 0, dir: 1 },
+    { dx: -STEP, dy: 0, dir: 2 },
+    { dx: 0, dy: -STEP, dir: 3 },
+    { dx: 0, dy: STEP, dir: 4 },
+  ];
+
+  const heap = new MinHeap<AStarNode>((a, b) => a.f < b.f);
+  const closed = new Map<number, number>(); // key -> best g
+
+  const w = Math.floor((maxX - minX) / STEP) + 1;
+  const keyOf = (x: number, y: number, dir: Dir): number => {
+    const ix = Math.floor((x - minX) / STEP);
+    const iy = Math.floor((y - minY) / STEP);
+    return ((iy * w + ix) * 5) + dir;
+  };
+
+  heap.push({
+    x: start.x, y: start.y, dir: 0,
+    g: 0, f: manhattan(start, goal), parent: null,
+  });
+
+  let iter = 0;
+  while (heap.size() > 0 && iter++ < MAX_ITER) {
+    const cur = heap.pop()!;
+
+    if (cur.x === goal.x && cur.y === goal.y) {
+      return reconstructPath(cur, from, to);
+    }
+
+    const ck = keyOf(cur.x, cur.y, cur.dir);
+    const prevG = closed.get(ck);
+    if (prevG !== undefined && prevG <= cur.g) continue;
+    closed.set(ck, cur.g);
+
+    for (const m of MOVES) {
+      // Don't reverse direction
+      if ((cur.dir === 1 && m.dir === 2) || (cur.dir === 2 && m.dir === 1) ||
+          (cur.dir === 3 && m.dir === 4) || (cur.dir === 4 && m.dir === 3)) continue;
+
+      const nx = cur.x + m.dx;
+      const ny = cur.y + m.dy;
+      if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
+
+      // Reject move if segment crosses any component obstacle interior
+      const seg1: Point = { x: cur.x, y: cur.y };
+      const seg2: Point = { x: nx, y: ny };
+      let hitObstacle = false;
+      for (const r of obstacles) {
+        if (segmentHitsRect(seg1, seg2, r)) { hitObstacle = true; break; }
+      }
+      if (hitObstacle) continue;
+
+      // Compare against already-routed wire segments: overlap is forbidden,
+      // perpendicular crossing is allowed but penalised.
+      let crossPenalty = 0;
+      let overlapping = false;
+      for (const ws of blocked) {
+        const cl = classifySegments(seg1, seg2, ws);
+        if (cl === 'overlap') { overlapping = true; break; }
+        if (cl === 'cross') crossPenalty += CROSS_PENALTY;
+      }
+      if (overlapping) continue;
+
+      const bend = (cur.dir !== 0 && cur.dir !== m.dir) ? BEND_PENALTY : 0;
+      const ng = cur.g + STEP + bend + crossPenalty;
+      const nk = keyOf(nx, ny, m.dir);
+      const prev = closed.get(nk);
+      if (prev !== undefined && prev <= ng) continue;
+
+      heap.push({
+        x: nx, y: ny, dir: m.dir,
+        g: ng, f: ng + manhattan({ x: nx, y: ny }, goal),
+        parent: cur,
+      });
+    }
+  }
+
+  return null;
+}
+
+function reconstructPath(end: AStarNode, originalFrom: Point, originalTo: Point): Point[] {
+  const pts: Point[] = [];
+  let cur: AStarNode | null = end;
+  while (cur) {
+    pts.unshift({ x: cur.x, y: cur.y });
+    cur = cur.parent;
+  }
+  const first = pts[0];
+  if (originalFrom.x !== first.x || originalFrom.y !== first.y) {
+    pts.unshift({ x: originalFrom.x, y: originalFrom.y });
+  }
+  const last = pts[pts.length - 1];
+  if (originalTo.x !== last.x || originalTo.y !== last.y) {
+    pts.push({ x: originalTo.x, y: originalTo.y });
+  }
+  return simplifyPath(pts);
+}
+
+function simplifyPath(pts: Point[]): Point[] {
+  if (pts.length <= 2) return pts;
+  const out: Point[] = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const c = pts[i + 1];
+    // Drop b if collinear with a and c (cross product zero)
+    if ((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) === 0) continue;
+    out.push(b);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+export function routeWire(
+  from: Point, to: Point,
+  obstacles: Rect[] = [],
+  blocked: Segment[] = [],
+): Point[] {
+  if (Math.abs(to.x - from.x) < 2 && Math.abs(to.y - from.y) < 2) return [from, to];
+
+  if (obstacles.length === 0 && blocked.length === 0) {
+    if (Math.abs(to.x - from.x) < 2) return [from, to];
+    if (Math.abs(to.y - from.y) < 2) return [from, to];
+    return Math.abs(to.x - from.x) >= Math.abs(to.y - from.y)
+      ? [from, { x: to.x, y: from.y }, to]
+      : [from, { x: from.x, y: to.y }, to];
+  }
+
+  const result = aStarRoute(from, to, obstacles, blocked);
+  if (result) return result;
+
+  // Fallback: best L-shape (ignores wire conflicts but at least avoids fewest components)
+  const hv: Point[] = [from, { x: to.x, y: from.y }, to];
+  const vh: Point[] = [from, { x: from.x, y: to.y }, to];
+  const hvHits = pathHits(hv, obstacles);
+  const vhHits = pathHits(vh, obstacles);
+  if (hvHits !== vhHits) return hvHits < vhHits ? hv : vh;
+  return pathLength(hv) <= pathLength(vh) ? hv : vh;
 }
 
 function drawPath(ctx: CanvasRenderingContext2D, path: Point[]) {
