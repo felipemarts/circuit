@@ -1,0 +1,39 @@
+name: 🚀 Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy-server:
+    name: 🚀 Deploy Server
+    runs-on: ubuntu-latest
+    steps:
+    - name: 🚚 Get latest code
+      uses: actions/checkout@v4
+
+    - name: 🤖 Use Node.js 22
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x'
+
+    - name: 📦 Install App Dependencies
+      run: |
+        npm i
+
+    - name: 🎮 Build Web App
+      run: |
+        npm run build
+
+    - name:  🔑 Create .htaccess file
+      run: |
+        cp ./htaccess.txt ./dist/.htaccess
+
+    - name: 📂 Sync files
+      uses: SamKirkland/FTP-Deploy-Action@4.3.3
+      with:
+        local-dir: ./dist/
+        server: ${{secrets.HOST}}
+        port: ${{secrets.PORT}}
+        username: ${{secrets.USER}}
+        password: ${{secrets.PASS}}

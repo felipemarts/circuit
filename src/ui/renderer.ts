@@ -6,16 +6,17 @@ const PIN_HIT_RADIUS = 12;
 const COLORS = {
   bg: '#0a0e17',
   gridDot: '#1e293b',
-  wire: '#22d3ee',
-  wireShadow: 'rgba(34,211,238,0.25)',
+  wire: '#cbd5e1',
+  wireShadow: 'rgba(203,213,225,0.18)',
+  wireFlow: '#22c55e',
   component: '#e2e8f0',
   componentSelected: '#22d3ee',
   componentGlow: 'rgba(34,211,238,0.35)',
   pin: '#94a3b8',
-  pinConnected: '#22d3ee',
+  pinConnected: '#cbd5e1',
   pinHover: '#f472b6',
   pinHoverGlow: 'rgba(244,114,182,0.4)',
-  ground: '#f87171',
+  ground: '#94a3b8',
   text: '#94a3b8',
   textLabel: '#cbd5e1',
   textValue: '#fbbf24',
@@ -137,25 +138,25 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
 
   // Draw results as floating badge
   if (showResults && comp.voltage !== undefined) {
-    const badgeX = comp.x + (landscape ? 52 : 0);
-    const badgeY = comp.y + (landscape ? 0 : 44);
+    // Live readings: text only (no opaque background) placed away from leads
+    // so the wire and pin remain visible.
+    const badgeX = comp.x + (landscape ? 0 : 56);
+    const badgeY = comp.y + (landscape ? 46 : 22);
 
-    // Badge background
-    ctx.fillStyle = COLORS.resultBg;
-    const bw = 72;
-    const bh = 28;
-    const rx = badgeX - bw / 2;
-    const ry = badgeY - bh / 2;
-    ctx.beginPath();
-    ctx.roundRect(rx, ry, bw, bh, 4);
-    ctx.fill();
-
-    ctx.font = '9px "SF Mono", monospace';
+    ctx.font = '9px "SF Mono", "Fira Code", monospace';
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Subtle dark halo behind text to keep readability over wires
+    ctx.shadowColor = 'rgba(10,14,23,0.95)';
+    ctx.shadowBlur = 4;
+
     ctx.fillStyle = COLORS.resultV;
-    ctx.fillText(`${comp.voltage.toFixed(2)}V`, badgeX, badgeY - 5);
+    ctx.fillText(`${comp.voltage.toFixed(2)}V`, badgeX, badgeY);
     ctx.fillStyle = COLORS.resultI;
-    ctx.fillText(`${formatValue(comp.current ?? 0, 'A')}`, badgeX, badgeY + 7);
+    ctx.fillText(`${formatValue(comp.current ?? 0, 'A')}`, badgeX, badgeY + 11);
+
+    ctx.shadowBlur = 0;
   }
 
   // Pins
@@ -360,18 +361,69 @@ function drawGenericBox(ctx: CanvasRenderingContext2D, label: string, color: str
 export interface Rect { minX: number; minY: number; maxX: number; maxY: number }
 export interface Segment { p1: Point; p2: Point }
 
-export function drawWirePath(ctx: CanvasRenderingContext2D, path: Point[]) {
+export function drawWirePath(
+  ctx: CanvasRenderingContext2D,
+  path: Point[],
+  flowOffset = 0,
+) {
   // Glow
   ctx.strokeStyle = COLORS.wireShadow;
   ctx.lineWidth = 6;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.setLineDash([]);
   drawPath(ctx, path);
 
-  // Wire
+  // Wire body
   ctx.strokeStyle = COLORS.wire;
   ctx.lineWidth = 2.5;
   drawPath(ctx, path);
+
+  if (flowOffset !== 0) {
+    drawWireFlowMarkers(ctx, path, flowOffset);
+  }
+}
+
+/** Draw small green squares moving along the wire to indicate current flow. */
+function drawWireFlowMarkers(
+  ctx: CanvasRenderingContext2D,
+  path: Point[],
+  flowOffset: number,
+) {
+  const SPACING = 28;
+  const SIZE = 6;
+  const HALF = SIZE / 2;
+
+  // Cumulative segment lengths for arc-length parameterisation
+  let total = 0;
+  const lens: number[] = [0];
+  for (let i = 1; i < path.length; i++) {
+    total += Math.abs(path[i].x - path[i - 1].x) + Math.abs(path[i].y - path[i - 1].y);
+    lens.push(total);
+  }
+  if (total < SIZE) return;
+
+  // Phase ∈ [0, SPACING)
+  const phase = ((flowOffset % SPACING) + SPACING) % SPACING;
+
+  ctx.fillStyle = COLORS.wireFlow;
+  ctx.shadowColor = COLORS.wireFlow;
+  ctx.shadowBlur = 6;
+
+  for (let s = phase; s <= total - HALF; s += SPACING) {
+    if (s < HALF) continue;
+    let seg = 0;
+    while (seg < lens.length - 2 && lens[seg + 1] < s) seg++;
+    const a = path[seg];
+    const b = path[seg + 1];
+    const segLen = lens[seg + 1] - lens[seg];
+    if (segLen <= 0) continue;
+    const t = (s - lens[seg]) / segLen;
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t;
+    ctx.fillRect(Math.round(x - HALF), Math.round(y - HALF), SIZE, SIZE);
+  }
+  ctx.shadowBlur = 0;
 }
 
 export function drawWirePreviewPath(ctx: CanvasRenderingContext2D, path: Point[]) {

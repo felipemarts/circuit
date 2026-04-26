@@ -1,10 +1,10 @@
-# Circuit
+# Circuit Forge
 
-Editor e simulador de circuitos eletrônicos no navegador.
+Forje circuitos eletrônicos com código — editor visual e simulador no navegador.
 
 ## Visão geral
 
-Aplicação 100% client-side em TypeScript que combina um editor de esquemáticos baseado em canvas com um motor de simulação numérico (Modified Nodal Analysis + Newton-Raphson). Foco em uso educacional e prototipagem rápida: você desenha o circuito, posiciona probes e observa formas de onda, tudo no browser, sem backend.
+Circuit Forge é um simulador de circuitos **baseado em código**: você programa seus componentes e circuitos via uma API TypeScript simples (`defineComponent`) — ideal para gerar circuitos com ajuda de AI — e visualiza o resultado em um editor de esquemáticos com canvas, probes e osciloscópio. O motor numérico usa Modified Nodal Analysis + Newton-Raphson e roda 100% no navegador, sem backend.
 
 ## Funcionalidades
 

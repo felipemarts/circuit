@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Circuit Simulator</title>
+  <title>Circuit Forge</title>
   <style>
     :root {
       --bg: #0a0e17;
@@ -128,6 +128,62 @@
     .act.primary:hover {
       background: var(--accent-dim-strong);
       border-color: var(--accent);
+    }
+
+    /* Time scale slider */
+    .time-scale {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      height: 28px;
+      border-radius: var(--radius);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+    }
+    .time-scale-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+    .time-scale input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 110px;
+      height: 4px;
+      background: var(--border-strong);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    .time-scale input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      transition: transform 0.12s;
+    }
+    .time-scale input[type=range]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: none;
+    }
+    .time-scale input[type=range]:hover::-webkit-slider-thumb {
+      transform: scale(1.2);
+    }
+    .time-scale-value {
+      font-size: 10.5px;
+      color: var(--text);
+      font-family: var(--mono);
+      min-width: 56px;
+      text-align: right;
     }
 
     .act.act-danger { color: var(--text-muted); }
@@ -926,7 +982,7 @@
         <circle cx="12" cy="12" r="3"/>
         <path d="M12 1v6M12 17v6M1 12h6M17 12h6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/>
       </svg>
-      <h1>Circuit Simulator</h1>
+      <h1>Circuit Forge</h1>
     </div>
     <div class="actions">
       <div class="project-menu-wrapper">
@@ -949,14 +1005,15 @@
         </div>
       </div>
       <div class="sep-v"></div>
-      <button class="act primary" id="btn-simulate" title="Análise DC">
-        <svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
-        Simular DC
+      <button class="act primary" id="btn-play" title="Iniciar/pausar simulação (espaço)">
+        <svg id="btn-play-icon" viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
+        <span id="btn-play-label">Play</span>
       </button>
-      <button class="act" id="btn-transient" title="Análise Transiente">
-        <svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
-        Transiente
-      </button>
+      <div class="time-scale" title="Escala de tempo da simulação (s simulado / s real)">
+        <span class="time-scale-label">Tempo</span>
+        <input type="range" id="time-scale" min="-3" max="2" step="0.1" value="-1" />
+        <span class="time-scale-value" id="time-scale-value">100 ms/s</span>
+      </div>
       <button class="act" id="btn-demo" title="Carregar demo RLC">Demo RLC</button>
       <button class="act act-danger" id="btn-clear" title="Limpar circuito">Limpar</button>
     </div>

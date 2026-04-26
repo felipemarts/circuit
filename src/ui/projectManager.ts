@@ -248,7 +248,7 @@ export function initProjectManager(bridge: ProjectBridge): void {
   function updateTitle() {
     const h1 = document.querySelector('header h1')!;
     const name = bridge.getProjectName();
-    h1.textContent = name !== 'Sem titulo' ? `Circuit Simulator — ${name}` : 'Circuit Simulator';
+    h1.textContent = name !== 'Sem titulo' ? `Circuit Forge — ${name}` : 'Circuit Forge';
   }
 
   updateTitle();

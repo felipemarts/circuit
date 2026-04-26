@@ -25,6 +25,7 @@ import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import { defineComponent as realDefineComponent, CustomComponent } from '../core/CustomComponent';
 import type { ComponentDef } from '../core/CustomComponent';
 import type { ProbeSpec, TransientResult } from '../analysis/TransientAnalysis';
+import { TransientSession } from '../analysis/TransientSession';
 import { initCodeEditor, type CodeEditorAPI } from './codeEditor';
 import { initProjectManager, type ProjectBridge } from './projectManager';
 import { autoSave, loadAutoSave, clearAutoSave } from './projectStore';
@@ -51,6 +52,14 @@ let panX = 0;
 let panY = 0;
 let zoom = 1;
 let panning: { startX: number; startY: number; panStartX: number; panStartY: number } | null = null;
+
+// Continuous simulation state (consumed by render() so must be hoisted here)
+let simSession: TransientSession | null = null;
+let simSimComponents: Map<string, TwoTerminalComponent> | null = null;
+let simProbeLabels: { label: string; color: string }[] = [];
+let simAnimFrame: number | null = null;
+let simLastWallTime = 0;
+let simChartLastUpdate = 0;
 
 /** Convert screen coordinates to world coordinates */
 function screenToWorld(sx: number, sy: number): Point {
@@ -145,10 +154,10 @@ toolbar.addEventListener('click', (e) => {
   updateStatus();
 });
 
-document.getElementById('btn-simulate')!.addEventListener('click', runSimulation);
-document.getElementById('btn-transient')!.addEventListener('click', runTransientSimulation);
+document.getElementById('btn-play')!.addEventListener('click', togglePlay);
 document.getElementById('btn-demo')!.addEventListener('click', loadDemoRLC);
 document.getElementById('btn-clear')!.addEventListener('click', () => {
+  stopSimulation();
   components = [];
   wires = [];
   grounds = [];
@@ -161,6 +170,21 @@ document.getElementById('btn-clear')!.addEventListener('click', () => {
   updateResults();
   resize();
 });
+
+// Time scale slider: value = log10(seconds simulated per second of wall time)
+const timeScaleSlider = document.getElementById('time-scale') as HTMLInputElement;
+const timeScaleValueEl = document.getElementById('time-scale-value')!;
+let timeScale = Math.pow(10, parseFloat(timeScaleSlider.value));
+function formatTimeScale(s: number): string {
+  if (s >= 1) return `${s.toFixed(s >= 10 ? 0 : 1)} s/s`;
+  if (s >= 1e-3) return `${(s * 1e3).toFixed(s >= 0.01 ? 0 : 1)} ms/s`;
+  return `${(s * 1e6).toFixed(0)} µs/s`;
+}
+timeScaleSlider.addEventListener('input', () => {
+  timeScale = Math.pow(10, parseFloat(timeScaleSlider.value));
+  timeScaleValueEl.textContent = formatTimeScale(timeScale);
+});
+timeScaleValueEl.textContent = formatTimeScale(timeScale);
 
 document.getElementById('scope-close')?.addEventListener('click', hideScopeOverlay);
 
@@ -372,7 +396,7 @@ canvas.addEventListener('mouseup', (e) => {
       const pinName = hitTestPin(comp, mousePos.x, mousePos.y);
       if (pinName && (wireStart.componentId !== comp.id || wireStart.pinName !== pinName)) {
         wires.push({ id: `w${nextId++}`, from: wireStart, to: { componentId: comp.id, pinName } });
-        showResults = false;
+        invalidate();
         break;
       }
     }
@@ -392,7 +416,7 @@ canvas.addEventListener('contextmenu', (e) => {
     if (hitTestComponent(comp, world.x, world.y)) {
       selectedId = comp.id;
       comp.rotation = (comp.rotation + 90) % 360;
-      showResults = false;
+      invalidate();
       updateProps();
       render();
       return;
@@ -437,7 +461,7 @@ document.addEventListener('keydown', (e) => {
       grounds = grounds.filter(g => g.componentId !== selectedId);
       probes = probes.filter(p => p.componentId !== selectedId);
       selectedId = null;
-      showResults = false;
+      invalidate();
       updateProps();
       render();
     }
@@ -445,6 +469,11 @@ document.addEventListener('keydown', (e) => {
 
   if (e.key === 'r' || e.key === 'R') {
     rotateSelected();
+  }
+
+  if (e.key === ' ' && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    togglePlay();
   }
 
   if (e.key === 'Escape') {
@@ -481,7 +510,7 @@ async function placeComponent(type: ComponentType, x: number, y: number) {
 
   components.push(comp);
   selectedId = comp.id;
-  showResults = false;
+  invalidate();
   updateProps();
   render();
 }
@@ -556,22 +585,24 @@ function updateProps() {
   labelInput?.addEventListener('change', () => { comp.label = labelInput.value; render(); });
   valueInput?.addEventListener('change', () => {
     const v = parseFloat(valueInput.value);
-    if (!isNaN(v) && v > 0) { comp.value = v; showResults = false; render(); }
+    if (!isNaN(v) && v > 0) { comp.value = v; invalidate(); render(); }
   });
   rotInput?.addEventListener('change', () => {
     comp.rotation = ((parseInt(rotInput.value) || 0) % 360 + 360) % 360;
-    showResults = false; render();
+    invalidate(); render();
   });
   rotBtn?.addEventListener('click', () => {
     comp.rotation = (comp.rotation + 90) % 360;
     rotInput.value = String(comp.rotation);
-    showResults = false; render();
+    invalidate(); render();
   });
   acAmpInput?.addEventListener('change', () => {
     comp.acAmplitude = parseFloat(acAmpInput.value) || 0;
+    invalidate();
   });
   freqInput?.addEventListener('change', () => {
     comp.frequency = parseFloat(freqInput.value) || 0;
+    invalidate();
   });
 }
 
@@ -586,7 +617,7 @@ document.addEventListener('delete-selected', () => {
     grounds = grounds.filter(g => g.componentId !== selectedId);
     probes = probes.filter(p => p.componentId !== selectedId);
     selectedId = null;
-    showResults = false;
+    invalidate();
     updateProps();
     render();
   }
@@ -658,9 +689,33 @@ function hasAnyGround(): boolean {
   return components.some(c => c.type === 'Ground');
 }
 
-// ─── DC Simulation ──────────────────────────────────────────────────────────
+// ─── Continuous simulation (Play / Pause) ──────────────────────────────────
 
-function runSimulation() {
+const SIM_FIXED_DT = 1e-5;            // 10µs default timestep
+const SIM_MAX_STEPS_PER_FRAME = 600;  // cap so a single frame can't stall
+
+function isSimulating(): boolean {
+  return simSession !== null;
+}
+
+function togglePlay() {
+  if (isSimulating()) pauseSimulation();
+  else startSimulation();
+}
+
+function setPlayButton(playing: boolean): void {
+  const icon = document.getElementById('btn-play-icon')!;
+  const label = document.getElementById('btn-play-label')!;
+  if (playing) {
+    icon.innerHTML = '<rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/>';
+    label.textContent = 'Pause';
+  } else {
+    icon.innerHTML = '<path d="M5 4l14 8-14 8V4z" fill="currentColor"/>';
+    label.textContent = 'Play';
+  }
+}
+
+function startSimulation(): void {
   if (components.length === 0) {
     statusText.textContent = 'Nenhum componente no circuito';
     return;
@@ -672,90 +727,116 @@ function runSimulation() {
 
   try {
     const { circuit, simComponents } = buildCircuit();
+    const specs: ProbeSpec[] = probes.map(probe => ({
+      label: probe.label,
+      color: probe.color,
+      component: simComponents.get(probe.componentId)!,
+      type: probe.type,
+    }));
 
-    circuit.analyze('dc');
-
-    for (const comp of components) {
-      const simComp = simComponents.get(comp.id)!;
-      comp.voltage = simComp.voltage;
-      comp.current = simComp.current;
-    }
-
+    simSession = new TransientSession(circuit, specs);
+    simSimComponents = simComponents;
+    simProbeLabels = probes.map(p => ({ label: p.label, color: p.color }));
+    simLastWallTime = performance.now();
+    simChartLastUpdate = 0;
     showResults = true;
-    statusText.textContent = 'Simulacao DC concluida';
-    updateResults();
-    render();
+    setPlayButton(true);
+    statusText.textContent = 'Simulando…';
+
+    simulationLoop();
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    statusText.textContent = `Erro: ${msg}`;
-    showResults = false;
+    statusText.textContent = `Erro: ${error instanceof Error ? error.message : String(error)}`;
+    simSession = null;
+    simSimComponents = null;
   }
 }
 
-// ─── Transient Simulation ────────────────────────────────────────────────────
+function pauseSimulation(): void {
+  if (simAnimFrame !== null) {
+    cancelAnimationFrame(simAnimFrame);
+    simAnimFrame = null;
+  }
+  if (simSession) {
+    simSession.end();
+    simSession = null;
+  }
+  simSimComponents = null;
+  setPlayButton(false);
+  statusText.textContent = 'Pausado';
+  render();
+}
 
-function runTransientSimulation() {
-  if (components.length === 0) {
-    statusText.textContent = 'Nenhum componente no circuito';
+function stopSimulation(): void {
+  pauseSimulation();
+  transientResult = null;
+}
+
+/** Stop the running simulation when the user mutates the circuit. */
+function invalidateSimulation(): void {
+  if (isSimulating()) pauseSimulation();
+}
+
+/** Mark the circuit as dirty: clears stale results and pauses live sim. */
+function invalidate(): void {
+  showResults = false;
+  invalidateSimulation();
+}
+
+function simulationLoop(): void {
+  if (!simSession || !simSimComponents) return;
+  const now = performance.now();
+  const wallDt = Math.min(0.05, (now - simLastWallTime) / 1000); // cap 50ms
+  simLastWallTime = now;
+
+  const simBudget = wallDt * timeScale;
+  let dt = SIM_FIXED_DT;
+  let nSteps = Math.ceil(simBudget / dt);
+  if (nSteps > SIM_MAX_STEPS_PER_FRAME) {
+    nSteps = SIM_MAX_STEPS_PER_FRAME;
+    dt = simBudget / nSteps;
+  }
+  if (nSteps < 1) nSteps = 1;
+
+  try {
+    for (let i = 0; i < nSteps; i++) simSession.step(dt);
+  } catch (error) {
+    statusText.textContent = `Erro na simulacao: ${error instanceof Error ? error.message : String(error)}`;
+    pauseSimulation();
     return;
   }
-  if (!hasAnyGround()) {
-    statusText.textContent = 'Adicione pelo menos um GND';
-    return;
-  }
-  if (probes.length === 0) {
-    statusText.textContent = 'Adicione pelo menos uma probe (clique em um pino com a ferramenta Probe)';
-    return;
-  }
 
-  const dtInput = document.getElementById('sim-dt') as HTMLInputElement;
-  const durationInput = document.getElementById('sim-duration') as HTMLInputElement;
-  const dt = parseFloat(dtInput.value);
-  const duration = parseFloat(durationInput.value);
-
-  if (isNaN(dt) || dt <= 0 || isNaN(duration) || duration <= 0) {
-    statusText.textContent = 'Passo e duracao devem ser positivos';
-    return;
-  }
-
-  statusText.textContent = 'Simulando transiente...';
-
-  setTimeout(() => {
-    try {
-      const { circuit, simComponents } = buildCircuit();
-
-      const specs: ProbeSpec[] = probes.map(probe => {
-        const simComp = simComponents.get(probe.componentId)!;
-        return {
-          label: probe.label,
-          color: probe.color,
-          component: simComp,
-          type: probe.type,
-        };
-      });
-
-      const result = circuit.analyze('transient', { timeStep: dt, duration }, specs);
-      transientResult = result;
-
-      // Show the oscilloscope overlay with waveforms + stats (primary unit from first probe)
-      const waveforms: WaveformData[] = result.probes.map(p => ({
-        label: p.label,
-        color: p.color,
-        values: p.values,
-        timePoints: result.timePoints,
-      }));
-      const primaryUnit = probes[0]?.type === 'current' ? 'A' : 'V';
-      showScopeOverlay(waveforms, primaryUnit);
-
-      // Also render into the bottom-panel chart tab
-      renderChart();
-
-      statusText.textContent = `Transiente concluido: ${result.timePoints.length} pontos`;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      statusText.textContent = `Erro transiente: ${msg}`;
+  // Mirror live V/I onto the placed components
+  for (const comp of components) {
+    const sc = simSimComponents.get(comp.id);
+    if (sc) {
+      comp.voltage = sc.voltage;
+      comp.current = sc.current;
     }
-  }, 10);
+  }
+
+  // Throttle chart/scope updates to ~5 Hz
+  if (simProbeLabels.length > 0 && now - simChartLastUpdate > 200) {
+    simChartLastUpdate = now;
+    transientResult = {
+      timePoints: [...simSession.timePoints],
+      probes: simSession.probeValues.map((vals, i) => ({
+        label: simProbeLabels[i].label,
+        color: simProbeLabels[i].color,
+        values: [...vals],
+      })),
+    };
+    const waveforms: WaveformData[] = transientResult.probes.map(p => ({
+      label: p.label, color: p.color, values: p.values, timePoints: transientResult!.timePoints,
+    }));
+    const primaryUnit = probes[0]?.type === 'current' ? 'A' : 'V';
+    showScopeOverlay(waveforms, primaryUnit);
+    renderChart();
+  }
+
+  updateResults();
+  render();
+
+  simAnimFrame = requestAnimationFrame(simulationLoop);
 }
 
 // ─── Chart rendering ─────────────────────────────────────────────────────────
@@ -1141,6 +1222,7 @@ function syncTrackedToCanvas(
   }
 
   // Clear existing
+  invalidateSimulation();
   components = [];
   wires = [];
   grounds = [];
@@ -1394,6 +1476,7 @@ codeTextarea.addEventListener('keydown', (e) => {
 
 function loadDemoRLC() {
   // Clear
+  invalidateSimulation();
   components = [];
   wires = [];
   grounds = [];
@@ -1538,6 +1621,7 @@ function render() {
   // (pins are outside each component's bbox, so wires can still leave/enter freely).
   const allObstacles = buildComponentObstacles(components);
   const routedSegments: Segment[] = [];
+  const animTime = isSimulating() ? performance.now() / 1000 : 0;
   for (const wire of wires) {
     const from = wire.from as { componentId: string; pinName: string };
     const to = wire.to as { componentId: string; pinName: string };
@@ -1550,7 +1634,30 @@ function render() {
       allObstacles,
       routedSegments,
     );
-    drawWirePath(ctx, path);
+
+    // Compute current-flow offset. Pin convention: '1', '+', 'anode' is the
+    // entry pin (positive terminal), so a positive comp.current means current
+    // enters there → flows from that pin into the component, i.e. the wire
+    // attached to that pin is delivering current toward the component.
+    let flowOffset = 0;
+    if (animTime > 0) {
+      const sourceComp = fromComp.type !== 'Ground' ? fromComp : toComp;
+      const sourcePin = fromComp.type !== 'Ground' ? from.pinName : to.pinName;
+      const i = sourceComp.current ?? 0;
+      if (Math.abs(i) > 1e-9) {
+        const isEntryPin = sourcePin === '1' || sourcePin === '+' || sourcePin === 'anode';
+        // From `from` to `to`: positive offset moves dashes that direction.
+        // Direction sign: if the current at the FROM pin is flowing OUT of from-component,
+        // the dashes should travel from→to.
+        const flowsFromComp = isEntryPin ? -i : i;
+        const dirFromToTo = sourceComp === fromComp ? flowsFromComp : -flowsFromComp;
+        const sign = Math.sign(dirFromToTo);
+        const speed = Math.min(180, 30 + Math.abs(dirFromToTo) * 1500);
+        flowOffset = sign * (animTime * speed) % 18;
+      }
+    }
+
+    drawWirePath(ctx, path, flowOffset);
     routedSegments.push(...pathToSegments(path));
   }
 
@@ -1652,8 +1759,8 @@ function drawGridPanZoom(ctx: CanvasRenderingContext2D, w: number, h: number) {
     grounds.push({ id: `g${nextId++}`, componentId: compId, pinName });
     showResults = false; render();
   },
-  simulate: runSimulation,
-  simulateTransient: runTransientSimulation,
+  simulate: togglePlay,
+  simulateTransient: togglePlay,
   loadDemo: loadDemoRLC,
   clear: () => {
     components = []; wires = []; grounds = []; probes = [];
@@ -1771,7 +1878,7 @@ if (saved && saved.files && saved.files.length > 0) {
   }
   // Update title
   const h1 = document.querySelector('header h1')!;
-  h1.textContent = projectName !== 'Sem titulo' ? `Circuit Simulator — ${projectName}` : 'Circuit Simulator';
+  h1.textContent = projectName !== 'Sem titulo' ? `Circuit Forge — ${projectName}` : 'Circuit Forge';
 } else {
   // Set default content
   editorAPI.setFiles([{ name: 'main.js', content: DEFAULT_CODE }]);
