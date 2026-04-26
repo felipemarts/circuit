@@ -52,7 +52,10 @@ export function drawComponentMask(ctx: CanvasRenderingContext2D, comp: PlacedCom
   // Draw opaque background behind the component body so wires are hidden
   const isVertical = comp.type === 'VoltageSource' || comp.type === 'CurrentSource';
   const isGround = comp.type === 'Ground';
-  if (isGround) {
+  const isJunction = comp.type === 'Junction';
+  if (isJunction) {
+    // No mask — junction is a tiny dot rendered on top of the wire intentionally
+  } else if (isGround) {
     ctx.fillRect(-14, -4, 28, 16);
   } else if (isVertical) {
     ctx.fillRect(-22, -22, 44, 44);
@@ -86,6 +89,7 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
     case 'Diode': drawDiode(ctx, color); break;
     case 'LED': drawLED(ctx, color); break;
     case 'Ground': drawGround(ctx, selected); break;
+    case 'Junction': drawJunction(ctx, selected); break;
     default: {
       const customDef = getComponentDef(comp.type);
       if (customDef?.draw) {
@@ -312,15 +316,15 @@ function drawLED(ctx: CanvasRenderingContext2D, color: string) {
 }
 
 function drawGround(ctx: CanvasRenderingContext2D, selected: boolean) {
-  // Draw in component-local coords. Pin is at (0, -10) (top), so the symbol
-  // descends from y=-10 (pin) down to y=+10 (smallest bar).
+  // Draw in component-local coords. Pin is at (0, -25) (top), so the symbol
+  // has a longer stem then descends from y=-2 (top bar) to y=+10 (smallest bar).
   const stroke = selected ? COLORS.componentSelected : COLORS.ground;
   ctx.strokeStyle = stroke;
   ctx.lineCap = 'round';
 
   // Stem from pin to first bar
   ctx.beginPath();
-  ctx.moveTo(0, -10);
+  ctx.moveTo(0, -25);
   ctx.lineTo(0, -2);
   ctx.stroke();
 
@@ -336,6 +340,15 @@ function drawGround(ctx: CanvasRenderingContext2D, selected: boolean) {
     ctx.lineTo(w, y);
     ctx.stroke();
   }
+}
+
+function drawJunction(ctx: CanvasRenderingContext2D, selected: boolean) {
+  // Small filled dot at the center; pin is at (0, 0).
+  const fill = selected ? COLORS.componentSelected : COLORS.wire;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.arc(0, 0, 4, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawGenericBox(ctx: CanvasRenderingContext2D, label: string, color: string) {
@@ -365,18 +378,19 @@ export function drawWirePath(
   ctx: CanvasRenderingContext2D,
   path: Point[],
   flowOffset = 0,
+  selected = false,
 ) {
   // Glow
-  ctx.strokeStyle = COLORS.wireShadow;
-  ctx.lineWidth = 6;
+  ctx.strokeStyle = selected ? COLORS.componentGlow : COLORS.wireShadow;
+  ctx.lineWidth = selected ? 8 : 6;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.setLineDash([]);
   drawPath(ctx, path);
 
   // Wire body
-  ctx.strokeStyle = COLORS.wire;
-  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = selected ? COLORS.componentSelected : COLORS.wire;
+  ctx.lineWidth = selected ? 3 : 2.5;
   drawPath(ctx, path);
 
   if (flowOffset !== 0) {
@@ -463,6 +477,7 @@ export function buildComponentObstacles(
 ): Rect[] {
   const out: Rect[] = [];
   for (const c of components) {
+    if (c.type === 'Junction') continue; // junctions are passthroughs, no obstacle
     const isVertical = c.type === 'VoltageSource' || c.type === 'CurrentSource';
     const isGround = c.type === 'Ground';
     const rotated = c.rotation === 90 || c.rotation === 270;
@@ -470,7 +485,7 @@ export function buildComponentObstacles(
     if (isVertical) {
       halfW = halfH = 22;
     } else if (isGround) {
-      // Ground body sits below the pin (pin at y=-10, body y∈[-2, +10])
+      // Ground body sits below the (now-longer) pin: body y∈[-2, +10]
       halfW = 14;
       halfH = 12;
       out.push({

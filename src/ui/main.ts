@@ -39,9 +39,27 @@ let probes: Probe[] = [];
 
 let currentTool: ToolType = 'select';
 let selectedId: string | null = null;
+let selectedWireId: string | null = null;
 let hoveredPin: { componentId: string; pinName: string } | null = null;
 let dragging: { componentId: string; offsetX: number; offsetY: number } | null = null;
 let wireStart: { componentId: string; pinName: string } | null = null;
+// Pending wire-drag: set on mousedown over a wire; converted to either a
+// "select" (mouseup with no movement) or a "drag the wire path" (mouseup with
+// movement past the threshold). `orientation` records whether the clicked
+// segment was horizontal ('h') or vertical ('v') so the drag can move the
+// segment along its perpendicular axis only.
+let wireDragInit: {
+  wireId: string;
+  hitX: number;
+  hitY: number;
+  mouseX: number;
+  mouseY: number;
+  orientation: 'h' | 'v';
+} | null = null;
+// `axis` is the constraint axis: 'y' = horizontal segment moved up/down,
+// 'x' = vertical segment moved left/right.
+let wireDragging: { wireId: string; axis: 'x' | 'y' } | null = null;
+const DRAG_THRESHOLD_PX = 4;
 let mousePos: Point = { x: 0, y: 0 };
 let showResults = false;
 let nextId = 1;
@@ -284,6 +302,35 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
 
+  // Live drag of an existing wire: update the constraint axis each frame
+  if (wireDragging) {
+    const wire = wires.find(w => w.id === wireDragging!.wireId);
+    if (wire) {
+      const value = wireDragging.axis === 'y' ? snap(world.y) : snap(world.x);
+      wire.via = { axis: wireDragging.axis, value };
+      invalidate();
+      render();
+    }
+    return;
+  }
+
+  // Promote a pending wire-drag once the mouse leaves the click threshold
+  if (wireDragInit) {
+    const dx = world.x - wireDragInit.mouseX;
+    const dy = world.y - wireDragInit.mouseY;
+    if (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX) {
+      // 'h' segment is moved along Y → axis 'y'; 'v' segment along X → axis 'x'
+      const axis: 'x' | 'y' = wireDragInit.orientation === 'h' ? 'y' : 'x';
+      wireDragging = { wireId: wireDragInit.wireId, axis };
+      selectedWireId = wireDragInit.wireId;
+      selectedId = null;
+      wireDragInit = null;
+      updateProps();
+      render();
+      return;
+    }
+  }
+
   hoveredPin = null;
   for (const comp of components) {
     const pinName = hitTestPin(comp, world.x, world.y);
@@ -292,6 +339,16 @@ canvas.addEventListener('mousemove', (e) => {
       break;
     }
   }
+
+  // Cursor feedback: when wire tool is active and the pointer is on a wire,
+  // show a directional resize cursor signalling the wire can be tapped/dragged.
+  let cursor = 'crosshair';
+  if (currentTool === 'wire' && !hoveredPin) {
+    const wireHit = hitTestWire(world.x, world.y);
+    if (wireHit) cursor = wireHit.orientation === 'h' ? 'ns-resize' : 'ew-resize';
+  }
+  if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
+
   render();
 });
 
@@ -353,19 +410,35 @@ canvas.addEventListener('mousedown', (e) => {
     for (const comp of [...components].reverse()) {
       if (hitTestComponent(comp, x, y)) {
         selectedId = comp.id;
+        selectedWireId = null;
         dragging = { componentId: comp.id, offsetX: x - comp.x, offsetY: y - comp.y };
         updateProps();
         render();
         return;
       }
     }
+    // Click on a wire — arm pending drag (mouseup without drag = select)
+    const wireHit = hitTestWire(x, y);
+    if (wireHit) {
+      wireDragInit = {
+        wireId: wireHit.wireId,
+        hitX: wireHit.px,
+        hitY: wireHit.py,
+        mouseX: x,
+        mouseY: y,
+        orientation: wireHit.orientation,
+      };
+      return;
+    }
     selectedId = null;
+    selectedWireId = null;
     updateProps();
     render();
     return;
   }
 
   if (currentTool === 'wire') {
+    // First try clicking on a pin
     for (const comp of [...components].reverse()) {
       const pinName = hitTestPin(comp, x, y);
       if (pinName) {
@@ -375,7 +448,7 @@ canvas.addEventListener('mousedown', (e) => {
         } else {
           if (wireStart.componentId !== comp.id || wireStart.pinName !== pinName) {
             wires.push({ id: `w${nextId++}`, from: wireStart, to: { componentId: comp.id, pinName } });
-            showResults = false;
+            invalidate();
           }
           wireStart = null;
           updateStatus();
@@ -384,6 +457,47 @@ canvas.addEventListener('mousedown', (e) => {
         return;
       }
     }
+
+    // Otherwise, clicking on an existing wire either starts a T-tap (if a
+    // wireStart is in progress) or arms a wire-drag (creates a junction +
+    // dragging when the mouse moves beyond the threshold).
+    const wireHit = hitTestWire(x, y);
+    if (wireHit) {
+      if (wireStart) {
+        // Mid-wire T-tap: terminate at a new junction on the existing wire
+        const targetWire = wires[wireHit.index];
+        const jx = snap(wireHit.px);
+        const jy = snap(wireHit.py);
+        const junction: PlacedComponent = {
+          id: `c${nextId++}`, type: 'Junction', x: jx, y: jy, rotation: 0, value: 0,
+          label: '', pins: [...COMPONENT_DEFS.Junction.pins],
+        };
+        components.push(junction);
+        const origFrom = targetWire.from;
+        const origTo = targetWire.to;
+        wires.splice(wireHit.index, 1);
+        wires.push({ id: `w${nextId++}`, from: origFrom, to: { componentId: junction.id, pinName: '1' } });
+        wires.push({ id: `w${nextId++}`, from: { componentId: junction.id, pinName: '1' }, to: origTo });
+        wires.push({ id: `w${nextId++}`, from: wireStart, to: { componentId: junction.id, pinName: '1' } });
+        wireStart = null;
+        invalidate();
+        updateStatus();
+        render();
+        return;
+      }
+      // No wireStart yet → arm a drag (becomes a wire-path move on mouse-move,
+      // or a T-tap junction if mouseup happens with no movement)
+      wireDragInit = {
+        wireId: wireHit.wireId,
+        hitX: wireHit.px,
+        hitY: wireHit.py,
+        mouseX: x,
+        mouseY: y,
+        orientation: wireHit.orientation,
+      };
+      return;
+    }
+
     if (wireStart) {
       wireStart = null;
       updateStatus();
@@ -404,6 +518,46 @@ canvas.addEventListener('mouseup', (e) => {
 
   if (dragging) {
     dragging = null;
+    return;
+  }
+
+  // Wire being actively dragged → release
+  if (wireDragging) {
+    wireDragging = null;
+    return;
+  }
+
+  // Click-without-drag on a wire: select tool selects, wire tool creates a junction
+  if (wireDragInit) {
+    if (currentTool === 'wire') {
+      const targetIdx = wires.findIndex(w => w.id === wireDragInit!.wireId);
+      const targetWire = targetIdx >= 0 ? wires[targetIdx] : null;
+      if (targetWire) {
+        const jx = snap(wireDragInit.hitX);
+        const jy = snap(wireDragInit.hitY);
+        const junction: PlacedComponent = {
+          id: `c${nextId++}`, type: 'Junction', x: jx, y: jy, rotation: 0, value: 0,
+          label: '', pins: [...COMPONENT_DEFS.Junction.pins],
+        };
+        components.push(junction);
+        const origFrom = targetWire.from;
+        const origTo = targetWire.to;
+        wires.splice(targetIdx, 1);
+        wires.push({ id: `w${nextId++}`, from: origFrom, to: { componentId: junction.id, pinName: '1' } });
+        wires.push({ id: `w${nextId++}`, from: { componentId: junction.id, pinName: '1' }, to: origTo });
+        selectedId = junction.id;
+        selectedWireId = null;
+        invalidate();
+        updateProps();
+      }
+    } else {
+      // select tool (and others): just select the wire
+      selectedWireId = wireDragInit.wireId;
+      selectedId = null;
+      updateProps();
+    }
+    wireDragInit = null;
+    render();
     return;
   }
 
@@ -479,6 +633,11 @@ document.addEventListener('keydown', (e) => {
       selectedId = null;
       invalidate();
       updateProps();
+      render();
+    } else if (selectedWireId) {
+      wires = wires.filter(w => w.id !== selectedWireId);
+      selectedWireId = null;
+      invalidate();
       render();
     }
   }
@@ -644,13 +803,9 @@ document.addEventListener('delete-selected', () => {
 function buildCircuit() {
   const circuit = new Circuit();
   const simComponents = new Map<string, TwoTerminalComponent>();
-  const groundCompIds = new Set<string>();
 
   for (const comp of components) {
-    if (comp.type === 'Ground') {
-      groundCompIds.add(comp.id);
-      continue; // Ground is not a sim component, just a marker
-    }
+    if (comp.type === 'Ground' || comp.type === 'Junction') continue;
     let simComp: TwoTerminalComponent;
     switch (comp.type) {
       case 'Resistor': simComp = new Resistor(comp.value); break;
@@ -671,29 +826,71 @@ function buildCircuit() {
     simComponents.set(comp.id, simComp!);
   }
 
-  function getSimPin(compId: string, pinName: string) {
-    return simComponents.get(compId)!.pin(pinName);
-  }
+  // Cluster pins into electrical nodes via union-find: wires + ground markers
+  // unify pin keys. Ground/Junction pins act as passthroughs — multiple wires
+  // touching them all end up in the same cluster.
+  const compById = new Map<string, PlacedComponent>();
+  for (const c of components) compById.set(c.id, c);
 
-  for (const wire of wires) {
-    const from = wire.from as { componentId: string; pinName: string };
-    const to = wire.to as { componentId: string; pinName: string };
-    const fromIsGround = groundCompIds.has(from.componentId);
-    const toIsGround = groundCompIds.has(to.componentId);
-    if (fromIsGround && toIsGround) continue;
-    if (fromIsGround) {
-      getSimPin(to.componentId, to.pinName).connect(circuit.ground);
-    } else if (toIsGround) {
-      getSimPin(from.componentId, from.pinName).connect(circuit.ground);
-    } else {
-      getSimPin(from.componentId, from.pinName).connect(getSimPin(to.componentId, to.pinName));
+  const ufParent = new Map<string, string>();
+  const ufFind = (x: string): string => {
+    let p = ufParent.get(x);
+    if (p === undefined) { ufParent.set(x, x); return x; }
+    if (p === x) return x;
+    const r = ufFind(p);
+    ufParent.set(x, r);
+    return r;
+  };
+  const ufUnion = (a: string, b: string) => {
+    const ra = ufFind(a), rb = ufFind(b);
+    if (ra !== rb) ufParent.set(ra, rb);
+  };
+
+  const GROUND_ROOT = '__GROUND_CLUSTER__';
+  ufFind(GROUND_ROOT);
+  for (const c of components) {
+    if (c.type === 'Ground') {
+      ufUnion(`${c.id}:1`, GROUND_ROOT);
     }
   }
 
-  // Legacy ground nodes (loaded from old projects)
+  for (const wire of wires) {
+    const f = wire.from as { componentId: string; pinName: string };
+    const t = wire.to as { componentId: string; pinName: string };
+    if (!compById.has(f.componentId) || !compById.has(t.componentId)) continue;
+    ufUnion(`${f.componentId}:${f.pinName}`, `${t.componentId}:${t.pinName}`);
+  }
+  // Legacy ground markers
   for (const gnd of grounds) {
-    if (simComponents.has(gnd.componentId)) {
-      getSimPin(gnd.componentId, gnd.pinName).connect(circuit.ground);
+    if (compById.has(gnd.componentId)) {
+      ufUnion(`${gnd.componentId}:${gnd.pinName}`, GROUND_ROOT);
+    }
+  }
+
+  // For each cluster, connect all real component pins together (and to ground
+  // if it's the ground cluster).
+  const clusterPins = new Map<string, { compId: string; pinName: string }[]>();
+  for (const c of components) {
+    if (!simComponents.has(c.id)) continue; // skip Ground / Junction / custom
+    for (const pin of c.pins) {
+      const root = ufFind(`${c.id}:${pin.name}`);
+      if (!clusterPins.has(root)) clusterPins.set(root, []);
+      clusterPins.get(root)!.push({ compId: c.id, pinName: pin.name });
+    }
+  }
+
+  const groundRoot = ufFind(GROUND_ROOT);
+  for (const [root, pins] of clusterPins) {
+    if (pins.length === 0) continue;
+    if (root === groundRoot) {
+      for (const p of pins) {
+        simComponents.get(p.compId)!.pin(p.pinName).connect(circuit.ground);
+      }
+    } else {
+      const head = simComponents.get(pins[0].compId)!.pin(pins[0].pinName);
+      for (let i = 1; i < pins.length; i++) {
+        head.connect(simComponents.get(pins[i].compId)!.pin(pins[i].pinName));
+      }
     }
   }
 
@@ -865,6 +1062,36 @@ function computeWireFlowSpecs(): void {
 
     wireFlowSpecs.set(wire.id, { contribs, divisor });
   }
+}
+
+/** Hit-test a (world) point against existing wires using their cached A* paths.
+ * Returns the wire id, hit point and segment orientation within `tol` pixels. */
+function hitTestWire(
+  worldX: number, worldY: number, tol = 6,
+): { wireId: string; index: number; px: number; py: number; orientation: 'h' | 'v' } | null {
+  if (pathsCache.length !== wires.length) return null;
+  let best: { wireId: string; index: number; px: number; py: number; d2: number; orientation: 'h' | 'v' } | null = null;
+  const tol2 = tol * tol;
+  for (let i = 0; i < wires.length; i++) {
+    const path = pathsCache[i];
+    if (!path || path.length < 2) continue;
+    for (let j = 1; j < path.length; j++) {
+      const a = path[j - 1], b = path[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 === 0) continue;
+      const t = Math.max(0, Math.min(1, ((worldX - a.x) * dx + (worldY - a.y) * dy) / len2));
+      const px = a.x + dx * t;
+      const py = a.y + dy * t;
+      const d2 = (worldX - px) * (worldX - px) + (worldY - py) * (worldY - py);
+      if (d2 <= tol2 && (!best || d2 < best.d2)) {
+        const orientation: 'h' | 'v' = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+        best = { wireId: wires[i].id, index: i, px, py, d2, orientation };
+      }
+    }
+  }
+  if (!best) return null;
+  return { wireId: best.wireId, index: best.index, px: best.px, py: best.py, orientation: best.orientation };
 }
 
 /** Compute the current flowing through `wire` in its from→to direction. */
@@ -1814,16 +2041,26 @@ function render() {
   // accumulated phase (so a fluctuating current near zero stays smooth).
   const allObstacles = buildComponentObstacles(components);
 
-  // Build a topology hash to detect when paths must be recomputed
+  // Build a topology hash (also include via constraints so paths recompute on drag)
   const topoHash = wires.map(w => {
     const f = w.from as { componentId: string; pinName: string };
     const t = w.to as { componentId: string; pinName: string };
-    return `${w.id}|${f.componentId}.${f.pinName}>${t.componentId}.${t.pinName}`;
+    const via = w.via ? `~${w.via.axis}${w.via.value}` : '';
+    return `${w.id}|${f.componentId}.${f.pinName}>${t.componentId}.${t.pinName}${via}`;
   }).join(';') + '||' + components.map(c => `${c.id}@${c.x},${c.y}r${c.rotation}`).join(',');
 
   if (topoHash !== pathsCacheHash) {
     pathsCache = [];
     const segs: Segment[] = [];
+    const concat = (acc: Point[], piece: Point[]) => {
+      if (acc.length === 0) return [...piece];
+      // Skip the first point of the new piece if it duplicates the last of acc
+      const last = acc[acc.length - 1];
+      const first = piece[0];
+      const startIdx = (first && first.x === last.x && first.y === last.y) ? 1 : 0;
+      for (let i = startIdx; i < piece.length; i++) acc.push(piece[i]);
+      return acc;
+    };
     for (const wire of wires) {
       const from = wire.from as { componentId: string; pinName: string };
       const to = wire.to as { componentId: string; pinName: string };
@@ -1833,12 +2070,29 @@ function render() {
         pathsCache.push([]);
         continue;
       }
-      const p = routeWire(
-        getPinWorldPos(fromComp, from.pinName),
-        getPinWorldPos(toComp, to.pinName),
-        allObstacles,
-        segs,
-      );
+      const fromPos = getPinWorldPos(fromComp, from.pinName);
+      const toPos = getPinWorldPos(toComp, to.pinName);
+      let p: Point[];
+      if (wire.via) {
+        // Build two waypoints so the middle segment is axis-aligned at `value`.
+        let mid1: Point, mid2: Point;
+        if (wire.via.axis === 'y') {
+          // Horizontal middle stretch at y = value
+          mid1 = { x: fromPos.x, y: wire.via.value };
+          mid2 = { x: toPos.x,   y: wire.via.value };
+        } else {
+          // Vertical middle stretch at x = value
+          mid1 = { x: wire.via.value, y: fromPos.y };
+          mid2 = { x: wire.via.value, y: toPos.y   };
+        }
+        let acc: Point[] = [];
+        acc = concat(acc, routeWire(fromPos, mid1, allObstacles, segs));
+        acc = concat(acc, routeWire(mid1,    mid2, allObstacles, segs));
+        acc = concat(acc, routeWire(mid2,    toPos, allObstacles, segs));
+        p = acc;
+      } else {
+        p = routeWire(fromPos, toPos, allObstacles, segs);
+      }
       pathsCache.push(p);
       segs.push(...pathToSegments(p));
     }
@@ -1900,7 +2154,7 @@ function render() {
       flowOffset = speed > 0 ? phase : 0;
     }
 
-    drawWirePath(ctx, path, flowOffset);
+    drawWirePath(ctx, path, flowOffset, wire.id === selectedWireId);
   }
 
   // Wire preview (live A*, not cached, since it depends on the moving cursor)
@@ -2030,6 +2284,12 @@ const projectBridge: ProjectBridge = {
     wires = state.wires || [];
     grounds = state.grounds || [];
     probes = state.probes || [];
+    // Migrate pins of builtin components to current COMPONENT_DEFS offsets.
+    // Old saves of `Ground` had pin offset y=-10; we want y=-25 now.
+    for (const c of components) {
+      const def = COMPONENT_DEFS[c.type];
+      if (def) c.pins = [...def.pins];
+    }
     selectedId = null;
     showResults = false;
     transientResult = null;

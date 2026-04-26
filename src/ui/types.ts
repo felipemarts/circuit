@@ -1,4 +1,4 @@
-export type BuiltinComponentType = 'Resistor' | 'VoltageSource' | 'CurrentSource' | 'Capacitor' | 'Inductor' | 'Diode' | 'LED' | 'Ground';
+export type BuiltinComponentType = 'Resistor' | 'VoltageSource' | 'CurrentSource' | 'Capacitor' | 'Inductor' | 'Diode' | 'LED' | 'Ground' | 'Junction';
 export type ComponentType = string;
 export type ToolType = 'select' | BuiltinComponentType | 'wire' | 'probe';
 
@@ -33,6 +33,10 @@ export interface Wire {
   id: string;
   from: { componentId: string; pinName: string } | { x: number; y: number };
   to: { componentId: string; pinName: string } | { x: number; y: number };
+  /** Optional axis-aligned constraint for the route (set when the user drags
+   * the wire). `axis: 'y'` pins the middle horizontal stretch at `value`;
+   * `axis: 'x'` pins the middle vertical stretch at `value`. */
+  via?: { axis: 'x' | 'y'; value: number };
 }
 
 export interface GroundNode {
@@ -126,7 +130,15 @@ export const COMPONENT_DEFS: Record<string, ComponentDefUI> = {
     unit: '',
     label: '', // empty -> renderer skips drawing the label
     pins: [
-      { name: '1', offset: { x: 0, y: -10 } },
+      { name: '1', offset: { x: 0, y: -25 } },
+    ],
+  },
+  Junction: {
+    defaultValue: 0,
+    unit: '',
+    label: '', // junctions have no visible label
+    pins: [
+      { name: '1', offset: { x: 0, y: 0 } },
     ],
   },
 };
