@@ -90,6 +90,8 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
     case 'LED': drawLED(ctx, color); break;
     case 'Ground': drawGround(ctx, selected); break;
     case 'Junction': drawJunction(ctx, selected); break;
+    case 'Switch': drawSwitch(ctx, !!comp.closed); break;
+    case 'Button': drawButton(ctx, !!comp.closed); break;
     default: {
       const customDef = getComponentDef(comp.type);
       if (customDef?.draw) {
@@ -349,6 +351,57 @@ function drawJunction(ctx: CanvasRenderingContext2D, selected: boolean) {
   ctx.beginPath();
   ctx.arc(0, 0, 4, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function drawSwitch(ctx: CanvasRenderingContext2D, closed: boolean) {
+  // Leads
+  ctx.beginPath();
+  ctx.moveTo(-30, 0); ctx.lineTo(-12, 0);
+  ctx.moveTo(12, 0); ctx.lineTo(30, 0);
+  ctx.stroke();
+
+  // Terminal contacts (small dots)
+  ctx.beginPath();
+  ctx.arc(-12, 0, 2.5, 0, Math.PI * 2);
+  ctx.arc(12, 0, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Switch blade — lifted up when open, horizontal when closed
+  ctx.beginPath();
+  if (closed) {
+    ctx.moveTo(-12, 0); ctx.lineTo(12, 0);
+  } else {
+    ctx.moveTo(-12, 0); ctx.lineTo(10, -10);
+  }
+  ctx.stroke();
+}
+
+function drawButton(ctx: CanvasRenderingContext2D, pressed: boolean) {
+  // Leads
+  ctx.beginPath();
+  ctx.moveTo(-30, 0); ctx.lineTo(-12, 0);
+  ctx.moveTo(12, 0); ctx.lineTo(30, 0);
+  ctx.stroke();
+
+  // Internal contacts
+  ctx.beginPath();
+  ctx.arc(-12, 0, 2.5, 0, Math.PI * 2);
+  ctx.arc(12, 0, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Plate above the contacts: rests when up (open), drops to touch when pressed (closed)
+  const plateY = pressed ? -2 : -10;
+  ctx.beginPath();
+  ctx.moveTo(-14, plateY); ctx.lineTo(14, plateY);
+  ctx.stroke();
+
+  // Push stem from plate up to a small "button cap"
+  ctx.beginPath();
+  ctx.moveTo(0, plateY); ctx.lineTo(0, plateY - 5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, plateY - 8, 3, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 function drawGenericBox(ctx: CanvasRenderingContext2D, label: string, color: string) {

@@ -21,6 +21,8 @@ import { Capacitor } from '../components/Capacitor';
 import { Inductor } from '../components/Inductor';
 import { Diode } from '../components/Diode';
 import { LED } from '../components/LED';
+import { Switch } from '../components/Switch';
+import { Button } from '../components/Button';
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import { defineComponent as realDefineComponent, CustomComponent } from '../core/CustomComponent';
 import type { ComponentDef } from '../core/CustomComponent';
@@ -42,6 +44,9 @@ let selectedId: string | null = null;
 let selectedWireId: string | null = null;
 let hoveredPin: { componentId: string; pinName: string } | null = null;
 let dragging: { componentId: string; offsetX: number; offsetY: number } | null = null;
+let dragHasMoved = false;
+// Button currently held closed by mouse-down. Released on mouseup anywhere.
+let pressedButtonId: string | null = null;
 let wireStart: { componentId: string; pinName: string } | null = null;
 // Pending wire-drag: set on mousedown over a wire; converted to either a
 // "select" (mouseup with no movement) or a "drag the wire path" (mouseup with
@@ -163,6 +168,18 @@ function resize() {
   render();
 }
 window.addEventListener('resize', resize);
+// Fallback: release a held button even if mouseup happens outside the canvas
+window.addEventListener('mouseup', () => {
+  if (pressedButtonId) {
+    const btn = components.find(c => c.id === pressedButtonId);
+    if (btn) {
+      btn.closed = false;
+      syncComponentStateToSim(btn);
+    }
+    pressedButtonId = null;
+    render();
+  }
+});
 resize();
 
 // ─── Toolbar ─────────────────────────────────────────────────────────────────
@@ -296,8 +313,13 @@ canvas.addEventListener('mousemove', (e) => {
 
   if (dragging) {
     const comp = components.find(c => c.id === dragging!.componentId)!;
-    comp.x = snap(world.x - dragging.offsetX);
-    comp.y = snap(world.y - dragging.offsetY);
+    const newX = snap(world.x - dragging.offsetX);
+    const newY = snap(world.y - dragging.offsetY);
+    if (newX !== comp.x || newY !== comp.y) {
+      comp.x = newX;
+      comp.y = newY;
+      dragHasMoved = true;
+    }
     render();
     return;
   }
@@ -412,6 +434,13 @@ canvas.addEventListener('mousedown', (e) => {
         selectedId = comp.id;
         selectedWireId = null;
         dragging = { componentId: comp.id, offsetX: x - comp.x, offsetY: y - comp.y };
+        dragHasMoved = false;
+        // Button: mousedown holds it closed; released on mouseup
+        if (comp.type === 'Button') {
+          comp.closed = true;
+          pressedButtonId = comp.id;
+          syncComponentStateToSim(comp);
+        }
         updateProps();
         render();
         return;
@@ -517,8 +546,36 @@ canvas.addEventListener('mouseup', (e) => {
   }
 
   if (dragging) {
+    const comp = components.find(c => c.id === dragging!.componentId);
+    // Click-without-drag on a Switch toggles it
+    if (comp && comp.type === 'Switch' && !dragHasMoved) {
+      comp.closed = !comp.closed;
+      syncComponentStateToSim(comp);
+      render();
+    }
     dragging = null;
+    dragHasMoved = false;
+    // Always release any pressed button on mouseup
+    if (pressedButtonId) {
+      const btn = components.find(c => c.id === pressedButtonId);
+      if (btn) {
+        btn.closed = false;
+        syncComponentStateToSim(btn);
+      }
+      pressedButtonId = null;
+      render();
+    }
     return;
+  }
+  // Mouseup with no dragging: still release any pressed button (safety)
+  if (pressedButtonId) {
+    const btn = components.find(c => c.id === pressedButtonId);
+    if (btn) {
+      btn.closed = false;
+      syncComponentStateToSim(btn);
+    }
+    pressedButtonId = null;
+    render();
   }
 
   // Wire being actively dragged → release
@@ -821,6 +878,8 @@ function buildCircuit() {
       case 'Inductor': simComp = new Inductor(comp.value); break;
       case 'Diode': simComp = new Diode(); break;
       case 'LED': simComp = new LED(); break;
+      case 'Switch': simComp = new Switch(!!comp.closed); break;
+      case 'Button': simComp = new Button(!!comp.closed); break;
       default: continue; // Skip custom components in visual-only simulation
     }
     simComponents.set(comp.id, simComp!);
@@ -900,6 +959,16 @@ function buildCircuit() {
 function hasAnyGround(): boolean {
   if (grounds.length > 0) return true;
   return components.some(c => c.type === 'Ground');
+}
+
+/** Mirror Switch/Button state from the canvas component to its sim instance,
+ * so toggling them mid-simulation takes effect without restarting. */
+function syncComponentStateToSim(comp: PlacedComponent): void {
+  if (!simSimComponents) return;
+  const sc = simSimComponents.get(comp.id);
+  if (!sc) return;
+  if (sc instanceof Switch) sc.closed = !!comp.closed;
+  else if (sc instanceof Button) sc.pressed = !!comp.closed;
 }
 
 // ─── Per-wire current via DFS + KCL ────────────────────────────────────────
@@ -1603,6 +1672,7 @@ function executeUserCode(code: string) {
     const fn = new Function(
       'Circuit', 'Resistor', 'VoltageSource', 'CurrentSource',
       'Capacitor', 'Inductor', 'Diode', 'LED', 'Ground', 'Junction',
+      'Switch', 'Button',
       'defineComponent', 'console',
       code
     );
@@ -1618,6 +1688,8 @@ function executeUserCode(code: string) {
       makeTrackedWrapper(LED, 'LED', 'LED'),
       GroundWrapper,
       JunctionWrapper,
+      makeTrackedWrapper(Switch, 'Switch', 'SW'),
+      makeTrackedWrapper(Button, 'Button', 'BT'),
       wrappedDefineComponent,
       customConsole,
     );
@@ -2175,19 +2247,12 @@ function render() {
   // Smooth-current low-pass: ~120 ms time constant for stable direction
   const smoothAlpha = sim ? 1 - Math.exp(-frameDt / 0.12) : 1;
 
-  // Reference current for the whole circuit so the animation speed is
-  // *relative*: the fastest wire goes ~REF_SPEED, others scale down.
-  // Use the actual per-wire currents (from KCL+DFS), not component totals.
-  let circuitMaxCurrent = 0;
-  if (sim) {
-    for (const wire of wires) {
-      const v = Math.abs(wireCurrentFor(wire));
-      if (v > circuitMaxCurrent) circuitMaxCurrent = v;
-    }
-    if (circuitMaxCurrent < 1e-12) circuitMaxCurrent = 1;
-  }
-  const REF_SPEED = 70;   // px/s for the wire with max current
-  const MIN_SPEED = 18;   // px/s floor (so faint currents still drift slowly)
+  // Speed maps directly to the per-wire current magnitude on a log scale, so
+  // toggling a switch (which changes ABSOLUTE magnitudes, not the ratio
+  // between wires) is visible. Currents below ~100 nA freeze the dashes.
+  const REF_SPEED = 70;          // px/s cap (≥ ~10 mA)
+  const MIN_SPEED = 18;          // px/s floor (≥ ~1 µA)
+  const FREEZE_THRESHOLD = 1e-7; // 100 nA — below this, no animation
 
   for (let i = 0; i < wires.length; i++) {
     const wire = wires[i];
@@ -2209,10 +2274,16 @@ function render() {
       const smoothed = prev + (dirFromToTo - prev) * smoothAlpha;
       wireSmoothCurrent.set(wire.id, smoothed);
 
-      // Velocity normalised to the busiest wire in the circuit
+      // Speed: absolute log scale of the current magnitude. Tiny "leakage"
+      // currents (e.g. through an open switch) fall below FREEZE_THRESHOLD
+      // and don't animate. mA → fast, µA → slow, nA → frozen.
       const mag = Math.abs(smoothed);
-      const norm = Math.min(1, mag / circuitMaxCurrent);
-      const speed = mag > 1e-12 ? MIN_SPEED + norm * (REF_SPEED - MIN_SPEED) : 0;
+      let speed = 0;
+      if (mag > FREEZE_THRESHOLD) {
+        // log10(mag * 1e6): µA → 0, mA → 3, A → 6
+        const score = Math.log10(mag * 1e6);
+        speed = Math.max(MIN_SPEED, Math.min(REF_SPEED, MIN_SPEED + score * 12));
+      }
       const sign = smoothed >= 0 ? 1 : -1;
 
       let phase = wireFlowPhase.get(wire.id) ?? 0;

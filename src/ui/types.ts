@@ -1,4 +1,4 @@
-export type BuiltinComponentType = 'Resistor' | 'VoltageSource' | 'CurrentSource' | 'Capacitor' | 'Inductor' | 'Diode' | 'LED' | 'Ground' | 'Junction';
+export type BuiltinComponentType = 'Resistor' | 'VoltageSource' | 'CurrentSource' | 'Capacitor' | 'Inductor' | 'Diode' | 'LED' | 'Ground' | 'Junction' | 'Switch' | 'Button';
 export type ComponentType = string;
 export type ToolType = 'select' | BuiltinComponentType | 'wire' | 'probe';
 
@@ -24,6 +24,8 @@ export interface PlacedComponent {
   // AC parameters (for VoltageSource)
   acAmplitude?: number;
   frequency?: number;
+  // Switch / Button state (true = conducting)
+  closed?: boolean;
   // Simulation results
   voltage?: number;
   current?: number;
@@ -139,6 +141,24 @@ export const COMPONENT_DEFS: Record<string, ComponentDefUI> = {
     label: '', // junctions have no visible label
     pins: [
       { name: '1', offset: { x: 0, y: 0 } },
+    ],
+  },
+  Switch: {
+    defaultValue: 0,
+    unit: '',
+    label: 'SW',
+    pins: [
+      { name: '1', offset: { x: -30, y: 0 } },
+      { name: '2', offset: { x: 30, y: 0 } },
+    ],
+  },
+  Button: {
+    defaultValue: 0,
+    unit: '',
+    label: 'BT',
+    pins: [
+      { name: '1', offset: { x: -30, y: 0 } },
+      { name: '2', offset: { x: 30, y: 0 } },
     ],
   },
 };
