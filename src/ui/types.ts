@@ -148,8 +148,10 @@ export const COMPONENT_DEFS: Record<string, ComponentDefUI> = {
     unit: '',
     label: 'SW',
     pins: [
-      { name: '1', offset: { x: -30, y: 0 } },
-      { name: '2', offset: { x: 30, y: 0 } },
+      // SPDT: common on the left, two outputs on the right (offset vertically)
+      { name: 'com', offset: { x: -30, y: 0 } },
+      { name: 'a',   offset: { x: 30, y: -10 } }, // upper — active when open
+      { name: 'b',   offset: { x: 30, y: 10 } },  // lower — active when closed
     ],
   },
   Button: {

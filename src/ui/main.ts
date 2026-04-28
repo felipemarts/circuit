@@ -78,7 +78,10 @@ let panning: { startX: number; startY: number; panStartX: number; panStartY: num
 
 // Continuous simulation state (consumed by render() so must be hoisted here)
 let simSession: TransientSession | null = null;
-let simSimComponents: Map<string, TwoTerminalComponent> | null = null;
+// Simulation components include both TwoTerminalComponents and Switch (3-pin).
+// All exposed types provide voltage/current getters for live UI display.
+type SimComponent = TwoTerminalComponent | Switch;
+let simSimComponents: Map<string, SimComponent> | null = null;
 let simProbeLabels: { label: string; color: string }[] = [];
 let simAnimFrame: number | null = null;
 let simLastWallTime = 0;
@@ -863,11 +866,11 @@ document.addEventListener('delete-selected', () => {
 
 function buildCircuit() {
   const circuit = new Circuit();
-  const simComponents = new Map<string, TwoTerminalComponent>();
+  const simComponents = new Map<string, SimComponent>();
 
   for (const comp of components) {
     if (comp.type === 'Ground' || comp.type === 'Junction') continue;
-    let simComp: TwoTerminalComponent;
+    let simComp: SimComponent;
     switch (comp.type) {
       case 'Resistor': simComp = new Resistor(comp.value); break;
       case 'VoltageSource': {
@@ -971,8 +974,13 @@ function syncComponentStateToSim(comp: PlacedComponent): void {
   if (!simSimComponents) return;
   const sc = simSimComponents.get(comp.id);
   if (!sc) return;
-  if (sc instanceof Switch) sc.closed = !!comp.closed;
-  else if (sc instanceof Button) sc.pressed = !!comp.closed;
+  if (sc instanceof Switch) {
+    sc.closed = !!comp.closed;
+    // SPDT polarity flips with state — re-derive wire-flow contributions
+    computeWireFlowSpecs();
+  } else if (sc instanceof Button) {
+    sc.pressed = !!comp.closed;
+  }
 }
 
 // ─── Per-wire current via DFS + KCL ────────────────────────────────────────
@@ -983,8 +991,13 @@ function syncComponentStateToSim(comp: PlacedComponent): void {
 
 const GND_KEY = '__GROUND__';
 
-/** Polarity of a 2-terminal component (positive pin → entry pin). */
+/** Polarity of a 2-terminal component (positive pin → entry pin).
+ * For SPDT Switch (3 pins), the active channel depends on `closed`:
+ * com↔a when open, com↔b when closed. */
 function getComponentPolarity(comp: PlacedComponent): { pos: string; neg: string } | null {
+  if (comp.type === 'Switch') {
+    return comp.closed ? { pos: 'com', neg: 'b' } : { pos: 'com', neg: 'a' };
+  }
   if (comp.pins.length !== 2) return null;
   const names = comp.pins.map(p => p.name);
   if (names.includes('1') && names.includes('2')) return { pos: '1', neg: '2' };
@@ -2456,6 +2469,19 @@ const projectBridge: ProjectBridge = {
     for (const c of components) {
       const def = COMPONENT_DEFS[c.type];
       if (def) c.pins = [...def.pins];
+    }
+    // Switch was 2-pin ('1','2') and is now SPDT ('com','a','b'). Re-map
+    // existing wire endpoints so old projects still work: 1→com, 2→b
+    // (preserves the "closed = current flows through pin 2" behaviour).
+    const switchIds = new Set(components.filter(c => c.type === 'Switch').map(c => c.id));
+    for (const w of wires) {
+      const f = w.from as { componentId?: string; pinName?: string };
+      const t = w.to as { componentId?: string; pinName?: string };
+      for (const ref of [f, t]) {
+        if (!ref.componentId || !switchIds.has(ref.componentId)) continue;
+        if (ref.pinName === '1') ref.pinName = 'com';
+        else if (ref.pinName === '2') ref.pinName = 'b';
+      }
     }
     selectedId = null;
     showResults = false;

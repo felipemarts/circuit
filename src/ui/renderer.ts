@@ -354,25 +354,25 @@ function drawJunction(ctx: CanvasRenderingContext2D, selected: boolean) {
 }
 
 function drawSwitch(ctx: CanvasRenderingContext2D, closed: boolean) {
-  // Leads
+  // SPDT layout. Pins (relative): com=(-30,0), a=(30,-10), b=(30,10).
+  // Leads (lead stub from each pin into the body)
   ctx.beginPath();
-  ctx.moveTo(-30, 0); ctx.lineTo(-12, 0);
-  ctx.moveTo(12, 0); ctx.lineTo(30, 0);
+  ctx.moveTo(-30, 0);  ctx.lineTo(-14, 0);     // com
+  ctx.moveTo(14, -10); ctx.lineTo(30, -10);    // a
+  ctx.moveTo(14, 10);  ctx.lineTo(30, 10);     // b
   ctx.stroke();
 
-  // Terminal contacts (small dots)
+  // Terminal contacts (small filled dots)
   ctx.beginPath();
-  ctx.arc(-12, 0, 2.5, 0, Math.PI * 2);
-  ctx.arc(12, 0, 2.5, 0, Math.PI * 2);
+  ctx.arc(-14, 0, 2.5, 0, Math.PI * 2);
+  ctx.arc(14, -10, 2.5, 0, Math.PI * 2);
+  ctx.arc(14, 10, 2.5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Switch blade — lifted up when open, horizontal when closed
+  // Pivoting blade — points to whichever output is currently selected
+  const targetX = 14, targetY = closed ? 10 : -10;
   ctx.beginPath();
-  if (closed) {
-    ctx.moveTo(-12, 0); ctx.lineTo(12, 0);
-  } else {
-    ctx.moveTo(-12, 0); ctx.lineTo(10, -10);
-  }
+  ctx.moveTo(-14, 0); ctx.lineTo(targetX, targetY);
   ctx.stroke();
 }
 
