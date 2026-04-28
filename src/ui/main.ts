@@ -88,6 +88,10 @@ let simChartLastUpdate = 0;
 const wireFlowPhase = new Map<string, number>();
 const wireSmoothCurrent = new Map<string, number>();
 let lastRenderTime = 0;
+// Envelope of the circuit's max current for relative speed scaling.
+// Attack is instant; release decays over ~1.5 s so a freshly-opened switch
+// doesn't immediately make the rest of the (stale) circuit look maxed-out.
+let circuitMaxEnvelope = 0;
 
 // Cached A* paths — recomputed only when topology/positions actually change
 let pathsCacheHash = '';
@@ -2244,15 +2248,32 @@ function render() {
   const frameDt = lastRenderTime > 0 ? Math.min(0.1, nowSec - lastRenderTime) : 0;
   lastRenderTime = nowSec;
   const sim = isSimulating();
-  // Smooth-current low-pass: ~120 ms time constant for stable direction
-  const smoothAlpha = sim ? 1 - Math.exp(-frameDt / 0.12) : 1;
+  // Smooth-current low-pass: ~60 ms time constant — fast enough to react
+  // to manual changes, slow enough to avoid jitter on rough transients.
+  const smoothAlpha = sim ? 1 - Math.exp(-frameDt / 0.06) : 1;
 
-  // Speed maps directly to the per-wire current magnitude on a log scale, so
-  // toggling a switch (which changes ABSOLUTE magnitudes, not the ratio
-  // between wires) is visible. Currents below ~100 nA freeze the dashes.
-  const REF_SPEED = 70;          // px/s cap (≥ ~10 mA)
-  const MIN_SPEED = 18;          // px/s floor (≥ ~1 µA)
+  const REF_SPEED = 70;          // px/s for the wire with peak current
+  const MIN_SPEED = 18;          // px/s floor for non-trivial currents
   const FREEZE_THRESHOLD = 1e-7; // 100 nA — below this, no animation
+
+  // First pass: compute the instant max current and update the envelope.
+  // Attack: snap up. Release: ~1.5 s exponential decay so opening a switch
+  // doesn't make the now-tiny remaining current look "fast".
+  let instantMax = 0;
+  if (sim) {
+    for (const wire of wires) {
+      const v = Math.abs(wireCurrentFor(wire));
+      if (v > instantMax) instantMax = v;
+    }
+    if (instantMax >= circuitMaxEnvelope) {
+      circuitMaxEnvelope = instantMax;
+    } else {
+      const alphaRelease = 1 - Math.exp(-frameDt / 1.5);
+      circuitMaxEnvelope += (instantMax - circuitMaxEnvelope) * alphaRelease;
+    }
+  } else {
+    circuitMaxEnvelope = 0;
+  }
 
   for (let i = 0; i < wires.length; i++) {
     const wire = wires[i];
@@ -2268,21 +2289,29 @@ function render() {
     if (sim) {
       // Real per-wire current (positive = direction from→to)
       const dirFromToTo = wireCurrentFor(wire);
-
-      // Smooth the directional current so dashes don't flicker on AC
+      const magRaw = Math.abs(dirFromToTo);
       const prev = wireSmoothCurrent.get(wire.id) ?? 0;
-      const smoothed = prev + (dirFromToTo - prev) * smoothAlpha;
+
+      // Asymmetric smoothing: snap on/off transitions so a switch opening
+      // freezes the dashes immediately rather than coasting to a stop.
+      let smoothed: number;
+      if (magRaw < FREEZE_THRESHOLD) {
+        smoothed = 0; // snap to off
+      } else if (Math.abs(prev) < FREEZE_THRESHOLD) {
+        smoothed = dirFromToTo; // snap on (was off)
+      } else {
+        smoothed = prev + (dirFromToTo - prev) * smoothAlpha;
+      }
       wireSmoothCurrent.set(wire.id, smoothed);
 
-      // Speed: absolute log scale of the current magnitude. Tiny "leakage"
-      // currents (e.g. through an open switch) fall below FREEZE_THRESHOLD
-      // and don't animate. mA → fast, µA → slow, nA → frozen.
+      // Relative speed: scale by the circuit's envelope max so the busiest
+      // wire goes ~REF_SPEED, others slower in proportion. Below threshold
+      // the wire freezes regardless.
       const mag = Math.abs(smoothed);
       let speed = 0;
-      if (mag > FREEZE_THRESHOLD) {
-        // log10(mag * 1e6): µA → 0, mA → 3, A → 6
-        const score = Math.log10(mag * 1e6);
-        speed = Math.max(MIN_SPEED, Math.min(REF_SPEED, MIN_SPEED + score * 12));
+      if (mag >= FREEZE_THRESHOLD && circuitMaxEnvelope > FREEZE_THRESHOLD) {
+        const norm = Math.min(1, mag / circuitMaxEnvelope);
+        speed = MIN_SPEED + norm * (REF_SPEED - MIN_SPEED);
       }
       const sign = smoothed >= 0 ? 1 : -1;
 
