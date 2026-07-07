@@ -353,26 +353,30 @@ function drawJunction(ctx: CanvasRenderingContext2D, selected: boolean) {
   ctx.fill();
 }
 
+function dot(ctx: CanvasRenderingContext2D, x: number, y: number, r = 2.5) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawSwitch(ctx: CanvasRenderingContext2D, closed: boolean) {
   // SPDT layout. Pins (relative): com=(-30,0), a=(30,-10), b=(30,10).
-  // Leads (lead stub from each pin into the body)
+  // Leads
   ctx.beginPath();
   ctx.moveTo(-30, 0);  ctx.lineTo(-14, 0);     // com
   ctx.moveTo(14, -10); ctx.lineTo(30, -10);    // a
   ctx.moveTo(14, 10);  ctx.lineTo(30, 10);     // b
   ctx.stroke();
 
-  // Terminal contacts (small filled dots)
-  ctx.beginPath();
-  ctx.arc(-14, 0, 2.5, 0, Math.PI * 2);
-  ctx.arc(14, -10, 2.5, 0, Math.PI * 2);
-  ctx.arc(14, 10, 2.5, 0, Math.PI * 2);
-  ctx.fill();
+  // Terminal contacts (each on its own path so fill doesn't connect them)
+  dot(ctx, -14, 0);
+  dot(ctx, 14, -10);
+  dot(ctx, 14, 10);
 
-  // Pivoting blade — points to whichever output is currently selected
-  const targetX = 14, targetY = closed ? 10 : -10;
+  // Pivoting blade — connects com to whichever output is currently selected
+  const targetY = closed ? 10 : -10;
   ctx.beginPath();
-  ctx.moveTo(-14, 0); ctx.lineTo(targetX, targetY);
+  ctx.moveTo(-14, 0); ctx.lineTo(14, targetY);
   ctx.stroke();
 }
 
@@ -384,12 +388,10 @@ function drawButton(ctx: CanvasRenderingContext2D, pressed: boolean) {
   ctx.stroke();
 
   // Internal contacts
-  ctx.beginPath();
-  ctx.arc(-12, 0, 2.5, 0, Math.PI * 2);
-  ctx.arc(12, 0, 2.5, 0, Math.PI * 2);
-  ctx.fill();
+  dot(ctx, -12, 0);
+  dot(ctx, 12, 0);
 
-  // Plate above the contacts: rests when up (open), drops to touch when pressed (closed)
+  // Plate: rests up (open) or drops to touch the contacts (closed)
   const plateY = pressed ? -2 : -10;
   ctx.beginPath();
   ctx.moveTo(-14, plateY); ctx.lineTo(14, plateY);

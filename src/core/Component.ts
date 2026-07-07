@@ -45,6 +45,9 @@ export abstract class Component {
 
   readResults(solution: number[], matrix: MNAMatrix): { voltage: number; current: number } | null { return null; }
 
+  /** @internal Called by the solver after analysis with the readResults values */
+  _setResults(_voltage: number, _current: number): void {}
+
   setOperatingPoint(_solution: number[], _matrix: MNAMatrix): void {}
 
   getOperatingVoltage(): number { return 0; }

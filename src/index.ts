@@ -13,6 +13,8 @@ export { Capacitor } from './components/Capacitor';
 export { Inductor } from './components/Inductor';
 export { Diode } from './components/Diode';
 export { LED } from './components/LED';
+export { Switch } from './components/Switch';
+export { Button } from './components/Button';
 
 export type { DCResult } from './analysis/DCAnalysis';
 export type { TransientConfig, TransientResult, ProbeSpec } from './analysis/TransientAnalysis';

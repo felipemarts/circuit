@@ -19,9 +19,9 @@ export class Switch extends Component {
 
   constructor(closed = false) {
     super();
-    (this as any).addPin('com');
-    (this as any).addPin('a');
-    (this as any).addPin('b');
+    this.addPin('com');
+    this.addPin('a');
+    this.addPin('b');
     this.closed = closed;
   }
 

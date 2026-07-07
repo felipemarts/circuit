@@ -1,7 +1,6 @@
 import type { Circuit } from '../core/Circuit';
 import type { Node } from '../core/Node';
 import { MNAMatrix } from '../solver/MNAMatrix';
-import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import { NewtonRaphson } from '../solver/NewtonRaphson';
 
 export interface DCResult {
@@ -62,7 +61,7 @@ export class DCAnalysis {
     // Update component results via protocol
     for (const comp of components) {
       const result = comp.readResults(solution, matrix);
-      if (result && comp instanceof TwoTerminalComponent) {
+      if (result) {
         comp._setResults(result.voltage, result.current);
       }
     }
