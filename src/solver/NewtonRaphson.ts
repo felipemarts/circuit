@@ -11,6 +11,31 @@ function isNonlinearComponent(comp: Component): comp is Component & NonlinearCom
   return comp.isNonlinear();
 }
 
+/** Telemetry captured when Newton-Raphson fails, so callers can name a culprit. */
+export interface NRTelemetry {
+  iterations: number;
+  /** Component with the largest voltage delta on the final iteration. */
+  worst: {
+    component: Component;
+    /** |V(solution) - V(operating point)| on the last iteration. */
+    deltaV: number;
+    /** Solution voltages of the worst component over the last iterations (oldest first). */
+    history: number[];
+  } | null;
+}
+
+export class ConvergenceError extends Error {
+  readonly telemetry: NRTelemetry;
+
+  constructor(message: string, telemetry: NRTelemetry) {
+    super(message);
+    this.name = 'ConvergenceError';
+    this.telemetry = telemetry;
+  }
+}
+
+const HISTORY_LENGTH = 8;
+
 export class NewtonRaphson {
   static solve(
     nodeCount: number,
@@ -21,16 +46,17 @@ export class NewtonRaphson {
   ): number[] {
     const matrix = new MNAMatrix(nodeCount, vsCount);
     let solution: number[] | null = null;
+    const nonlinear = components.filter(isNonlinearComponent);
+    const history = new Map<Component, number[]>();
+    let worst: NRTelemetry['worst'] = null;
 
     for (let iter = 0; iter < maxIterations; iter++) {
       matrix.clear();
 
       // Set operating points from previous solution
       if (solution) {
-        for (const comp of components) {
-          if (isNonlinearComponent(comp)) {
-            comp.setOperatingPoint(solution, matrix);
-          }
+        for (const comp of nonlinear) {
+          comp.setOperatingPoint(solution, matrix);
         }
       }
 
@@ -44,17 +70,24 @@ export class NewtonRaphson {
       // Check convergence: compare solution voltage with operating point
       if (solution) {
         let converged = true;
+        worst = null;
 
-        for (const comp of components) {
-          if (isNonlinearComponent(comp)) {
-            const opV = comp.getOperatingVoltage();
-            // Use readResults to get the actual voltage from solution
-            const result = comp.readResults(newSolution, matrix);
-            const solutionV = result ? result.voltage : 0;
+        for (const comp of nonlinear) {
+          const opV = comp.getOperatingVoltage();
+          // Use readResults to get the actual voltage from solution
+          const result = comp.readResults(newSolution, matrix);
+          const solutionV = result ? result.voltage : 0;
 
-            if (Math.abs(solutionV - opV) > absTol) {
-              converged = false;
-              break;
+          const h = history.get(comp) ?? [];
+          h.push(solutionV);
+          if (h.length > HISTORY_LENGTH) h.shift();
+          history.set(comp, h);
+
+          const deltaV = Math.abs(solutionV - opV);
+          if (deltaV > absTol) {
+            converged = false;
+            if (!worst || deltaV > worst.deltaV) {
+              worst = { component: comp, deltaV, history: h };
             }
           }
         }
@@ -65,6 +98,9 @@ export class NewtonRaphson {
       solution = newSolution;
     }
 
-    throw new Error(`Newton-Raphson did not converge after ${maxIterations} iterations`);
+    throw new ConvergenceError(
+      `Newton-Raphson did not converge after ${maxIterations} iterations`,
+      { iterations: maxIterations, worst: worst && { ...worst, history: [...worst.history] } },
+    );
   }
 }

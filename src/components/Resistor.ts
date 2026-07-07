@@ -1,13 +1,18 @@
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import type { MNAMatrix } from '../solver/MNAMatrix';
+import { parseValue } from '../core/units';
 
 export class Resistor extends TwoTerminalComponent {
+  readonly kind: string = 'Resistor';
   readonly resistance: number;
 
-  constructor(resistance: number) {
+  constructor(resistance: number | string) {
     super();
-    if (resistance <= 0) throw new Error('Resistance must be positive');
-    this.resistance = resistance;
+    const r = parseValue(resistance, 'resistance');
+    if (r <= 0) {
+      throw new Error(`Resistance must be a finite number > 0, got ${resistance}`);
+    }
+    this.resistance = r;
   }
 
   stamp(matrix: MNAMatrix): void {

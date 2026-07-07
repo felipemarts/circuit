@@ -5,12 +5,16 @@
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "outDir": "dist",
-    "rootDir": "src",
     "strict": true,
     "declaration": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "circuit-forge": ["src/forge.ts"]
+    },
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "bench"]
 }

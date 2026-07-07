@@ -1,7 +1,9 @@
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import type { MNAMatrix } from '../solver/MNAMatrix';
+import { parseValue } from '../core/units';
 
 export class Capacitor extends TwoTerminalComponent {
+  readonly kind: string = 'Capacitor';
   readonly capacitance: number;
 
   /** @internal Transient state */
@@ -9,10 +11,13 @@ export class Capacitor extends TwoTerminalComponent {
   _dt = 0;
   _prevVoltage = 0;
 
-  constructor(capacitance: number) {
+  constructor(capacitance: number | string) {
     super();
-    if (capacitance <= 0) throw new Error('Capacitance must be positive');
-    this.capacitance = capacitance;
+    const c = parseValue(capacitance, 'capacitance');
+    if (c <= 0) {
+      throw new Error(`Capacitance must be a finite number > 0, got ${capacitance}`);
+    }
+    this.capacitance = c;
   }
 
   setTransientState(dt: number, prevVoltage: number): void {

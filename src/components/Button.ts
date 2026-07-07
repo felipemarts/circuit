@@ -9,6 +9,7 @@ const R_OPEN = 1e12;
  * button conducts. The UI sets `pressed` on mousedown and clears on mouseup.
  */
 export class Button extends TwoTerminalComponent {
+  readonly kind: string = 'Button';
   pressed: boolean;
 
   constructor(pressed = false) {

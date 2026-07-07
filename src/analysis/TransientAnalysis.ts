@@ -21,8 +21,19 @@ export interface TransientResult {
   probes: { label: string; color: string; values: number[] }[];
 }
 
+/** Throws on configs that would hang (timeStep=0), run backwards, or NaN-poison results. */
+export function validateTransientConfig(config: TransientConfig): void {
+  if (!Number.isFinite(config.timeStep) || config.timeStep <= 0) {
+    throw new Error(`invalid transient timeStep ${config.timeStep}: must be a finite number > 0`);
+  }
+  if (!Number.isFinite(config.duration) || config.duration <= 0) {
+    throw new Error(`invalid transient duration ${config.duration}: must be a finite number > 0`);
+  }
+}
+
 export class TransientAnalysis {
   run(circuit: Circuit, config: TransientConfig, probeSpecs: ProbeSpec[]): TransientResult {
+    validateTransientConfig(config);
     const { components, nodes } = circuit._discoverComponents();
 
     if (components.length === 0) {

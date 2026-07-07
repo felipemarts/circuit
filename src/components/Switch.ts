@@ -13,6 +13,7 @@ const R_OPEN = 1e12;   // 1 TΩ — effectively an open circuit
  * One channel has R_CLOSED (effectively shorted), the other R_OPEN.
  */
 export class Switch extends Component {
+  readonly kind: string = 'Switch';
   closed: boolean;
   private _voltage = 0;
   private _current = 0;

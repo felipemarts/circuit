@@ -1,7 +1,9 @@
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import type { MNAMatrix } from '../solver/MNAMatrix';
+import { parseValue } from '../core/units';
 
 export class VoltageSource extends TwoTerminalComponent {
+  readonly kind: string = 'VoltageSource';
   readonly declaredVoltage: number;
   /** @internal Assigned during analysis */
   _vsIndex: number = -1;
@@ -13,12 +15,13 @@ export class VoltageSource extends TwoTerminalComponent {
   /** @internal Effective voltage used by stamp (set per timestep in transient) */
   _effectiveVoltage: number;
 
-  constructor(voltage: number) {
+  constructor(voltage: number | string) {
     super();
+    const v = parseValue(voltage, 'voltage');
     this.pins.set('+', this.pin('1'));
     this.pins.set('-', this.pin('2'));
-    this.declaredVoltage = voltage;
-    this._effectiveVoltage = voltage;
+    this.declaredVoltage = v;
+    this._effectiveVoltage = v;
   }
 
   voltageAtTime(t: number): number {

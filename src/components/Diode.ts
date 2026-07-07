@@ -14,6 +14,7 @@ const DEFAULTS: Required<DiodeParams> = {
 };
 
 export class Diode extends TwoTerminalComponent {
+  readonly kind: string = 'Diode';
   readonly Is: number;
   readonly n: number;
   readonly Vt: number;

@@ -1,14 +1,16 @@
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import type { MNAMatrix } from '../solver/MNAMatrix';
+import { parseValue } from '../core/units';
 
 export class CurrentSource extends TwoTerminalComponent {
+  readonly kind: string = 'CurrentSource';
   readonly currentValue: number;
 
-  constructor(current: number) {
+  constructor(current: number | string) {
     super();
     this.pins.set('+', this.pin('1'));
     this.pins.set('-', this.pin('2'));
-    this.currentValue = current;
+    this.currentValue = parseValue(current, 'current');
   }
 
   stamp(matrix: MNAMatrix): void {

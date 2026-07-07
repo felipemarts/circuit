@@ -1,7 +1,9 @@
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import type { MNAMatrix } from '../solver/MNAMatrix';
+import { parseValue } from '../core/units';
 
 export class Inductor extends TwoTerminalComponent {
+  readonly kind: string = 'Inductor';
   readonly inductance: number;
   /** @internal Used as 0V voltage source for DC */
   _vsIndex: number = -1;
@@ -11,10 +13,13 @@ export class Inductor extends TwoTerminalComponent {
   _dt = 0;
   _prevCurrent = 0;
 
-  constructor(inductance: number) {
+  constructor(inductance: number | string) {
     super();
-    if (inductance <= 0) throw new Error('Inductance must be positive');
-    this.inductance = inductance;
+    const l = parseValue(inductance, 'inductance');
+    if (l <= 0) {
+      throw new Error(`Inductance must be a finite number > 0, got ${inductance}`);
+    }
+    this.inductance = l;
   }
 
   setTransientState(dt: number, prevCurrent: number): void {

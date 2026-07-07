@@ -41,6 +41,7 @@ export interface StampContext {
 }
 
 export class CustomComponent extends Component {
+  readonly kind: string;
   readonly _def: ComponentDef;
   readonly _params: Record<string, number>;
   readonly _state: Record<string, number> = {};
@@ -52,6 +53,7 @@ export class CustomComponent extends Component {
 
   constructor(def: ComponentDef, params?: Record<string, number>) {
     super();
+    this.kind = def.name;
     this._def = def;
 
     // Create pins

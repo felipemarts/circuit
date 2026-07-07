@@ -23,6 +23,14 @@ export abstract class Component {
     return [...this.pins.values()];
   }
 
+  /**
+   * All (name, pin) entries in registration order, including aliases
+   * ('+'/'-', 'anode'/'cathode') that point at the same Pin object.
+   */
+  pinEntries(): [string, Pin][] {
+    return [...this.pins.entries()];
+  }
+
   abstract stamp(matrix: MNAMatrix): void;
 
   isNonlinear(): boolean {
