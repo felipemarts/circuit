@@ -37,6 +37,50 @@ Circuit Forge é um simulador de circuitos **baseado em código**: você program
 - Auto-save em alterações
 - Exportar e importar circuitos como JSON
 
+## `forge` — o loop de verificação para agentes (e humanos)
+
+O circuit-forge está evoluindo para **a plataforma onde código vira circuito e um agente
+LLM itera até funcionar** — compile → simule → assert → diagnóstico estruturado, como o
+loop de um compilador moderno. A visão completa está em [docs/VISION.md](docs/VISION.md);
+a taxonomia de erros em [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
+
+Uma *bancada* (`.bench.ts`) descreve circuito + spec:
+
+```ts
+import { bench, VoltageSource, Resistor, LED } from 'circuit-forge';
+
+export default bench('led-driver', (tb) => {
+  const v1 = tb.add('V1', new VoltageSource(5));
+  const r1 = tb.add('R1', new Resistor('330'));
+  const d1 = tb.add('D1', new LED());
+  v1.pin('+').connect(r1.pin('1'));
+  r1.pin('2').connect(d1.pin('anode'));
+  d1.pin('cathode').connect(tb.gnd);
+  v1.pin('-').connect(tb.gnd);
+
+  tb.param('R1', { min: '100', max: '10k', scale: 'log' }); // sizing é da plataforma
+  tb.expect.op('D1.i').toBeWithin('8m', '12m');             // spec como teste
+});
+```
+
+```bash
+npm run forge -- verify bench/led-driver.bench.ts          # humano
+npm run forge -- verify bench/led-driver.bench.ts --json   # agente (RunRecord completo)
+npm run forge -- explain F101                              # física + correção de cada erro
+npm run forge -- catalog                                   # "datasheet" dos componentes
+npm run forge -- log list                                  # histórico de runs (.forge/)
+```
+
+- **Erros com código estável, localização no código-fonte e correção** — `F105 D1 is
+  forward-clamped directly across V1 … at bench/led.bench.ts:10`, detectado por lint de
+  grafo **antes** do solver rodar.
+- **Hints verificados por simulação** — em falha de asserção com `tb.param`, a plataforma
+  varre a faixa e devolve `hint (verified): R1 in [261, 316]`; aplique com `--set R1=280`.
+- **Exit codes com semântica** — `0` passou · `1` spec não atingido (ajuste valores) ·
+  `2` circuito inválido (conserte topologia) · `3` erro de bancada.
+- Exemplos em [bench/](bench/) — incluindo quebrados de propósito em
+  [bench/broken/](bench/broken/) para ver cada diagnóstico em ação.
+
 ## Stack
 
 - TypeScript 5.4 (strict mode)
