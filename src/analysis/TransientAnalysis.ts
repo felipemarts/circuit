@@ -1,7 +1,6 @@
 import type { Circuit } from '../core/Circuit';
 import type { Component } from '../core/Component';
 import { MNAMatrix } from '../solver/MNAMatrix';
-import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import { NewtonRaphson } from '../solver/NewtonRaphson';
 
 export interface TransientConfig {
@@ -59,10 +58,13 @@ export class TransientAnalysis {
       }
     }
 
-    // Resolve probe node indices now that nodes are assigned
+    // Resolve probe node indices now that nodes are assigned.
+    // Structural check, not instanceof: components may come from a different
+    // bundle of this library (CLI vs bench file), where class identities differ.
     const probeNodeIndices = probeSpecs.map(spec => {
-      if (spec.component && spec.component instanceof TwoTerminalComponent) {
-        return spec.component._n1Index;
+      const n1 = spec.component ? (spec.component as { _n1Index?: number })._n1Index : undefined;
+      if (typeof n1 === 'number') {
+        return n1;
       }
       // For multi-pin components, use first pin
       if (spec.component) {

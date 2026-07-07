@@ -88,6 +88,10 @@ export function runLint(elab: Elaboration): Diagnostic[] {
       return r;
     };
     for (const id of [...reachedComps].sort()) {
+      // Group only through DC-conducting parts: a capacitor bridging two
+      // floating nets does NOT make them one DC island, and merging them
+      // would produce a single diagnostic whose one fix can't fix both.
+      if (!conductsAtDC(compOf(id))) continue;
       const cNets = netsOf(id).filter(n => parent.has(n));
       for (let i = 1; i < cNets.length; i++) {
         const a = find(cNets[0]);
@@ -183,41 +187,84 @@ export function runLint(elab: Elaboration): Diagnostic[] {
     }
   }
 
-  // ── F105: diode/LED forward-clamped directly across an ideal voltage source ──
-  for (const comp of doc.components) {
-    if (!reachedComps.has(comp.id)) continue;
-    if (comp.type !== 'Diode' && comp.type !== 'LED') continue;
-    const anodeNet = comp.pins['anode'];
-    const cathodeNet = comp.pins['cathode'];
-    if (!anodeNet || !cathodeNet || anodeNet === cathodeNet) continue;
+  // ── F105: diode/LED forward-clamped across ideal sources (incl. series
+  // chains). Weighted union-find over source edges tracks the fixed potential
+  // difference between nets; a diode whose terminals are both inside one
+  // source-connected group has its voltage clamped — flag it only when its
+  // OWN exponential model says the clamp current is absurd.
+  {
+    const parent = new Map<string, string>();
+    const offset = new Map<string, number>(); // pot(x) - pot(parent[x])
+    const find = (x: string): [string, number] => {
+      if (!parent.has(x)) {
+        parent.set(x, x);
+        offset.set(x, 0);
+      }
+      const p = parent.get(x)!;
+      if (p === x) return [x, 0];
+      const [root, parentPot] = find(p);
+      const total = offset.get(x)! + parentPot;
+      parent.set(x, root);
+      offset.set(x, total);
+      return [root, total];
+    };
     for (const src of doc.components) {
-      if (src.type !== 'VoltageSource' || !reachedComps.has(src.id)) continue;
-      const plus = src.pins['+'];
-      const minus = src.pins['-'];
-      const v = src.params['v'];
-      if (typeof v !== 'number') continue;
-      const forward =
-        (anodeNet === plus && cathodeNet === minus && v > 0.4) ||
-        (anodeNet === minus && cathodeNet === plus && v < -0.4);
-      if (forward) {
+      if (!reachedComps.has(src.id)) continue;
+      let plus: string | undefined;
+      let minus: string | undefined;
+      let v: number | undefined;
+      if (src.type === 'VoltageSource') {
+        plus = src.pins['+'];
+        minus = src.pins['-'];
+        v = typeof src.params['v'] === 'number' ? (src.params['v'] as number) : undefined;
+      } else if (src.type === 'Inductor') {
+        plus = src.pins['1'];
+        minus = src.pins['2'];
+        v = 0; // 0 V source at DC
+      }
+      if (!plus || !minus || v === undefined || plus === minus) continue;
+      const [rootPlus, potPlus] = find(plus);
+      const [rootMinus, potMinus] = find(minus);
+      if (rootPlus === rootMinus) continue; // conflicting loop → already F104
+      // pot(plus) - pot(minus) = v  ⇒  offset the merged root accordingly.
+      parent.set(rootPlus, rootMinus);
+      offset.set(rootPlus, v + potMinus - potPlus);
+    }
+
+    const CLAMP_CURRENT_LIMIT = 100; // amps — far beyond any sane small-signal part
+    for (const comp of doc.components) {
+      if (!reachedComps.has(comp.id)) continue;
+      if (comp.type !== 'Diode' && comp.type !== 'LED') continue;
+      const anodeNet = comp.pins['anode'];
+      const cathodeNet = comp.pins['cathode'];
+      if (!anodeNet || !cathodeNet || anodeNet === cathodeNet) continue;
+      const [rootA, potA] = find(anodeNet);
+      const [rootC, potC] = find(cathodeNet);
+      if (rootA !== rootC) continue; // not clamped by sources alone
+      const drop = potA - potC;
+      const Is = Number(comp.params['Is'] ?? 1e-14);
+      const n = Number(comp.params['n'] ?? 1);
+      const Vt = Number(comp.params['Vt'] ?? 0.02585);
+      const clampCurrent = drop > 0 ? Is * Math.exp(drop / (n * Vt)) : 0;
+      if (clampCurrent > CLAMP_CURRENT_LIMIT) {
         diagnostics.push({
           code: 'F105',
           slug: 'source-clamped-diode',
           severity: 'error',
           stage: 'lint',
-          message: `${comp.id} is forward-clamped directly across ${src.id} (${Math.abs(v)} V) with no series resistance`,
-          subject: { components: [comp.id, src.id] },
-          note: `an ideal source fixes the diode voltage; the exponential current at ${Math.abs(v)} V is astronomically large and newton-raphson blows up — nothing limits the current`,
+          message: `${comp.id} is forward-clamped at ${Number(drop.toFixed(3))} V by ideal source(s) with no series resistance — its own model puts the current at ~${clampCurrent.toExponential(1)} A`,
+          subject: { components: [comp.id] },
+          note: `ideal sources fix the diode voltage; at ${Number(drop.toFixed(3))} V the exponential current is unbounded by anything in the circuit and newton-raphson diverges (a real part would burn)`,
+          evidence: { clampVoltage: drop, estimatedCurrent: clampCurrent },
           fixes: [
             {
               kind: 'add-component',
               confidence: 'suggested',
-              detail: `insert a series resistor between ${src.id} and ${comp.id}.anode (e.g. 330 for an LED at 5 V), then re-run`,
+              detail: `insert a series resistor between the source and ${comp.id}.anode (e.g. 330 for an LED at 5 V), then re-run`,
             },
           ],
           at: elab.locOf.get(comp.id),
         });
-        break;
       }
     }
   }

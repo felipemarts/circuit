@@ -54,8 +54,18 @@ export function describeComponent(comp: Component): ComponentInfo {
       return { type: 'Switch', params: { closed: (comp as Switch).closed } };
     case 'Button':
       return { type: 'Button', params: { pressed: (comp as Button).pressed } };
-    default:
-      return { type: kindOf(comp), params: {} };
+    default: {
+      // defineComponent parts carry their params in _params; without them,
+      // electrically different custom circuits would share a netlist hash.
+      const custom = (comp as { _params?: Record<string, number> })._params;
+      const params: Record<string, number> = {};
+      if (custom && typeof custom === 'object') {
+        for (const [key, value] of Object.entries(custom)) {
+          if (typeof value === 'number' && Number.isFinite(value)) params[key] = value;
+        }
+      }
+      return { type: kindOf(comp), params };
+    }
   }
 }
 

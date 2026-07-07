@@ -1,1247 +1,881 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Circuit Forge</title>
-  <style>
-    :root {
-      --bg: #0a0e17;
-      --panel: #0f172a;
-      --panel-2: #111a2e;
-      --panel-3: #17223a;
-      --border: #1e293b;
-      --border-strong: #334155;
-      --text: #e2e8f0;
-      --text-muted: #64748b;
-      --text-dim: #475569;
-      --accent: #22d3ee;
-      --accent-dim: rgba(34, 211, 238, 0.12);
-      --accent-dim-strong: rgba(34, 211, 238, 0.22);
-      --danger: #f87171;
-      --danger-bg: rgba(248, 113, 113, 0.08);
-      --warn: #fbbf24;
-      --green: #34d399;
-      --radius: 6px;
-      --radius-lg: 10px;
-      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
-      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-    }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: var(--sans);
-      background: var(--bg);
-      color: var(--text);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      font-size: 12px;
-    }
-
-    /* ─── Top bar ──────────────────────────────────────────────────────── */
-
-    header {
-      background: var(--panel);
-      height: 40px;
-      padding: 0 14px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      border-bottom: 1px solid var(--border);
-      z-index: 10;
-      flex-shrink: 0;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .brand svg {
-      width: 18px;
-      height: 18px;
-      color: var(--accent);
-    }
-
-    .brand h1 {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      letter-spacing: -0.2px;
-    }
-
-    .sep-v {
-      width: 1px;
-      height: 18px;
-      background: var(--border);
-      margin: 0 4px;
-    }
-
-    .actions {
-      margin-left: auto;
-      display: flex;
-      gap: 4px;
-      align-items: center;
-    }
-
-    /* Neutral action button - unified style */
-    .act, #btn-project {
-      background: transparent;
-      color: var(--text-muted);
-      border: 1px solid transparent;
-      padding: 5px 12px;
-      border-radius: var(--radius);
-      cursor: pointer;
-      font-size: 11px;
-      font-family: inherit;
-      transition: all 0.12s ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      height: 28px;
-      white-space: nowrap;
-    }
-
-    .act svg, #btn-project svg {
-      width: 11px;
-      height: 11px;
-      stroke: currentColor;
-      fill: none;
-      stroke-width: 1.8;
-    }
-
-    .act:hover, #btn-project:hover {
-      background: var(--panel-2);
-      color: var(--text);
-      border-color: var(--border);
-    }
-
-    .act.primary {
-      color: var(--accent);
-      background: var(--accent-dim);
-    }
-
-    .act.primary:hover {
-      background: var(--accent-dim-strong);
-      border-color: var(--accent);
-    }
-
-    /* Time scale slider */
-    .time-scale {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 10px;
-      height: 28px;
-      border-radius: var(--radius);
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-    }
-    .time-scale-label {
-      font-size: 10px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-weight: 500;
-    }
-    .time-scale input[type=range] {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 110px;
-      height: 4px;
-      background: var(--border-strong);
-      border-radius: 2px;
-      outline: none;
-      cursor: pointer;
-    }
-    .time-scale input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: var(--accent);
-      cursor: pointer;
-      transition: transform 0.12s;
-    }
-    .time-scale input[type=range]::-moz-range-thumb {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: var(--accent);
-      cursor: pointer;
-      border: none;
-    }
-    .time-scale input[type=range]:hover::-webkit-slider-thumb {
-      transform: scale(1.2);
-    }
-    .time-scale-value {
-      font-size: 10.5px;
-      color: var(--text);
-      font-family: var(--mono);
-      min-width: 56px;
-      text-align: right;
-    }
-
-    .act.act-danger { color: var(--text-muted); }
-    .act.act-danger:hover {
-      background: var(--danger-bg);
-      color: var(--danger);
-      border-color: transparent;
-    }
-
-    /* ─── Main layout ───────────────────────────────────────────────── */
-
-    .main {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
-      min-height: 0;
-    }
-
-    /* ─── Tool rail (vertical left sidebar) ────────────────────────── */
-
-    .tool-rail {
-      width: 72px;
-      background: var(--panel);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      padding: 6px 0;
-      gap: 1px;
-      overflow-y: auto;
-      flex-shrink: 0;
-      scrollbar-width: thin;
-      scrollbar-color: var(--border) transparent;
-    }
-
-    .tool-rail::-webkit-scrollbar { width: 4px; }
-    .tool-rail::-webkit-scrollbar-track { background: transparent; }
-    .tool-rail::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-    .tool {
-      background: transparent;
-      color: var(--text-muted);
-      border: none;
-      border-left: 2px solid transparent;
-      padding: 8px 4px 6px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-      font-size: 9.5px;
-      font-family: inherit;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-      width: 100%;
-      letter-spacing: 0.1px;
-    }
-
-    .tool svg {
-      width: 26px;
-      height: 26px;
-      stroke: currentColor;
-      fill: none;
-      stroke-width: 1.5;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
-    .tool:hover {
-      background: var(--panel-2);
-      color: var(--text);
-    }
-
-    .tool.active {
-      background: var(--accent-dim);
-      color: var(--accent);
-      border-left-color: var(--accent);
-    }
-
-    .tool-sep {
-      height: 1px;
-      background: var(--border);
-      margin: 6px 12px;
-    }
-
-    /* ─── Canvas area ──────────────────────────────────────────────── */
-
-    .canvas-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      position: relative;
-      min-width: 0;
-    }
-
-    #canvas {
-      flex: 1;
-      display: block;
-      cursor: crosshair;
-      background: var(--bg);
-    }
-
-    /* ─── Oscilloscope overlay ─────────────────────────────────────── */
-
-    .scope-overlay {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      right: 12px;
-      height: 220px;
-      background: rgba(10, 14, 23, 0.92);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      z-index: 5;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    }
-
-    .scope-overlay[hidden] { display: none; }
-
-    #scope-canvas {
-      flex: 1;
-      display: block;
-      min-height: 0;
-    }
-
-    .scope-stats {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      padding: 6px 14px;
-      font-size: 11px;
-      border-top: 1px solid var(--border);
-      background: var(--panel);
-      flex-shrink: 0;
-    }
-
-    .scope-stats span {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 6px;
-    }
-
-    .scope-stats b {
-      color: var(--text-muted);
-      font-weight: 500;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .scope-stats em {
-      color: var(--accent);
-      font-style: normal;
-      font-weight: 600;
-      font-family: var(--mono);
-      font-size: 11px;
-    }
-
-    .scope-close {
-      margin-left: auto;
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      font-size: 16px;
-      cursor: pointer;
-      width: 22px;
-      height: 22px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.12s;
-      line-height: 1;
-      padding: 0;
-    }
-
-    .scope-close:hover {
-      background: var(--panel-2);
-      color: var(--text);
-    }
-
-    /* ─── Bottom panel ──────────────────────────────────────────────── */
-
-    .bottom-panel {
-      height: 260px;
-      border-top: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-      background: var(--panel);
-    }
-
-    .bottom-tabs {
-      display: flex;
-      align-items: center;
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
-      padding: 0 10px;
-      gap: 2px;
-      flex-shrink: 0;
-      height: 32px;
-    }
-
-    .bottom-tabs .tab {
-      background: transparent;
-      color: var(--text-muted);
-      border: none;
-      padding: 0 14px;
-      cursor: pointer;
-      font-size: 11px;
-      font-family: inherit;
-      font-weight: 500;
-      border-bottom: 2px solid transparent;
-      transition: all 0.12s;
-      height: 32px;
-      letter-spacing: 0.2px;
-    }
-
-    .bottom-tabs .tab:hover { color: var(--text); }
-
-    .bottom-tabs .tab.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-    }
-
-    .bottom-tabs .tab-actions {
-      margin-left: auto;
-      display: flex;
-      gap: 4px;
-      align-items: center;
-    }
-
-    .bottom-tabs .tab-actions button {
-      background: transparent;
-      color: var(--text-muted);
-      border: 1px solid var(--border);
-      padding: 4px 10px;
-      border-radius: var(--radius);
-      cursor: pointer;
-      font-size: 11px;
-      font-family: inherit;
-      transition: all 0.12s;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      height: 24px;
-    }
-
-    .bottom-tabs .tab-actions button svg {
-      width: 10px; height: 10px;
-      stroke: currentColor; fill: none; stroke-width: 1.8;
-    }
-
-    .bottom-tabs .tab-actions button:hover {
-      background: var(--panel-2);
-      color: var(--text);
-      border-color: var(--border-strong);
-    }
-
-    .bottom-tabs .tab-actions .run-btn:hover {
-      color: var(--accent);
-      border-color: var(--accent);
-      background: var(--accent-dim);
-    }
-
-    .tab-content {
-      flex: 1;
-      overflow: hidden;
-      display: none;
-      min-height: 0;
-    }
-
-    .tab-content.active { display: flex; }
-
-    .editor-area {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    .editor-area-content {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    #console-output {
-      flex: 2;
-      background: var(--bg);
-      border-left: 1px solid var(--border);
-      padding: 8px 12px;
-      overflow-y: auto;
-      font-family: var(--mono);
-      font-size: 11px;
-      line-height: 1.6;
-      color: var(--text-muted);
-    }
-
-    #console-output .log-line { color: var(--text); }
-    #console-output .error-line { color: var(--danger); }
-    #console-output .warn-line { color: var(--warn); }
-
-    #chart-content { position: relative; }
-
-    #chart-content .chart-close-btn {
-      position: absolute;
-      top: 6px;
-      right: 8px;
-      z-index: 5;
-      background: var(--panel-2);
-      color: var(--text-muted);
-      border: 1px solid var(--border);
-      padding: 2px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 11px;
-    }
-
-    #chart-content .chart-close-btn:hover {
-      background: var(--panel-3);
-      color: var(--text);
-    }
-
-    #chart-canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-
-    /* ─── Sidebar (right: properties) ──────────────────────────────── */
-
-    .sidebar {
-      width: 272px;
-      background: var(--panel);
-      border-left: 1px solid var(--border);
-      padding: 14px 16px;
-      overflow-y: auto;
-      font-size: 12px;
-      flex-shrink: 0;
-    }
-
-    .sidebar h2 {
-      font-size: 10px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-      font-weight: 600;
-    }
-
-    .sidebar .prop-group { margin-bottom: 12px; }
-
-    .sidebar label {
-      display: block;
-      font-size: 9.5px;
-      color: var(--text-muted);
-      margin-bottom: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      font-weight: 500;
-    }
-
-    .sidebar input {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 6px 9px;
-      border-radius: var(--radius);
-      font-size: 12px;
-      font-family: inherit;
-      transition: all 0.12s;
-    }
-
-    .sidebar input:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px var(--accent-dim);
-    }
-
-    .results { margin-top: 16px; }
-
-    .results .result-item {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      padding: 7px 10px;
-      border-radius: var(--radius);
-      margin-bottom: 4px;
-      font-family: var(--mono);
-      font-size: 11px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .results .result-item .comp-name {
-      color: var(--accent);
-      font-weight: 600;
-      min-width: 50px;
-    }
-
-    .results .result-item .value { color: var(--warn); }
-
-    .sidebar .sim-controls {
-      margin-top: 18px;
-      padding-top: 14px;
-      border-top: 1px solid var(--border);
-    }
-
-    .sidebar .sim-controls h2 {
-      color: var(--text-muted);
-      border-bottom-color: var(--border);
-    }
-
-    /* ─── Status bar ────────────────────────────────────────────────── */
-
-    .status-bar {
-      background: var(--panel);
-      padding: 4px 14px;
-      font-size: 10.5px;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      border-top: 1px solid var(--border);
-      height: 24px;
-      flex-shrink: 0;
-    }
-
-    .status-bar .spacer { flex: 1; }
-
-    .status-bar .stat {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 4px;
-      font-family: var(--mono);
-      font-size: 10.5px;
-    }
-
-    .status-bar .stat b {
-      color: var(--text-dim);
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-family: var(--sans);
-      font-size: 9.5px;
-    }
-
-    .status-bar .stat em {
-      color: var(--text);
-      font-style: normal;
-    }
-
-    /* ─── Dialogs ───────────────────────────────────────────────────── */
-
-    #value-dialog, #project-dialog {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.65);
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-    }
-
-    #value-dialog.visible, #project-dialog.visible { display: flex; }
-
-    #value-dialog .dialog-box, #project-dialog .dialog-box {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 22px;
-      min-width: 320px;
-      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-    }
-
-    #project-dialog .dialog-box {
-      min-width: 380px;
-      max-width: 500px;
-      max-height: 70vh;
-    }
-
-    #value-dialog .dialog-box h3, #project-dialog .dialog-box h3 {
-      color: var(--text);
-      margin-bottom: 16px;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    #value-dialog .dialog-box input {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 9px 12px;
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-family: var(--mono);
-      margin-bottom: 16px;
-    }
-
-    #value-dialog .dialog-box input:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-dim);
-    }
-
-    #value-dialog .dialog-buttons, #project-dialog .dialog-buttons {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-      margin-top: 16px;
-    }
-
-    #value-dialog .dialog-buttons button, #project-dialog .dialog-buttons button {
-      padding: 7px 18px;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      cursor: pointer;
-      font-size: 12px;
-      font-family: inherit;
-      font-weight: 500;
-      background: transparent;
-      color: var(--text-muted);
-      transition: all 0.12s;
-    }
-
-    #value-dialog .dialog-buttons .btn-ok, #project-dialog .dialog-buttons .btn-ok {
-      background: var(--accent-dim);
-      color: var(--accent);
-      border-color: var(--accent);
-    }
-
-    #value-dialog .dialog-buttons .btn-ok:hover,
-    #project-dialog .dialog-buttons .btn-ok:hover {
-      background: var(--accent-dim-strong);
-    }
-
-    #value-dialog .dialog-buttons .btn-cancel:hover,
-    #project-dialog .dialog-buttons .btn-cancel:hover {
-      background: var(--panel-2);
-      color: var(--text);
-      border-color: var(--border-strong);
-    }
-
-    /* ─── Project menu dropdown ─────────────────────────────────────── */
-
-    .project-menu-wrapper { position: relative; }
-
-    .project-dropdown {
-      display: none;
-      position: absolute;
-      top: 100%;
-      left: 0;
-      margin-top: 4px;
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      min-width: 190px;
-      z-index: 50;
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
-      overflow: hidden;
-      padding: 4px;
-    }
-
-    .project-dropdown.visible { display: block; }
-
-    .project-dropdown button {
-      display: block;
-      width: 100%;
-      background: transparent;
-      color: var(--text-muted);
-      border: none;
-      padding: 7px 12px;
-      text-align: left;
-      cursor: pointer;
-      font-size: 12px;
-      font-family: inherit;
-      border-radius: 4px;
-      transition: all 0.12s;
-    }
-
-    .project-dropdown button:hover {
-      background: var(--panel-3);
-      color: var(--text);
-    }
-
-    .project-dropdown hr {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 4px 0;
-    }
-
-    /* ─── File tabs bar ─────────────────────────────────────────────── */
-
-    .file-tabs-bar {
-      display: flex;
-      align-items: center;
-      background: var(--bg);
-      border-bottom: 1px solid var(--border);
-      height: 28px;
-      overflow-x: auto;
-      flex-shrink: 0;
-      scrollbar-width: none;
-    }
-
-    .file-tabs-bar::-webkit-scrollbar { display: none; }
-
-    .file-tab {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 12px;
-      font-size: 11px;
-      color: var(--text-muted);
-      cursor: pointer;
-      border-right: 1px solid var(--border);
-      white-space: nowrap;
-      user-select: none;
-      transition: all 0.12s;
-      height: 28px;
-    }
-
-    .file-tab:hover { color: var(--text); background: var(--panel-2); }
-
-    .file-tab.active {
-      color: var(--accent);
-      background: var(--panel);
-    }
-
-    .file-tab.drag-over { border-left: 2px solid var(--accent); }
-    .file-tab.dragging { opacity: 0.4; }
-
-    .file-tab .close-btn {
-      font-size: 13px;
-      line-height: 1;
-      opacity: 0;
-      transition: opacity 0.12s;
-      color: var(--text-muted);
-    }
-
-    .file-tab:hover .close-btn { opacity: 0.7; }
-    .file-tab .close-btn:hover { opacity: 1; color: var(--danger); }
-
-    .file-tab-add {
-      color: var(--text-dim);
-      font-size: 14px;
-      font-weight: bold;
-      padding: 4px 10px;
-      cursor: pointer;
-      border-right: none;
-    }
-
-    .file-tab-add:hover { color: var(--accent); background: var(--panel-2); }
-
-    /* ─── Code editor with line numbers ─────────────────────────────── */
-
-    .code-editor-wrapper {
-      flex: 3;
-      display: flex;
-      position: relative;
-      overflow: hidden;
-      background: var(--panel);
-    }
-
-    .line-numbers {
-      width: 42px;
-      background: var(--bg);
-      color: var(--text-dim);
-      font-family: var(--mono);
-      font-size: 12px;
-      line-height: 1.5;
-      padding: 10px 8px 10px 0;
-      text-align: right;
-      overflow: hidden;
-      user-select: none;
-      flex-shrink: 0;
-      white-space: pre;
-      border-right: 1px solid var(--border);
-    }
-
-    .editor-highlight {
-      position: absolute;
-      top: 0;
-      left: 42px;
-      right: 0;
-      bottom: 0;
-      margin: 0;
-      padding: 10px 12px;
-      font-family: var(--mono);
-      font-size: 12px;
-      line-height: 1.5;
-      overflow: hidden;
-      pointer-events: none;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      color: var(--text);
-      tab-size: 2;
-      z-index: 1;
-    }
-
-    .editor-highlight .hl-keyword { color: #c084fc; }
-    .editor-highlight .hl-string { color: #86efac; }
-    .editor-highlight .hl-number { color: var(--warn); }
-    .editor-highlight .hl-comment { color: var(--text-dim); font-style: italic; }
-
-    #code-editor {
-      flex: 1;
-      background: transparent;
-      color: transparent;
-      caret-color: var(--text);
-      border: none;
-      padding: 10px 12px;
-      font-family: var(--mono);
-      font-size: 12px;
-      line-height: 1.5;
-      resize: none;
-      outline: none;
-      tab-size: 2;
-      position: relative;
-      z-index: 2;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-
-    /* ─── Project list (in project dialog) ──────────────────────────── */
-
-    .project-list {
-      max-height: 300px;
-      overflow-y: auto;
-    }
-
-    .project-list-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 10px;
-      border-radius: var(--radius);
-      margin-bottom: 4px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-    }
-
-    .project-list-item:hover { background: var(--panel-2); }
-
-    .project-list-name {
-      color: var(--text);
-      font-size: 12px;
-    }
-
-    .project-list-actions {
-      display: flex;
-      gap: 6px;
-    }
-
-    .project-list-open, .project-list-delete {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 4px 10px !important;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 11px !important;
-      min-width: auto !important;
-      width: auto !important;
-      font-family: inherit;
-    }
-
-    .project-list-open:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: var(--accent-dim) !important;
-    }
-
-    .project-list-delete:hover {
-      border-color: var(--danger);
-      color: var(--danger);
-      background: var(--danger-bg) !important;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Circuit Forge — código vira circuito</title>
+<meta name="description" content="Simulador de circuitos analógicos 100% no navegador + o loop de verificação para agentes LLM: lint → op → tran, diagnósticos com código estável e hints verificados por simulação.">
+<link rel="icon" href="/favicon.svg">
+<style>
+  :root{
+    --bg:#0a0e17; --bg-deep:#070a12; --panel:#0f172a; --panel-2:#111a2e;
+    --border:#1e293b; --border-strong:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --dim:#64748b;
+    --accent:#22d3ee; --current:#fbbf24; --green:#34d399; --red:#f87171; --violet:#a78bfa;
+    --sans:-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    --mono:'SF Mono','Fira Code','JetBrains Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:84px;overflow-x:hidden}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    line-height:1.65; overflow-x:hidden; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .container{max-width:1120px;margin:0 auto;padding:0 24px}
+
+  /* ---------- glows de fundo ---------- */
+  .glow{position:absolute;pointer-events:none;border-radius:50%;filter:blur(90px);z-index:0}
+  .glow-hero{top:-160px;right:-120px;width:560px;height:560px;background:radial-gradient(circle,rgba(34,211,238,.14),transparent 65%)}
+  .glow-hero2{top:280px;left:-200px;width:520px;height:520px;background:radial-gradient(circle,rgba(167,139,250,.10),transparent 65%)}
+  .glow-mid{width:640px;height:640px;left:50%;transform:translateX(-50%);background:radial-gradient(circle,rgba(34,211,238,.07),transparent 65%)}
+
+  /* ---------- nav ---------- */
+  nav{
+    position:fixed;top:0;left:0;right:0;z-index:50;
+    background:rgba(10,14,23,.78); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-inner{max-width:1120px;margin:0 auto;padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;color:var(--text)}
+  .brand:hover{text-decoration:none}
+  .brand svg{display:block}
+  .nav-links{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+  .nav-links a{color:var(--muted);font-size:14.5px;font-weight:500;transition:color .15s}
+  .nav-links a:hover{color:var(--accent);text-decoration:none}
+
+  /* ---------- seções / tipografia ---------- */
+  section{position:relative;padding:96px 0}
+  .section-title{
+    font-size:clamp(28px,4vw,38px); font-weight:800; letter-spacing:-.02em; line-height:1.15;
+    background:linear-gradient(90deg,var(--accent),var(--violet));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    margin-bottom:14px;
+  }
+  .section-lead{color:var(--muted);font-size:17px;max-width:680px;margin-bottom:48px}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;padding:160px 0 96px}
+  .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;position:relative;z-index:1}
+  .badge{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:12px;color:var(--muted);
+    border:1px solid var(--border-strong);border-radius:999px;padding:5px 14px;margin-bottom:22px;
+    background:rgba(15,23,42,.6);
+  }
+  .badge::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+  h1{
+    font-size:clamp(40px,6vw,62px);font-weight:800;letter-spacing:-.03em;line-height:1.06;margin-bottom:22px;
+    background:linear-gradient(100deg,var(--text) 10%,var(--accent) 55%,var(--violet) 95%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .hero-sub{color:var(--muted);font-size:18.5px;max-width:520px;margin-bottom:34px}
+  .hero-sub strong{color:var(--text);font-weight:600}
+  .cta-row{display:flex;gap:14px;flex-wrap:wrap}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;border-radius:999px;
+    padding:12px 26px;font-size:15.5px;font-weight:700;transition:all .18s;cursor:pointer;
+  }
+  .btn:hover{text-decoration:none}
+  .btn-primary{background:var(--accent);color:#0a0e17;border:1px solid var(--accent)}
+  .btn-primary:hover{box-shadow:0 0 24px rgba(34,211,238,.55);transform:translateY(-1px)}
+  .btn-secondary{background:transparent;color:var(--text);border:1px solid var(--border-strong)}
+  .btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+
+  .hero-visual{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .circuit-panel,.scope-panel{
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;
+  }
+  #heroCircuit{display:block;width:100%;aspect-ratio:460/360}
+  #heroScope{display:block;width:100%;aspect-ratio:460/120;background:var(--bg-deep);border-radius:8px}
+  .scope-caption{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px;display:flex;justify-content:space-between}
+  .scope-caption .live{color:var(--green)}
+
+  /* ---------- cards genéricos ---------- */
+  .card{
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px;
+    transition:border-color .18s, transform .18s, box-shadow .18s;
+  }
+  .card:hover{border-color:var(--border-strong);transform:translateY(-2px);box-shadow:0 8px 32px rgba(34,211,238,.12)}
+
+  /* ---------- o loop ---------- */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:48px}
+  .step-num{
+    font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent);
+    border:1px solid var(--border-strong);border-radius:999px;width:32px;height:32px;
+    display:flex;align-items:center;justify-content:center;margin-bottom:16px;
+    background:rgba(34,211,238,.06);
+  }
+  .steps h3{font-size:19px;margin-bottom:8px;letter-spacing:-.01em}
+  .steps p{color:var(--muted);font-size:14.5px}
+  .steps code{font-family:var(--mono);font-size:.92em;color:var(--accent)}
+
+  /* ---------- terminal ---------- */
+  .terminal{
+    background:var(--bg-deep);border:1px solid var(--border);border-radius:12px;overflow:hidden;
+    box-shadow:0 16px 48px rgba(0,0,0,.45);
+  }
+  .term-bar{display:flex;align-items:center;gap:7px;padding:11px 16px;border-bottom:1px solid var(--border)}
+  .term-bar .d{width:11px;height:11px;border-radius:50%}
+  .d-r{background:#f87171}.d-a{background:#fbbf24}.d-g{background:#34d399}
+  .term-title{margin-left:10px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .term-body{
+    font-family:var(--mono);font-size:13px;line-height:1.75;color:var(--text);
+    padding:20px 22px;overflow-x:auto;white-space:pre;
+  }
+  .t-cmd{color:var(--accent)}
+  .t-ok{color:var(--green)}
+  .t-err{color:var(--red)}
+  .t-code{color:var(--current)}
+  .t-dim{color:var(--dim)}
+
+  /* ---------- features ---------- */
+  .features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .feature-icon{
+    width:46px;height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    background:rgba(34,211,238,.08);border:1px solid var(--border);margin-bottom:16px;
+  }
+  .features-grid h3{font-size:17px;margin-bottom:8px;letter-spacing:-.01em}
+  .features-grid p{color:var(--muted);font-size:14.5px}
+  .features-grid code{font-family:var(--mono);font-size:.9em;color:var(--accent)}
+
+  /* ---------- exemplos ---------- */
+  .examples-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .example-card{display:flex;flex-direction:column}
+  .schem-wrap{background:var(--bg-deep);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:18px}
+  .schem-wrap svg{display:block;width:100%;height:auto}
+  .example-card h3{font-size:17px;margin-bottom:6px}
+  .example-card p{color:var(--muted);font-size:14px;margin-bottom:16px;flex:1}
+  .example-link{font-size:14px;font-weight:600}
+  .schem-label{font-family:var(--mono);font-size:10px;fill:var(--dim)}
+
+  /* ---------- agentes ---------- */
+  .agents-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:stretch}
+  .codeblock{
+    background:var(--bg-deep);border:1px solid var(--border);border-radius:12px;overflow:hidden;
+    display:flex;flex-direction:column;min-width:0;
+  }
+  .codeblock-head{
+    font-family:var(--mono);font-size:12px;color:var(--dim);
+    padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:12px;
+  }
+  .codeblock-head .lang{color:var(--accent)}
+  .codeblock pre{
+    font-family:var(--mono);font-size:12.5px;line-height:1.7;color:var(--text);
+    padding:18px 20px;overflow-x:auto;flex:1;
+  }
+  .k{color:var(--violet)}      /* keyword */
+  .s{color:var(--current)}     /* string */
+  .c{color:var(--dim);font-style:italic} /* comentário */
+  .f{color:var(--accent)}      /* função / chave */
+  .n{color:var(--green)}       /* número / pass */
+  .r{color:var(--red)}         /* fail */
+  .agents-caption{
+    margin-top:26px;text-align:center;color:var(--muted);font-size:15.5px;
+  }
+  .agents-caption strong{color:var(--text)}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--border);padding:44px 0;position:relative}
+  .footer-inner{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  .footer-brand{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px}
+  .footer-brand b{color:var(--text)}
+  .footer-links{display:flex;gap:22px;flex-wrap:wrap}
+  .footer-links a{color:var(--muted);font-size:14px}
+  .footer-links a:hover{color:var(--accent)}
+  .footer-note{width:100%;margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .footer-note .t-ok{color:var(--green)}
+
+  /* ---------- responsivo ---------- */
+  @media (max-width: 960px){
+    .hero-grid{grid-template-columns:1fr;gap:44px}
+    .hero{padding-top:130px}
+    .hero-visual{max-width:520px}
+    .steps{grid-template-columns:1fr}
+    .features-grid{grid-template-columns:repeat(2,1fr)}
+    .examples-grid{grid-template-columns:repeat(2,1fr)}
+    .agents-grid{grid-template-columns:1fr}
+  }
+  @media (max-width: 620px){
+    section{padding:72px 0}
+    .nav-inner{height:auto;padding:10px 16px;flex-direction:column;align-items:flex-start;gap:8px}
+    .nav-links{gap:16px}
+    html{scroll-padding-top:110px}
+    .hero{padding-top:150px}
+    .features-grid,.examples-grid{grid-template-columns:1fr}
+  }
+</style>
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M12 1v6M12 17v6M1 12h6M17 12h6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/>
+
+<!-- ======================= NAV ======================= -->
+<nav>
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <svg width="26" height="26" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <path d="M4 32h10l5-13 8 26 8-26 8 26 5-13h12" stroke="#22d3ee" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="9" cy="32" r="4.5" fill="#fbbf24"/>
       </svg>
-      <h1>Circuit Forge</h1>
+      Circuit Forge
+    </a>
+    <div class="nav-links">
+      <a href="app.html">Simulador</a>
+      <a href="docs.html">Documentação</a>
+      <a href="index.html#exemplos">Exemplos</a>
+      <a href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener">GitHub</a>
     </div>
-    <div class="actions">
-      <div class="project-menu-wrapper">
-        <button id="btn-project">
-          <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v11H3z"/></svg>
-          Projeto
-          <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-        </button>
-        <div class="project-dropdown" id="project-dropdown">
-          <button data-action="new">Novo Projeto</button>
-          <button data-action="save">Salvar</button>
-          <button data-action="save-as">Salvar Como...</button>
-          <hr/>
-          <button data-action="open">Abrir Projeto...</button>
-          <hr/>
-          <button data-action="export">Exportar JSON</button>
-          <button data-action="import">Importar JSON</button>
-          <hr/>
-          <button data-action="examples">Exemplos</button>
-        </div>
-      </div>
-      <div class="sep-v"></div>
-      <button class="act primary" id="btn-play" title="Iniciar/pausar simulação (espaço)">
-        <svg id="btn-play-icon" viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
-        <span id="btn-play-label">Play</span>
-      </button>
-      <div class="time-scale" title="Escala de tempo da simulação (s simulado / s real)">
-        <span class="time-scale-label">Tempo</span>
-        <input type="range" id="time-scale" min="-3" max="2" step="0.1" value="-1" />
-        <span class="time-scale-value" id="time-scale-value">100 ms/s</span>
-      </div>
-      <button class="act" id="btn-demo" title="Carregar demo RLC">Demo RLC</button>
-      <button class="act act-danger" id="btn-clear" title="Limpar circuito">Limpar</button>
-    </div>
-  </header>
-
-  <div class="main">
-    <!-- Left tool rail: components + tools -->
-    <aside class="tool-rail" id="toolbar">
-      <button class="tool active" data-tool="select" title="Selecionar (esc)">
-        <svg viewBox="0 0 28 28">
-          <path d="M7 5L7 22 L11.5 17.5 L14.5 23.5 L17.5 22 L14.5 16 L20 16 Z"/>
-        </svg>
-        <span>Selec.</span>
-      </button>
-      <div class="tool-sep"></div>
-      <button class="tool" data-tool="VoltageSource" title="Fonte de tensão">
-        <svg viewBox="0 0 28 28">
-          <circle cx="14" cy="14" r="8"/>
-          <line x1="11" y1="10" x2="17" y2="10"/>
-          <line x1="14" y1="7" x2="14" y2="13"/>
-          <line x1="11" y1="18" x2="17" y2="18"/>
-        </svg>
-        <span>Fonte V</span>
-      </button>
-      <button class="tool" data-tool="CurrentSource" title="Fonte de corrente">
-        <svg viewBox="0 0 28 28">
-          <circle cx="14" cy="14" r="8"/>
-          <line x1="14" y1="9" x2="14" y2="19"/>
-          <path d="M10 15 L14 19 L18 15"/>
-        </svg>
-        <span>Fonte I</span>
-      </button>
-      <div class="tool-sep"></div>
-      <button class="tool" data-tool="Resistor" title="Resistor">
-        <svg viewBox="0 0 28 28">
-          <line x1="1" y1="14" x2="5" y2="14"/>
-          <polyline points="5,14 7,10 10,18 13,10 16,18 19,10 22,18 23,14 27,14"/>
-        </svg>
-        <span>Resistor</span>
-      </button>
-      <button class="tool" data-tool="Capacitor" title="Capacitor">
-        <svg viewBox="0 0 28 28">
-          <line x1="1" y1="14" x2="12" y2="14"/>
-          <line x1="12" y1="7" x2="12" y2="21"/>
-          <line x1="16" y1="7" x2="16" y2="21"/>
-          <line x1="16" y1="14" x2="27" y2="14"/>
-        </svg>
-        <span>Capac.</span>
-      </button>
-      <button class="tool" data-tool="Inductor" title="Indutor">
-        <svg viewBox="0 0 28 28">
-          <line x1="1" y1="16" x2="5" y2="16"/>
-          <path d="M5 16 Q7.5 8, 10 16 Q12.5 8, 15 16 Q17.5 8, 20 16 Q22.5 8, 23 16"/>
-          <line x1="23" y1="16" x2="27" y2="16"/>
-        </svg>
-        <span>Indutor</span>
-      </button>
-      <div class="tool-sep"></div>
-      <button class="tool" data-tool="Diode" title="Diodo">
-        <svg viewBox="0 0 28 28">
-          <line x1="1" y1="14" x2="9" y2="14"/>
-          <path d="M9 8 L9 20 L19 14 Z" fill="currentColor" fill-opacity="0.15"/>
-          <line x1="19" y1="8" x2="19" y2="20"/>
-          <line x1="19" y1="14" x2="27" y2="14"/>
-        </svg>
-        <span>Diodo</span>
-      </button>
-      <button class="tool" data-tool="LED" title="LED">
-        <svg viewBox="0 0 28 28">
-          <line x1="1" y1="18" x2="7" y2="18"/>
-          <path d="M7 12 L7 24 L17 18 Z" fill="currentColor" fill-opacity="0.15"/>
-          <line x1="17" y1="12" x2="17" y2="24"/>
-          <line x1="17" y1="18" x2="24" y2="18"/>
-          <path d="M18 9 L22 5 M22 5 L19.5 5 M22 5 L22 7.5"/>
-          <path d="M13 9 L17 5 M17 5 L14.5 5 M17 5 L17 7.5"/>
-        </svg>
-        <span>LED</span>
-      </button>
-      <div class="tool-sep"></div>
-      <button class="tool" data-tool="Switch" title="Switch SPDT (3 terminais)">
-        <svg viewBox="0 0 28 28">
-          <line x1="2" y1="14" x2="8" y2="14"/>
-          <circle cx="8" cy="14" r="2" fill="currentColor"/>
-          <line x1="8" y1="14" x2="20" y2="8"/>
-          <circle cx="20" cy="8" r="2" fill="currentColor"/>
-          <circle cx="20" cy="20" r="2" fill="currentColor"/>
-          <line x1="20" y1="8" x2="26" y2="8"/>
-          <line x1="20" y1="20" x2="26" y2="20"/>
-        </svg>
-        <span>Switch</span>
-      </button>
-      <button class="tool" data-tool="Button" title="Push-button (momentary)">
-        <svg viewBox="0 0 28 28">
-          <line x1="2" y1="18" x2="9" y2="18"/>
-          <circle cx="9" cy="18" r="2" fill="currentColor"/>
-          <line x1="9" y1="18" x2="19" y2="18"/>
-          <circle cx="19" cy="18" r="2" fill="currentColor"/>
-          <line x1="19" y1="18" x2="26" y2="18"/>
-          <line x1="6" y1="11" x2="22" y2="11"/>
-          <line x1="14" y1="11" x2="14" y2="6"/>
-          <circle cx="14" cy="4" r="2"/>
-        </svg>
-        <span>Button</span>
-      </button>
-      <div class="tool-sep"></div>
-      <button class="tool" data-tool="wire" title="Fio">
-        <svg viewBox="0 0 28 28">
-          <path d="M4 8 L14 8 L14 20 L24 20"/>
-          <circle cx="4" cy="8" r="2" fill="currentColor"/>
-          <circle cx="24" cy="20" r="2" fill="currentColor"/>
-        </svg>
-        <span>Fio</span>
-      </button>
-      <button class="tool" data-tool="Ground" title="Terra (GND)">
-        <svg viewBox="0 0 28 28">
-          <line x1="14" y1="4" x2="14" y2="14"/>
-          <line x1="6" y1="14" x2="22" y2="14"/>
-          <line x1="9" y1="18" x2="19" y2="18"/>
-          <line x1="12" y1="22" x2="16" y2="22"/>
-        </svg>
-        <span>GND</span>
-      </button>
-      <button class="tool" data-tool="probe" title="Probe (ponta de prova)">
-        <svg viewBox="0 0 28 28">
-          <path d="M14 4 L22 14 L14 24 L6 14 Z"/>
-          <circle cx="14" cy="14" r="2.5" fill="currentColor"/>
-        </svg>
-        <span>Probe</span>
-      </button>
-      <div class="tool-sep"></div>
-      <button class="tool" id="btn-rotate" title="Rotacionar 90° (R)">
-        <svg viewBox="0 0 28 28">
-          <path d="M5 14 A9 9 0 1 1 14 23"/>
-          <path d="M10 23 L14 23 L14 19"/>
-        </svg>
-        <span>Rodar</span>
-      </button>
-    </aside>
-
-    <div class="canvas-area">
-      <div class="scope-overlay" id="scope-overlay" hidden>
-        <canvas id="scope-canvas"></canvas>
-        <div class="scope-stats">
-          <span><b>Max</b><em id="scope-max">—</em></span>
-          <span><b>Min</b><em id="scope-min">—</em></span>
-          <span><b>Range</b><em id="scope-range">—</em></span>
-          <span><b>Freq</b><em id="scope-freq">—</em></span>
-          <span><b>RMS</b><em id="scope-rms">—</em></span>
-          <button class="scope-close" id="scope-close" title="Fechar osciloscópio">×</button>
-        </div>
-      </div>
-      <canvas id="canvas"></canvas>
-      <div class="bottom-panel" id="bottom-panel">
-        <div class="bottom-tabs">
-          <button class="tab active" data-tab="editor">Editor</button>
-          <button class="tab" data-tab="chart">Gráfico</button>
-          <div class="tab-actions">
-            <button class="run-btn" id="btn-run-code" title="Executar código">
-              <svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
-              Executar
-            </button>
-            <button class="gen-btn" id="btn-gen-code" title="Gerar código do circuito atual">Gerar Código</button>
-          </div>
-        </div>
-        <div class="tab-content active" id="editor-content" data-tab="editor">
-          <div class="editor-area">
-            <textarea id="code-editor" spellcheck="false"></textarea>
-            <div id="console-output"></div>
-          </div>
-        </div>
-        <div class="tab-content" id="chart-content" data-tab="chart">
-          <canvas id="chart-canvas"></canvas>
-        </div>
-      </div>
-    </div>
-
-    <aside class="sidebar" id="sidebar">
-      <h2>Propriedades</h2>
-      <div id="props-content">
-        <p style="color: var(--text-dim); font-size: 12px;">Selecione um componente</p>
-      </div>
-      <div class="results" id="results"></div>
-      <div class="sim-controls">
-        <h2>Transiente</h2>
-        <div class="prop-group">
-          <label>Passo (s)</label>
-          <input type="text" id="sim-dt" value="1e-6" />
-        </div>
-        <div class="prop-group">
-          <label>Duração (s)</label>
-          <input type="text" id="sim-duration" value="5e-3" />
-        </div>
-      </div>
-    </aside>
   </div>
+</nav>
 
-  <div class="status-bar">
-    <span id="status-text">Pronto</span>
-    <span class="spacer"></span>
-    <span class="stat"><b>X</b><em id="mouse-x">0</em></span>
-    <span class="stat"><b>Y</b><em id="mouse-y">0</em></span>
-    <span class="stat"><b>Zoom</b><em id="zoom-level">100%</em></span>
-  </div>
-
-  <div id="value-dialog">
-    <div class="dialog-box">
-      <h3 id="dialog-title">Valor do componente</h3>
-      <input type="text" id="dialog-input" />
-      <div class="dialog-buttons">
-        <button class="btn-cancel" id="dialog-cancel">Cancelar</button>
-        <button class="btn-ok" id="dialog-ok">OK</button>
+<!-- ======================= HERO ======================= -->
+<header class="hero">
+  <div class="glow glow-hero"></div>
+  <div class="glow glow-hero2"></div>
+  <div class="container">
+    <div class="hero-grid">
+      <div>
+        <span class="badge">open source · 100% no navegador · sem backend</span>
+        <h1>Código vira circuito.</h1>
+        <p class="hero-sub">
+          Simule circuitos analógicos direto no navegador, descreva-os em <strong>TypeScript</strong>
+          e deixe <strong>agentes de IA</strong> iterarem até funcionar — com diagnósticos que apontam
+          a linha e hints <strong>verificados por simulação</strong>.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="app.html">Abrir o simulador</a>
+          <a class="btn btn-secondary" href="docs.html">Ver a documentação</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="circuit-panel">
+          <canvas id="heroCircuit" aria-label="Animação de um circuito: bateria de 5 volts, resistor e LED, com pontos de corrente percorrendo o laço"></canvas>
+        </div>
+        <div class="scope-panel">
+          <canvas id="heroScope" aria-label="Mini-osciloscópio com curva de carga RC animada"></canvas>
+          <div class="scope-caption"><span>v(C1) — carga RC · 1 V/div · 1 ms/div</span><span class="live">● tran</span></div>
+        </div>
       </div>
     </div>
   </div>
+</header>
 
-  <div id="project-dialog">
-    <div class="dialog-box">
-      <h3 id="project-dialog-title">Projeto</h3>
-      <div id="project-dialog-body"></div>
-      <div class="dialog-buttons">
-        <button class="btn-cancel" id="project-dialog-cancel">Cancelar</button>
-        <button class="btn-ok" id="project-dialog-ok">OK</button>
+<!-- ======================= O LOOP ======================= -->
+<section id="loop">
+  <div class="glow glow-mid" style="top:-80px"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <h2 class="section-title">O loop que fez o vibecoding funcionar — agora para eletrônica</h2>
+    <p class="section-lead">
+      Compile → simule → assert → diagnóstico estruturado. Uma bancada <code style="font-family:var(--mono);color:var(--accent);font-size:.92em">.bench.ts</code>
+      descreve circuito + spec; o <b>forge</b> fecha o ciclo em segundos, sem sair do terminal.
+    </p>
+
+    <div class="steps">
+      <div class="card">
+        <div class="step-num">1</div>
+        <h3>Escreva</h3>
+        <p>Descreva o circuito e o spec numa bancada: componentes com pinos nomeados
+           (<code>anode</code>, <code>+</code>), parâmetros livres com <code>tb.param</code>
+           e asserções como testes.</p>
+      </div>
+      <div class="card">
+        <div class="step-num">2</div>
+        <h3>Verifique</h3>
+        <p><code>forge verify</code> sobe a escada <code>lint → op → tran</code> com fail-fast.
+           O lint analisa a topologia como grafo <em>antes</em> do solver — <code>singular matrix</code>
+           nunca chega até você.</p>
+      </div>
+      <div class="card">
+        <div class="step-num">3</div>
+        <h3>Corrija</h3>
+        <p>Cada falha traz código estável, linha no fonte e hint <em>verificado por simulação</em>.
+           Aplique com <code>--set</code>, rode de novo, fique verde.</p>
       </div>
     </div>
+
+    <div class="terminal">
+      <div class="term-bar">
+        <span class="d d-r"></span><span class="d d-a"></span><span class="d d-g"></span>
+        <span class="term-title">forge — zsh</span>
+      </div>
+      <pre class="term-body"><span class="t-cmd">$ forge verify bench/led.bench.ts</span>
+  <span class="t-ok">✓</span> lint  <span class="t-ok">pass</span>
+  <span class="t-err">✗</span> op    <span class="t-err">fail</span>
+        <span class="t-code">A301</span> a1: D1.i within [8m, 12m] — measured <span class="t-code">28.039m</span> (2.34x)
+          <span class="t-dim">at bench/led.bench.ts:22</span>
+          <span class="t-ok">hint (verified):</span> R1 in [<span class="t-code">261</span>, <span class="t-code">316</span>] passes all op assertions — try <span class="t-code">R1 = 280</span>
+<span class="t-err">FAIL</span> · exit <span class="t-code">1</span>
+<span class="t-cmd">$ forge verify bench/led.bench.ts --set R1=280</span>
+  <span class="t-ok">✓</span> lint  <span class="t-ok">pass</span>
+  <span class="t-ok">✓</span> op    <span class="t-ok">pass</span>
+<span class="t-ok">PASS</span> · exit <span class="t-code">0</span></pre>
+    </div>
   </div>
+</section>
 
-  <input type="file" id="import-file-input" accept=".json" style="display:none" />
+<!-- ======================= FEATURES ======================= -->
+<section id="features">
+  <div class="container">
+    <h2 class="section-title">Um simulador de verdade, com ergonomia de compilador moderno</h2>
+    <p class="section-lead">Motor numérico próprio em TypeScript, validado contra soluções analíticas — e uma camada de diagnóstico pensada para quem itera: humano ou agente.</p>
+    <div class="features-grid">
 
-  <script type="module" src="/src/ui/main.ts"></script>
+      <div class="card">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 12C4 5 7 5 9.5 12s5.5 7 8 0c1-2.8 2.5-3.5 4.5-2.5"/>
+          </svg>
+        </div>
+        <h3>Simulação real no navegador</h3>
+        <p>Modified Nodal Analysis + Newton-Raphson, ponto de operação DC e transiente com Euler
+           implícito. 100% local, sem backend, sem token de nuvem.</p>
+      </div>
+
+      <div class="card">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1" fill="#22d3ee"/>
+          </svg>
+        </div>
+        <h3>Erros que ensinam</h3>
+        <p>Código estável (<code>F105</code>), localização no fonte
+           (<code>at bench/led.bench.ts:10</code>) e uma nota com a física do problema —
+           estilo rustc, detectado por lint de grafo antes do solver rodar.</p>
+      </div>
+
+      <div class="card">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16.5 9"/>
+          </svg>
+        </div>
+        <h3>Hints verificados por simulação</h3>
+        <p>Declare <code>tb.param('R1', …)</code> e, quando uma asserção falhar, a plataforma
+           varre a faixa, simula cada ponto e devolve o intervalo que <em>comprovadamente</em> passa.</p>
+      </div>
+
+      <div class="card">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 9l3 3-3 3M12 15h6"/>
+          </svg>
+        </div>
+        <h3>Feito para agentes LLM</h3>
+        <p>Exit codes com semântica (<code>0/1/2/3</code>), <code>--json</code> determinístico
+           (dois runs fazem diff limpo) e ledger de runs em <code>.forge/</code> contra o
+           context attrition.</p>
+      </div>
+
+      <div class="card">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>
+          </svg>
+        </div>
+        <h3>Componentes customizados</h3>
+        <p><code>defineComponent({ pins, params, stamp, onStep })</code> cria componentes via
+           código — incluindo não-lineares com estado interno, no mesmo motor dos built-ins.</p>
+      </div>
+
+      <div class="card">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/><circle cx="7" cy="12" r="2"/><path d="M15 9h4M15 12h4M15 15h2"/>
+          </svg>
+        </div>
+        <h3>Editor visual + código</h3>
+        <p>Canvas com corrente animada e osciloscópio, roteamento automático de fios com A*,
+           editor multi-arquivo com highlighting. O canvas é uma projeção do código — nunca o contrário.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ======================= EXEMPLOS ======================= -->
+<section id="exemplos">
+  <div class="glow glow-mid" style="top:40px"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <h2 class="section-title">Exemplos prontos para abrir</h2>
+    <p class="section-lead">Cada exemplo abre direto no editor — mexa nos valores, ligue a simulação e veja a corrente correr.</p>
+    <div class="examples-grid">
+
+      <!-- divisor-tensao -->
+      <div class="card example-card">
+        <div class="schem-wrap">
+          <svg viewBox="0 0 220 120" aria-hidden="true">
+            <g stroke="#22d3ee" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="110" cy="13" r="3"/>
+              <path d="M110 16v10"/>
+              <polyline points="110,26 118,31 102,38 118,45 102,52 110,56"/>
+              <path d="M110 56v6M110 62h56"/>
+              <circle cx="170" cy="62" r="3"/>
+              <path d="M110 62v6"/>
+              <polyline points="110,68 118,73 102,80 118,87 102,94 110,98"/>
+              <path d="M110 98v6M98 104h24M102 109h16M106 114h8"/>
+            </g>
+            <circle cx="110" cy="62" r="2.6" fill="#22d3ee"/>
+            <circle cx="110" cy="42" r="2.2" fill="#fbbf24"/>
+            <circle cx="110" cy="84" r="2.2" fill="#fbbf24"/>
+            <text x="126" y="44" class="schem-label">R1</text>
+            <text x="126" y="86" class="schem-label">R2</text>
+            <text x="120" y="16" class="schem-label">vin</text>
+            <text x="164" y="78" class="schem-label">out</text>
+          </svg>
+        </div>
+        <h3>Divisor de tensão</h3>
+        <p>Dois resistores em série: o "hello world" da lei de Ohm, com sonda no nó do meio.</p>
+        <a class="example-link" href="app.html?example=divisor-tensao">Abrir no simulador →</a>
+      </div>
+
+      <!-- rc-lowpass -->
+      <div class="card example-card">
+        <div class="schem-wrap">
+          <svg viewBox="0 0 220 120" aria-hidden="true">
+            <g stroke="#22d3ee" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="18" cy="50" r="3"/>
+              <path d="M21 50h13"/>
+              <polyline points="34,50 40,42 50,58 60,42 70,58 80,42 86,50"/>
+              <path d="M86 50h74"/>
+              <circle cx="166" cy="50" r="3"/>
+              <path d="M108 50v10M97 60h22M97 68h22M108 68v10M96 78h24M100 83h16M104 88h8"/>
+            </g>
+            <circle cx="108" cy="50" r="2.6" fill="#22d3ee"/>
+            <circle cx="60" cy="50" r="2.2" fill="#fbbf24"/>
+            <circle cx="134" cy="50" r="2.2" fill="#fbbf24"/>
+            <text x="50" y="34" class="schem-label">R1</text>
+            <text x="124" y="68" class="schem-label">C1</text>
+            <text x="160" y="42" class="schem-label">out</text>
+          </svg>
+        </div>
+        <h3>Filtro RC passa-baixa</h3>
+        <p>Resistor + capacitor: carga exponencial no transiente e a constante de tempo τ = RC.</p>
+        <a class="example-link" href="app.html?example=rc-lowpass">Abrir no simulador →</a>
+      </div>
+
+      <!-- rlc-ressonante -->
+      <div class="card example-card">
+        <div class="schem-wrap">
+          <svg viewBox="0 0 220 120" aria-hidden="true">
+            <g stroke="#22d3ee" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="14" cy="55" r="3"/>
+              <path d="M17 55h9"/>
+              <polyline points="26,55 32,47 42,63 52,47 62,63 70,55"/>
+              <path d="M70 55h10"/>
+              <path d="M80 55a8 8 0 0 1 16 0a8 8 0 0 1 16 0a8 8 0 0 1 16 0"/>
+              <path d="M128 55h14"/>
+              <path d="M148 43v24M156 43v24"/>
+              <path d="M156 55h18"/>
+              <circle cx="178" cy="55" r="3"/>
+            </g>
+            <circle cx="48" cy="55" r="2.2" fill="#fbbf24"/>
+            <circle cx="104" cy="47" r="2.2" fill="#fbbf24"/>
+            <circle cx="166" cy="55" r="2.2" fill="#fbbf24"/>
+            <text x="42" y="80" class="schem-label">R</text>
+            <text x="100" y="80" class="schem-label">L</text>
+            <text x="146" y="84" class="schem-label">C</text>
+          </svg>
+        </div>
+        <h3>RLC ressonante</h3>
+        <p>R, L e C em série: oscilação amortecida, ringing e a frequência natural do tanque.</p>
+        <a class="example-link" href="app.html?example=rlc-ressonante">Abrir no simulador →</a>
+      </div>
+
+      <!-- switch-spdt -->
+      <div class="card example-card">
+        <div class="schem-wrap">
+          <svg viewBox="0 0 220 120" aria-hidden="true">
+            <g stroke="#22d3ee" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="22" cy="60" r="3"/>
+              <path d="M25 60h21"/>
+              <path d="M48 60L76 45"/>
+              <circle cx="80" cy="42" r="2.6"/>
+              <circle cx="80" cy="78" r="2.6"/>
+              <path d="M83 42h35M83 78h35"/>
+              <polygon points="118,34 118,50 136,42"/>
+              <path d="M136 34v16"/>
+              <polygon points="118,70 118,86 136,78"/>
+              <path d="M136 70v16"/>
+              <path d="M136 42h36v50M136 78h36M160 92h24M164 97h16M168 102h8"/>
+            </g>
+            <circle cx="48" cy="60" r="2.8" fill="#22d3ee"/>
+            <circle cx="100" cy="42" r="2.2" fill="#fbbf24"/>
+            <text x="88" y="32" class="schem-label">A</text>
+            <text x="88" y="94" class="schem-label">B</text>
+            <text x="118" y="26" class="schem-label">D1</text>
+            <text x="118" y="112" class="schem-label">D2</text>
+          </svg>
+        </div>
+        <h3>Chave SPDT</h3>
+        <p>Uma chave de 3 terminais alterna dois LEDs — clique nela com a simulação rodando.</p>
+        <a class="example-link" href="app.html?example=switch-spdt">Abrir no simulador →</a>
+      </div>
+
+      <!-- mcu-leds -->
+      <div class="card example-card">
+        <div class="schem-wrap">
+          <svg viewBox="0 0 220 120" aria-hidden="true">
+            <g stroke="#22d3ee" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="40" y="30" width="70" height="60" rx="6"/>
+              <path d="M30 45h10M30 60h10M30 75h10"/>
+              <path d="M110 45h18M110 75h18"/>
+              <polygon points="128,37 128,53 144,45"/>
+              <path d="M144 37v16"/>
+              <polygon points="128,67 128,83 144,75"/>
+              <path d="M144 67v16"/>
+              <path d="M144 45h22v50M144 75h22M154 95h24M158 100h16M162 105h8"/>
+            </g>
+            <text x="60" y="65" class="schem-label" style="font-size:13px;fill:#94a3b8">MCU</text>
+            <circle cx="120" cy="45" r="2.2" fill="#fbbf24"/>
+            <circle cx="120" cy="75" r="2.2" fill="#fbbf24"/>
+            <text x="128" y="30" class="schem-label">D1</text>
+            <text x="128" y="112" class="schem-label">D2</text>
+          </svg>
+        </div>
+        <h3>MCU + LEDs</h3>
+        <p>Um chip aciona dois LEDs com resistores de série — o clássico blink, em nível de circuito.</p>
+        <a class="example-link" href="app.html?example=mcu-leds">Abrir no simulador →</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ======================= FEITO PARA AGENTES ======================= -->
+<section id="agentes">
+  <div class="container">
+    <h2 class="section-title">Feito para agentes</h2>
+    <p class="section-lead">A bancada é o artefato completo: circuito + parâmetros livres + asserções.
+       O <code style="font-family:var(--mono);color:var(--accent);font-size:.92em">--json</code> devolve um RunRecord determinístico que o agente consome sem parsear texto.</p>
+
+    <div class="agents-grid">
+      <div class="codeblock">
+        <div class="codeblock-head"><span>bench/led-driver.bench.ts</span><span class="lang">TypeScript</span></div>
+        <pre><span class="k">import</span> { bench, VoltageSource, Resistor, LED } <span class="k">from</span> <span class="s">'circuit-forge'</span>;
+
+<span class="k">export default</span> <span class="f">bench</span>(<span class="s">'led-driver'</span>, (tb) =&gt; {
+  <span class="k">const</span> v1 = tb.<span class="f">add</span>(<span class="s">'V1'</span>, <span class="k">new</span> VoltageSource(<span class="n">5</span>));
+  <span class="k">const</span> r1 = tb.<span class="f">add</span>(<span class="s">'R1'</span>, <span class="k">new</span> Resistor(<span class="s">'330'</span>));
+  <span class="k">const</span> d1 = tb.<span class="f">add</span>(<span class="s">'D1'</span>, <span class="k">new</span> LED());
+
+  v1.<span class="f">pin</span>(<span class="s">'+'</span>).<span class="f">connect</span>(r1.<span class="f">pin</span>(<span class="s">'1'</span>));
+  r1.<span class="f">pin</span>(<span class="s">'2'</span>).<span class="f">connect</span>(d1.<span class="f">pin</span>(<span class="s">'anode'</span>));
+  d1.<span class="f">pin</span>(<span class="s">'cathode'</span>).<span class="f">connect</span>(tb.gnd);
+  v1.<span class="f">pin</span>(<span class="s">'-'</span>).<span class="f">connect</span>(tb.gnd);
+
+  tb.<span class="f">name</span>(<span class="s">'led'</span>, d1.<span class="f">pin</span>(<span class="s">'anode'</span>));
+
+  <span class="c">// sizing é da plataforma, não do agente</span>
+  tb.<span class="f">param</span>(<span class="s">'R1'</span>, { min: <span class="s">'100'</span>, max: <span class="s">'10k'</span>, scale: <span class="s">'log'</span> });
+
+  tb.expect.<span class="f">op</span>(<span class="s">'D1.i'</span>).<span class="f">toBeWithin</span>(<span class="s">'5m'</span>, <span class="s">'15m'</span>); <span class="c">// brilha, sem queimar</span>
+  tb.expect.<span class="f">op</span>(<span class="s">'led'</span>).<span class="f">toBeWithin</span>(<span class="n">1.8</span>, <span class="n">2.6</span>);     <span class="c">// Vf sadio</span>
+});</pre>
+      </div>
+
+      <div class="codeblock">
+        <div class="codeblock-head"><span>forge verify --json · RunRecord (resumo)</span><span class="lang">JSON</span></div>
+        <pre>{
+  <span class="f">"schema"</span>: <span class="s">"forge-run/0.1"</span>,
+  <span class="f">"bench"</span>: <span class="s">"led-driver"</span>,
+  <span class="f">"engine"</span>: <span class="s">"circuit-forge@0.1.0"</span>,
+  <span class="f">"stages"</span>: {
+    <span class="f">"lint"</span>: { <span class="f">"verdict"</span>: <span class="n">"pass"</span> },
+    <span class="f">"op"</span>: {
+      <span class="f">"verdict"</span>: <span class="r">"fail"</span>,
+      <span class="f">"assertions"</span>: [{
+        <span class="f">"id"</span>: <span class="s">"a1"</span>, <span class="f">"probe"</span>: <span class="s">"D1.i"</span>,
+        <span class="f">"check"</span>: { <span class="f">"op"</span>: <span class="s">"within"</span>, <span class="f">"min"</span>: <span class="n">0.008</span>, <span class="f">"max"</span>: <span class="n">0.012</span> },
+        <span class="f">"measured"</span>: <span class="n">0.028039</span>,
+        <span class="f">"margin"</span>: { <span class="f">"ratio"</span>: <span class="n">2.34</span> },
+        <span class="f">"at"</span>: <span class="s">"bench/led.bench.ts:22"</span>,
+        <span class="f">"hint"</span>: {
+          <span class="f">"kind"</span>: <span class="n">"verified-param-range"</span>,
+          <span class="f">"param"</span>: <span class="s">"R1"</span>,
+          <span class="f">"passingRange"</span>: [<span class="n">261.016</span>, <span class="n">316.228</span>],
+          <span class="f">"suggestedValue"</span>: <span class="n">261.016</span>
+        }
+      }]
+    },
+    <span class="f">"tran"</span>: { <span class="f">"verdict"</span>: <span class="n">"skipped"</span> }
+  },
+  <span class="f">"verdict"</span>: <span class="r">"fail"</span>,
+  <span class="f">"firstFailure"</span>: <span class="s">"a1"</span>,
+  <span class="f">"exitCode"</span>: <span class="n">1</span>
+}</pre>
+      </div>
+    </div>
+
+    <p class="agents-caption">Uma <strong>vibecoding loop para eletrônica</strong>: o agente escreve, o forge simula, o diagnóstico aponta a linha.</p>
+  </div>
+</section>
+
+<!-- ======================= FOOTER ======================= -->
+<footer>
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <svg width="20" height="20" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <path d="M4 32h10l5-13 8 26 8-26 8 26 5-13h12" stroke="#22d3ee" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="9" cy="32" r="4.5" fill="#fbbf24"/>
+      </svg>
+      <span><b>Circuit Forge</b> — código vira circuito</span>
+    </div>
+    <div class="footer-links">
+      <a href="app.html">Simulador</a>
+      <a href="docs.html">Documentação</a>
+      <a href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <div class="footer-note">Feito com o próprio loop: cada exemplo desta página passa em <span class="t-ok">forge verify</span>.</div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var circuit = document.getElementById('heroCircuit');
+  var scope = document.getElementById('heroScope');
+  if (!circuit || !scope) return;
+  var ctx = circuit.getContext('2d');
+  var sctx = scope.getContext('2d');
+
+  // Coordenadas lógicas dos dois canvases
+  var CW = 460, CH = 360;
+  var SW = 460, SH = 120;
+
+  function fit(canvas, lw, lh) {
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.clientWidth || lw;
+    var h = canvas.clientHeight || lh;
+    canvas.width = Math.max(1, Math.round(w * dpr));
+    canvas.height = Math.max(1, Math.round(h * dpr));
+    var s = w / lw;
+    canvas.getContext('2d').setTransform(dpr * s, 0, 0, dpr * s, 0, 0);
+  }
+  function fitAll() { fit(circuit, CW, CH); fit(scope, SW, SH); }
+  fitAll();
+  window.addEventListener('resize', fitAll);
+
+  // ---------------- geometria do circuito ----------------
+  var L = 78, R = 384, T = 64, B = 272;      // retângulo do laço
+  var GX = 231;                               // x do ground
+  var BATT = { top: 174, bot: 188 };          // y das placas da bateria (em x = L)
+  var LEDC = { x: R, y: 176 };                // centro do LED (lado direito)
+
+  // Perímetro (horário, começando no canto inferior esquerdo)
+  var segs = [
+    { x1: L, y1: B, x2: L, y2: T },
+    { x1: L, y1: T, x2: R, y2: T },
+    { x1: R, y1: T, x2: R, y2: B },
+    { x1: R, y1: B, x2: L, y2: B }
+  ];
+  var lens = segs.map(function (s) { return Math.abs(s.x2 - s.x1) + Math.abs(s.y2 - s.y1); });
+  var PERIM = lens.reduce(function (a, b) { return a + b; }, 0);
+
+  function pointAt(d) {
+    d = ((d % PERIM) + PERIM) % PERIM;
+    for (var i = 0; i < segs.length; i++) {
+      if (d <= lens[i]) {
+        var s = segs[i], t = d / lens[i];
+        return { x: s.x1 + (s.x2 - s.x1) * t, y: s.y1 + (s.y2 - s.y1) * t };
+      }
+      d -= lens[i];
+    }
+    return { x: L, y: B };
+  }
+
+  var WIRE = '#22d3ee', CURR = '#fbbf24', MUTED = '#94a3b8', DIMC = '#64748b';
+
+  function drawCircuit(t) {
+    ctx.clearRect(0, 0, CW, CH);
+
+    // -------- halo pulsante do LED (atrás de tudo) --------
+    var pulse = 0.62 + 0.38 * Math.sin(t * 2.4);
+    var haloR = 46 + 6 * pulse;
+    var grad = ctx.createRadialGradient(LEDC.x, LEDC.y, 2, LEDC.x, LEDC.y, haloR);
+    grad.addColorStop(0, 'rgba(251,191,36,' + (0.34 * pulse).toFixed(3) + ')');
+    grad.addColorStop(0.5, 'rgba(249,115,22,' + (0.14 * pulse).toFixed(3) + ')');
+    grad.addColorStop(1, 'rgba(249,115,22,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(LEDC.x, LEDC.y, haloR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // -------- fios + símbolos (traço schematic com glow) --------
+    ctx.strokeStyle = WIRE;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(34,211,238,0.55)';
+    ctx.shadowBlur = 6;
+
+    ctx.beginPath();
+    // esquerda (com vão para a bateria)
+    ctx.moveTo(L, B); ctx.lineTo(L, BATT.bot);
+    ctx.moveTo(L, BATT.top); ctx.lineTo(L, T);
+    // topo até o resistor
+    ctx.lineTo(175, T);
+    // resistor zigzag (175 → 285)
+    var zx = 175, zw = 110, amp = 9;
+    var zig = [[0, 0], [1, -1], [3, 1], [5, -1], [7, 1], [9, -1], [11, 1], [12, 0]];
+    for (var i = 1; i < zig.length; i++) {
+      ctx.lineTo(zx + zw * zig[i][0] / 12, T + amp * zig[i][1]);
+    }
+    // topo até o LED
+    ctx.lineTo(R, T); ctx.lineTo(R, LEDC.y - 18);
+    // depois do LED, desce e fecha por baixo
+    ctx.moveTo(R, LEDC.y + 4); ctx.lineTo(R, B); ctx.lineTo(L, B);
+    // ground: haste + três barras
+    ctx.moveTo(GX, B); ctx.lineTo(GX, B + 20);
+    ctx.moveTo(GX - 20, B + 20); ctx.lineTo(GX + 20, B + 20);
+    ctx.moveTo(GX - 13, B + 27); ctx.lineTo(GX + 13, B + 27);
+    ctx.moveTo(GX - 6, B + 34); ctx.lineTo(GX + 6, B + 34);
+    ctx.stroke();
+
+    // bateria: placa longa (+, fina) e placa curta (−, grossa)
+    ctx.beginPath();
+    ctx.moveTo(L - 15, BATT.top); ctx.lineTo(L + 15, BATT.top);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.lineWidth = 5;
+    ctx.moveTo(L - 8, BATT.bot); ctx.lineTo(L + 8, BATT.bot);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+
+    // LED: triângulo + barra
+    ctx.beginPath();
+    ctx.moveTo(R - 12, LEDC.y - 18); ctx.lineTo(R + 12, LEDC.y - 18); ctx.lineTo(R, LEDC.y + 4);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(R - 12, LEDC.y + 4); ctx.lineTo(R + 12, LEDC.y + 4);
+    ctx.stroke();
+
+    // nó de junção do ground
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = WIRE;
+    ctx.beginPath(); ctx.arc(GX, B, 3, 0, Math.PI * 2); ctx.fill();
+
+    // setinhas de luz do LED (âmbar, acompanham o pulso)
+    ctx.strokeStyle = 'rgba(251,191,36,' + (0.35 + 0.55 * pulse).toFixed(3) + ')';
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = 'rgba(251,191,36,0.6)';
+    ctx.shadowBlur = 5;
+    [[R + 17, LEDC.y - 24, R + 28, LEDC.y - 35], [R + 24, LEDC.y - 14, R + 35, LEDC.y - 25]].forEach(function (a) {
+      var x1 = a[0], y1 = a[1], x2 = a[2], y2 = a[3];
+      ctx.beginPath();
+      ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+      ctx.moveTo(x2, y2); ctx.lineTo(x2 - 6, y2 + 1);
+      ctx.moveTo(x2, y2); ctx.lineTo(x2 - 1, y2 + 6);
+      ctx.stroke();
+    });
+    ctx.shadowBlur = 0;
+
+    // rótulos
+    ctx.fillStyle = MUTED;
+    ctx.font = '12px ' + "'SF Mono','Fira Code',ui-monospace,monospace";
+    ctx.textAlign = 'right';
+    ctx.fillText('5 V', L - 22, BATT.top + 10);
+    ctx.textAlign = 'left';
+    ctx.fillText('+', L + 20, BATT.top + 4);
+    ctx.fillText('R1 330 Ω', zx + 8, T - 18);
+    ctx.fillText('D1', R - 44, LEDC.y - 2);
+    ctx.fillStyle = DIMC;
+    ctx.fillText('gnd', GX + 28, B + 26);
+
+    // -------- pontos de corrente (âmbar, assinatura EveryCircuit) --------
+    var N = 12, speed = 58;
+    var offset = t * speed;
+    ctx.fillStyle = CURR;
+    ctx.shadowColor = 'rgba(251,191,36,0.9)';
+    ctx.shadowBlur = 9;
+    for (var k = 0; k < N; k++) {
+      var p = pointAt(offset + k * (PERIM / N));
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  // ---------------- mini-osciloscópio (carga RC) ----------------
+  var PAD = 12;
+  function curveY(x) {
+    // v(t) = Vmax * (1 - e^(-t/τ)) — varredura ao longo da largura
+    var v = 1 - Math.exp(-(x / (SW * 0.22)) * 1.9);
+    return SH - PAD - v * (SH - 2 * PAD - 8);
+  }
+
+  function drawScope(t) {
+    sctx.clearRect(0, 0, SW, SH);
+
+    // grade sutil
+    sctx.strokeStyle = 'rgba(148,163,184,0.09)';
+    sctx.lineWidth = 1;
+    sctx.beginPath();
+    for (var gx = 46; gx < SW; gx += 46) { sctx.moveTo(gx, 0); sctx.lineTo(gx, SH); }
+    for (var gy = 24; gy < SH; gy += 24) { sctx.moveTo(0, gy); sctx.lineTo(SW, gy); }
+    sctx.stroke();
+
+    // varredura com retrace
+    var period = SW + 90;
+    var xs = (t * 110) % period;
+    var head = Math.min(xs, SW);
+
+    // trilha anterior, apagada
+    sctx.strokeStyle = 'rgba(52,211,153,0.16)';
+    sctx.lineWidth = 1.5;
+    sctx.beginPath();
+    for (var x0 = 0; x0 <= SW; x0 += 4) {
+      var y0 = curveY(x0);
+      if (x0 === 0) sctx.moveTo(x0, y0); else sctx.lineTo(x0, y0);
+    }
+    sctx.stroke();
+
+    // traço vivo até a frente da varredura
+    sctx.strokeStyle = '#34d399';
+    sctx.lineWidth = 2;
+    sctx.shadowColor = 'rgba(52,211,153,0.7)';
+    sctx.shadowBlur = 6;
+    sctx.beginPath();
+    for (var x = 0; x <= head; x += 3) {
+      var y = curveY(x);
+      if (x === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+    }
+    sctx.lineTo(head, curveY(head));
+    sctx.stroke();
+
+    // ponto brilhante na frente
+    if (xs <= SW) {
+      sctx.fillStyle = '#a7f3d0';
+      sctx.shadowColor = 'rgba(52,211,153,1)';
+      sctx.shadowBlur = 10;
+      sctx.beginPath();
+      sctx.arc(head, curveY(head), 3, 0, Math.PI * 2);
+      sctx.fill();
+    }
+    sctx.shadowBlur = 0;
+  }
+
+  // ---------------- laço de animação (pausa quando a aba some) ----------------
+  var raf = null, last = 0, elapsed = 0;
+  function frame(ts) {
+    if (!last) last = ts;
+    var dt = Math.min(0.05, (ts - last) / 1000);
+    last = ts;
+    elapsed += dt;
+    drawCircuit(elapsed);
+    drawScope(elapsed);
+    raf = requestAnimationFrame(frame);
+  }
+  function start() { if (raf === null) { last = 0; raf = requestAnimationFrame(frame); } }
+  function stop() { if (raf !== null) { cancelAnimationFrame(raf); raf = null; } }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stop(); else start();
+  });
+  start();
+})();
+</script>
 </body>
 </html>

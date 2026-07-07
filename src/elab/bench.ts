@@ -5,7 +5,7 @@ import type { Node } from '../core/Node';
 import { parseValue } from './units';
 import { fnv1a64 } from './hash';
 import { captureLoc } from './loc';
-import { describeComponent, rebuildWithValue, isOverridable } from './describe';
+import { describeComponent, rebuildWithValue, isOverridable, kindOf } from './describe';
 import type {
   AssertionSpec,
   CheckSpec,
@@ -55,6 +55,8 @@ export class TB {
   _assertions: AssertionSpec[] = [];
   /** @internal */
   _overrides: Record<string, number>;
+  /** @internal */
+  _instances = new Set<Component>();
 
   constructor(circuit: Circuit, overrides: Record<string, number> = {}) {
     this._circuit = circuit;
@@ -76,12 +78,28 @@ export class TB {
     if (this._components.has(id)) {
       throw new Error(`duplicate component id '${id}': every tb.add id must be unique`);
     }
+    if (this._instances.has(component)) {
+      throw new Error(
+        `component instance already registered under another id — create a new instance for '${id}' (e.g. tb.add('${id}', new Resistor(...)))`,
+      );
+    }
     let comp: Component = component;
     const override = this._overrides[id];
     if (override !== undefined) {
+      // The override replaces the instance, so connections made BEFORE tb.add
+      // would silently stay on the discarded original. Refuse that footgun.
+      const alreadyWired = component
+        .allPins()
+        .some(p => (p as { _node?: { pins: Set<Pin> } })._node && (p as unknown as { _node: { pins: Set<Pin> } })._node.pins.size > 1);
+      if (alreadyWired) {
+        throw new Error(
+          `cannot override '${id}': its pins were connected before tb.add. Register with tb.add first, then connect the returned component`,
+        );
+      }
       comp = rebuildWithValue(component, override);
     }
     this._components.set(id, comp);
+    this._instances.add(comp);
     this._locOf.set(id, captureLoc());
     return comp as T;
   }
@@ -108,6 +126,11 @@ export class TB {
     }
     if (netName === 'gnd') {
       throw new Error(`net name 'gnd' is reserved for the ground net`);
+    }
+    if (/^n\d+$/.test(netName)) {
+      throw new Error(
+        `net name '${netName}' is reserved: names matching n<digits> are auto-generated. Pick a descriptive name like 'out' or 'vcc'`,
+      );
     }
     this._namedNets.push({ name: netName, pin, at: captureLoc() });
   }
@@ -196,12 +219,19 @@ export class TranProbeExpect {
 
   /** Settles into target ± tol (fraction) no later than `by`, and stays there. */
   toSettleWithin(spec: { target: ValueLike; tol: number; by: ValueLike }): this {
-    this.record({
-      op: 'settleWithin',
-      target: parseValue(spec.target, 'settle target'),
-      tol: spec.tol,
-      by: parseValue(spec.by, 'settle by'),
-    });
+    const target = parseValue(spec.target, 'settle target');
+    const by = parseValue(spec.by, 'settle by');
+    if (target === 0) {
+      throw new Error(
+        `toSettleWithin: target 0 makes the ±tol band zero-width and can never pass; use toEndCloseTo(0, tol) or toStayBelow(tol) instead`,
+      );
+    }
+    if (by > this.parent._config.tstop) {
+      throw new Error(
+        `toSettleWithin: by=${by}s is beyond the simulation window (tstop=${this.parent._config.tstop}s)`,
+      );
+    }
+    this.record({ op: 'settleWithin', target, tol: spec.tol, by });
     return this;
   }
 
@@ -248,6 +278,11 @@ export class TranProbeExpect {
   }
 
   private record(check: CheckSpec): void {
+    if ('from' in check && typeof check.from === 'number' && check.from >= this.parent._config.tstop) {
+      throw new Error(
+        `${check.op}: from=${check.from}s leaves no samples inside the simulation window (tstop=${this.parent._config.tstop}s)`,
+      );
+    }
     this.tb._record('tran', this.probeExpr, check, this.parent._config);
   }
 }
@@ -303,6 +338,48 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
   const circuit = new Circuit();
   const tb = new TB(circuit, overrides);
   desc.build(tb);
+
+  // Every component wired into the live graph MUST be registered: the engine
+  // would happily simulate an unregistered part while the netlist, hash and
+  // lint never see it — the worst kind of silent lie.
+  {
+    const registered = new Set<Component>(tb._components.values());
+    const groundComp = circuit.ground.component;
+    const seenNodes = new Set<Node>();
+    const seenComps = new Set<Component>();
+    const queue: Node[] = [circuit.ground.node];
+    for (const comp of registered) {
+      for (const pin of comp.allPins()) {
+        if (!seenNodes.has(pin.node)) {
+          seenNodes.add(pin.node);
+          queue.push(pin.node);
+        }
+      }
+    }
+    seenNodes.add(circuit.ground.node);
+    const offenders = new Set<Component>();
+    while (queue.length > 0) {
+      const node = queue.pop()!;
+      for (const pin of node.pins) {
+        const comp = pin.component;
+        if (seenComps.has(comp)) continue;
+        seenComps.add(comp);
+        if (comp !== groundComp && !registered.has(comp)) offenders.add(comp);
+        for (const other of comp.allPins()) {
+          if (!seenNodes.has(other.node)) {
+            seenNodes.add(other.node);
+            queue.push(other.node);
+          }
+        }
+      }
+    }
+    if (offenders.size > 0) {
+      const kinds = [...offenders].map(c => kindOf(c)).sort().join(', ');
+      throw new Error(
+        `${offenders.size} component${offenders.size > 1 ? 's' : ''} wired into the circuit but never registered (${kinds}): every component must go through tb.add('<id>', ...) so diagnostics can name it`,
+      );
+    }
+  }
 
   // Unknown override ids are authoring errors — surface them.
   for (const key of Object.keys(overrides)) {
@@ -381,7 +458,17 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
         .join(','),
     }))
     .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  anonymous.forEach(({ node }, i) => nodeName.set(node, `n${i + 1}`));
+  {
+    // tb.name rejects n<digits>, but stay defensive: never mint a duplicate.
+    const used = new Set(nodeName.values());
+    let counter = 1;
+    for (const { node } of anonymous) {
+      while (used.has(`n${counter}`)) counter++;
+      nodeName.set(node, `n${counter}`);
+      used.add(`n${counter}`);
+      counter++;
+    }
+  }
 
   const netNode = new Map<string, Node>();
   const netPins = new Map<string, Pin[]>();
@@ -396,9 +483,18 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
   for (const a of tb._assertions) {
     const m = a.probe.match(COMPONENT_PROBE_RE);
     if (m) {
-      if (!tb._components.has(m[1])) {
+      const comp = tb._components.get(m[1]);
+      if (!comp) {
         throw new Error(
           `unknown probe '${a.probe}'${a.at ? ` at ${a.at}` : ''}: no component with id '${m[1]}'. Known ids: ${[...tb._components.keys()].join(', ')}`,
+        );
+      }
+      // The quantity must actually be exposed — custom components, for one,
+      // report no current; a silent 0 would be a confidently-wrong PASS.
+      const quantity = m[2] === 'i' ? 'current' : 'voltage';
+      if (typeof (comp as unknown as Record<string, unknown>)[quantity] !== 'number') {
+        throw new Error(
+          `probe '${a.probe}'${a.at ? ` at ${a.at}` : ''}: ${kindOf(comp)} does not expose ${quantity}. Probe a series Resistor's current or a named net's voltage instead`,
         );
       }
       continue;

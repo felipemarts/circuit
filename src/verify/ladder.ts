@@ -63,8 +63,10 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
 
   let gate: string | null = null;
 
-  // ── L0: lint ──
-  if (requested.includes('lint')) {
+  // ── L0: lint — ALWAYS runs. Solving a circuit the lint would reject means
+  // silently dropping unreachable components and reporting fabricated numbers,
+  // so `--stage op` must never bypass this gate.
+  {
     const diagnostics = runLint(elab);
     record.diagnostics.push(...diagnostics);
     const hasErrors = diagnostics.some(d => d.severity === 'error');
@@ -72,16 +74,37 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
     if (hasErrors) gate = 'lint failed';
   }
 
+  // A stage runner crash is a platform bug: it must still yield a RunRecord.
+  const crashed = (stage: 'op' | 'tran', err: unknown): void => {
+    const message = err instanceof Error ? err.message : String(err);
+    record.stages[stage] = { verdict: 'error' };
+    record.diagnostics.push({
+      code: 'T002',
+      slug: 'stage-crash',
+      severity: 'error',
+      stage,
+      message: `the ${stage} stage crashed: ${message}`,
+      note: 'this is a platform bug, not a circuit result — please report the bench that triggered it',
+      evidence: { error: message },
+      fixes: [],
+    });
+    gate = `${stage} crashed`;
+  };
+
   // ── L1: op ──
   if (requested.includes('op')) {
     if (gate) {
       record.stages.op = { verdict: 'skipped', reason: gate };
     } else {
-      const outcome = runOp(elab, { hints: opts.hints ?? true });
-      record.stages.op = outcome.stage;
-      record.diagnostics.push(...outcome.diagnostics);
-      if (outcome.stage.verdict === 'error') gate = 'op failed';
-      if (outcome.stage.verdict === 'fail') gate = 'op assertions failed';
+      try {
+        const outcome = runOp(elab, { hints: opts.hints ?? true });
+        record.stages.op = outcome.stage;
+        record.diagnostics.push(...outcome.diagnostics);
+        if (outcome.stage.verdict === 'error') gate = 'op failed';
+        if (outcome.stage.verdict === 'fail') gate = 'op assertions failed';
+      } catch (err) {
+        crashed('op', err);
+      }
     }
   }
 
@@ -91,9 +114,13 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
     if (gate) {
       record.stages.tran = { verdict: 'skipped', reason: gate };
     } else {
-      const outcome = runTran(elab);
-      record.stages.tran = outcome.stage;
-      record.diagnostics.push(...outcome.diagnostics);
+      try {
+        const outcome = runTran(elab);
+        record.stages.tran = outcome.stage;
+        record.diagnostics.push(...outcome.diagnostics);
+      } catch (err) {
+        crashed('tran', err);
+      }
     }
   }
 
@@ -105,7 +132,9 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
 
   if (errorDiag) {
     record.verdict = 'error';
-    record.exitCode = 2;
+    // T-coded diagnostics are tooling/platform faults (exit 3), never a
+    // statement about the circuit (exit 2).
+    record.exitCode = errorDiag.code.startsWith('T') ? 3 : 2;
     record.firstFailure = errorDiag.code;
   } else if (failedAssertion) {
     record.verdict = 'fail';

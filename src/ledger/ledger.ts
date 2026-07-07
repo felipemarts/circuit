@@ -39,15 +39,30 @@ export function appendRun(record: RunRecord, cwd = process.cwd()): LedgerEntry {
 export function listRuns(cwd = process.cwd()): LedgerEntry[] {
   const file = ledgerPath(cwd);
   if (!fs.existsSync(file)) return [];
-  return fs
-    .readFileSync(file, 'utf8')
-    .split('\n')
-    .filter(line => line.trim().length > 0)
-    .map(line => JSON.parse(line) as LedgerEntry);
+  const entries: LedgerEntry[] = [];
+  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    if (line.trim().length === 0) continue;
+    try {
+      entries.push(JSON.parse(line) as LedgerEntry);
+    } catch {
+      // One corrupt line (crash mid-append, manual edit) must not brick the
+      // log commands; skip it.
+    }
+  }
+  return entries;
 }
 
+/**
+ * Last match wins: concurrent appends can theoretically mint the same runId
+ * (count-then-append race); for this local single-user CLI the newest record
+ * is the one the user means.
+ */
 export function findRun(runId: string, cwd = process.cwd()): LedgerEntry | undefined {
-  return listRuns(cwd).find(r => r.runId === runId);
+  const runs = listRuns(cwd);
+  for (let i = runs.length - 1; i >= 0; i--) {
+    if (runs[i].runId === runId) return runs[i];
+  }
+  return undefined;
 }
 
 function countRuns(cwd: string): number {

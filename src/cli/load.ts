@@ -63,10 +63,16 @@ export async function loadBench(file: string): Promise<BenchDescriptor> {
     throw new Error(`failed to compile ${file}:\n${message}`);
   }
 
-  const mod = (await import(pathToFileURL(outfile).href)) as { default?: unknown };
-  const desc = mod.default as BenchDescriptor | undefined;
-  if (!desc || typeof desc !== 'object' || typeof desc.name !== 'string' || typeof desc.build !== 'function') {
-    throw new Error(`${file} must default-export a bench(...) descriptor\n\n${EXAMPLE}`);
+  try {
+    const mod = (await import(pathToFileURL(outfile).href)) as { default?: unknown };
+    const desc = mod.default as BenchDescriptor | undefined;
+    if (!desc || typeof desc !== 'object' || typeof desc.name !== 'string' || typeof desc.build !== 'function') {
+      throw new Error(`${file} must default-export a bench(...) descriptor\n\n${EXAMPLE}`);
+    }
+    return desc;
+  } finally {
+    // The module (inline sourcemap included) is fully loaded; don't leak a
+    // temp directory per invocation.
+    fs.rmSync(outdir, { recursive: true, force: true });
   }
-  return desc;
 }

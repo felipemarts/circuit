@@ -54,7 +54,8 @@ export function runTran(elab: Elaboration): StageOutcome {
 
     for (const expr of probeExprs) {
       const wf = waveforms.get(expr)!;
-      finalValues[`${expr}@${key.split('|')[0]}s`] = wf.y[wf.y.length - 1];
+      // dt is part of the key: two groups may share tstop but differ in step.
+      finalValues[`${expr}@tstop=${group.tstop}s,dt=${group.dt}s`] = wf.y[wf.y.length - 1];
     }
 
     for (const spec of group.assertions) {

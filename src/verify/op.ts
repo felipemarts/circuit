@@ -1,6 +1,7 @@
 import { elaborate, type Elaboration } from '../elab/bench';
 import { ConvergenceError } from '../solver/NewtonRaphson';
 import { evaluateScalarCheck } from './measure';
+import { runLint } from './lint';
 import { formatEng } from '../elab/units';
 import type {
   AssertionResult,
@@ -75,26 +76,40 @@ function computeVerifiedHint(elab: Elaboration, opAssertions: AssertionSpec[]): 
           : spec.min + f * (spec.max - spec.min),
       );
     }
-    const passing: number[] = [];
-    for (const value of samples) {
+    // pass/fail per grid index — the range claim must never bridge a failing
+    // sample, so only the longest contiguous passing run is reported.
+    const passAt: boolean[] = samples.map(value => {
       try {
         const el = elaborate(elab.desc, { ...elab.overrides, [param]: value });
+        // A sample the platform itself would reject at lint is NOT a passing
+        // value — a 'verified' hint must survive the full ladder.
+        if (runLint(el).some(d => d.severity === 'error')) return false;
         const dc = el.circuit.analyze('dc');
-        const results = evaluateOpAssertions(el, dc, opAssertions);
-        if (results.every(r => r.verdict === 'pass')) passing.push(value);
+        return evaluateOpAssertions(el, dc, opAssertions).every(r => r.verdict === 'pass');
       } catch {
-        // Non-convergent or invalid sample: simply not a passing value.
+        return false; // non-convergent or invalid sample
+      }
+    });
+    let runStart = -1;
+    let best: [number, number] | null = null;
+    for (let i = 0; i <= passAt.length; i++) {
+      if (i < passAt.length && passAt[i]) {
+        if (runStart === -1) runStart = i;
+      } else if (runStart !== -1) {
+        if (!best || i - runStart > best[1] - best[0] + 1) best = [runStart, i - 1];
+        runStart = -1;
       }
     }
-    if (passing.length > 0) {
-      const suggested = passing[Math.floor((passing.length - 1) / 2)];
+    if (best) {
+      const run = samples.slice(best[0], best[1] + 1);
+      const suggested = run[Math.floor((run.length - 1) / 2)];
       return {
         kind: 'verified-param-range',
         param,
-        passingRange: [passing[0], passing[passing.length - 1]],
+        passingRange: [run[0], run[run.length - 1]],
         suggestedValue: suggested,
-        passingSamples: passing.map(v => Number(v.toPrecision(4))),
-        note: `${HINT_SAMPLES}-point ${spec.scale} sweep of ${param} over [${formatEng(spec.min)}, ${formatEng(spec.max)}]; every listed value passes ALL op assertions (simulated)`,
+        passingSamples: run.map(v => Number(v.toPrecision(6))),
+        note: `${HINT_SAMPLES}-point ${spec.scale} sweep of ${param} over [${formatEng(spec.min)}, ${formatEng(spec.max)}]; every listed SAMPLED value passes lint and ALL op assertions (simulated); the range spans sampled points only`,
       };
     }
   }

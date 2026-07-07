@@ -17,7 +17,7 @@ USAGE
   forge catalog [type] [--json]       component datasheet + probe/assertion grammar
 
 VERIFY OPTIONS
-  --stage lint,op,tran   run only these stages (gating still applies)
+  --stage op,tran        run only these stages (lint ALWAYS runs — it gates the solve)
   --set R1=330,V1=5      override scalar values without editing the bench
   --json                 emit the full RunRecord as JSON on stdout
   --no-hints             skip verified sizing hints (faster)

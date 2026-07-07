@@ -129,6 +129,15 @@ Trust contract: hints marked 'verified' were simulated; apply them directly.
 If no hint is present, the topology itself likely cannot meet the spec.`,
   },
   {
+    code: 'T002',
+    slug: 'stage-crash',
+    title: 'a verification stage crashed',
+    explanation: `A stage runner (op/tran) threw an unexpected error after successful
+elaboration. This is a platform bug, not a statement about your circuit —
+the RunRecord is still emitted so nothing is lost. Please report the bench
+file that triggered it.`,
+  },
+  {
     code: 'T001',
     slug: 'bench-error',
     title: 'bench code threw during elaboration',

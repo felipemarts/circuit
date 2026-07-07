@@ -13,8 +13,16 @@ process.setSourceMapsEnabled(true);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const entry = path.join(here, '..', 'src', 'cli', 'main.ts');
 
-const { build } = await import('esbuild');
-const outfile = path.join(fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'forge-cli-')), 'main.mjs');
+let build;
+try {
+  ({ build } = await import('esbuild'));
+} catch {
+  console.error('error: esbuild not found — install project dependencies first (npm install)');
+  process.exit(3);
+}
+
+const outdir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'forge-cli-'));
+const outfile = path.join(outdir, 'main.mjs');
 await build({
   entryPoints: [entry],
   bundle: true,
@@ -26,6 +34,11 @@ await build({
   logLevel: 'silent',
 });
 
-const mod = await import(pathToFileURL(outfile).href);
-const code = await mod.main(process.argv.slice(2));
+let code;
+try {
+  const mod = await import(pathToFileURL(outfile).href);
+  code = await mod.main(process.argv.slice(2));
+} finally {
+  fs.rmSync(outdir, { recursive: true, force: true });
+}
 process.exit(code);

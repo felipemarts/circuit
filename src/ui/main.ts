@@ -2516,7 +2516,7 @@ const projectBridge: ProjectBridge = {
   setProjectName(name) { projectName = name; },
 };
 
-initProjectManager(projectBridge);
+const projectManager = initProjectManager(projectBridge);
 
 // ─── Auto-save ──────────────────────────────────────────────────────────────
 
@@ -2579,6 +2579,19 @@ if (saved && saved.files && saved.files.length > 0) {
 } else {
   // Set default content
   editorAPI.setFiles([{ name: 'main.js', content: DEFAULT_CODE }]);
+}
+
+// ─── Deep link: app.html?example=<slug> ─────────────────────────────────────
+// Carrega o exemplo por cima do auto-save restaurado e ja dispara a execucao
+// (mesmo caminho do botao "Executar"); transientes trocam para a aba de grafico.
+
+const exampleSlug = new URLSearchParams(location.search).get('example');
+if (exampleSlug) {
+  if (projectManager.loadExampleBySlug(exampleSlug)) {
+    executeUserCode(editorAPI.getCombinedCode());
+  } else {
+    console.warn(`Exemplo desconhecido: "${exampleSlug}"`);
+  }
 }
 
 // Initial render

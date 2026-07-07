@@ -27,6 +27,16 @@ Códigos são **permanentes**: parsers e agentes podem depender deles; nunca sã
 | `S202` | nr-nonconvergence | error | NR não convergiu num passo do transiente |
 | `A301` | assertion-failed | fail | asserção falhou — carrega medido, esperado, margem e hint verificado quando há `tb.param` |
 | `T001` | bench-error | error | a própria bancada lançou exceção na elaboração |
+| `T002` | stage-crash | error | um estágio (op/tran) quebrou após a elaboração — bug de plataforma; o RunRecord ainda é emitido (exit 3) |
+
+Notas de semântica:
+- O lint **sempre roda** (mesmo com `--stage op`): resolver um circuito que o lint rejeitaria
+  significaria descartar componentes silenciosamente e reportar números fabricados.
+- `settleWithin` que nunca estabiliza reporta `measured` = fim da janela (finito) — nunca
+  `Infinity`, que viraria `null` no JSON.
+- O `hint.passingRange` cobre apenas a **maior sequência contígua** de amostras aprovadas
+  (cada amostra passa no lint E em todas as asserções op); os valores exatos simulados
+  estão em `passingSamples`.
 
 ## Contrato de confiança dos fixes
 

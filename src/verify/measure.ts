@@ -59,9 +59,12 @@ export function evaluateTranCheck(check: CheckSpec, wf: Waveform, tstop: number)
       for (let i = 0; i < y.length; i++) {
         if (y[i] < lo || y[i] > hi) lastOut = i;
       }
-      // Settle time: instant after the last out-of-band sample.
-      const settleTime = lastOut === -1 ? t[0] : lastOut === y.length - 1 ? Infinity : t[lastOut + 1];
-      const pass = settleTime <= check.by;
+      // Settle time: instant after the last out-of-band sample. A signal that
+      // never settles reports the end of the window, NOT Infinity — Infinity
+      // becomes null under JSON.stringify and would corrupt --json output.
+      const never = lastOut === y.length - 1;
+      const settleTime = lastOut === -1 ? t[0] : never ? t[t.length - 1] : t[lastOut + 1];
+      const pass = !never && settleTime <= check.by;
       let tFirstViolation: number | undefined;
       if (!pass) {
         for (let i = 0; i < y.length; i++) {

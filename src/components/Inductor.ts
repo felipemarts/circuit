@@ -84,9 +84,11 @@ export class Inductor extends TwoTerminalComponent {
         current: matrix.getVSourceCurrent(solution, this._vsIndex),
       };
     }
+    // Present-step current via the same companion formula as updateState —
+    // returning _prevCurrent here would lag every probe by one timestep.
     return {
       voltage: v1 - v2,
-      current: this._prevCurrent,
+      current: (this._dt / this.inductance) * (v1 - v2) + this._prevCurrent,
     };
   }
 }

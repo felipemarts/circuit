@@ -2,7 +2,6 @@ import type { Circuit } from '../core/Circuit';
 import type { Component } from '../core/Component';
 import type { Node } from '../core/Node';
 import { MNAMatrix } from '../solver/MNAMatrix';
-import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import { NewtonRaphson } from '../solver/NewtonRaphson';
 import type { ProbeSpec } from './TransientAnalysis';
 
@@ -53,8 +52,9 @@ export class TransientSession {
     }
 
     this.probeNodeIndices = probeSpecs.map(spec => {
-      if (spec.component && spec.component instanceof TwoTerminalComponent) {
-        return spec.component._n1Index;
+      const n1 = spec.component ? (spec.component as { _n1Index?: number })._n1Index : undefined;
+      if (typeof n1 === 'number') {
+        return n1;
       }
       if (spec.component) {
         const pins = spec.component.allPins();
@@ -77,7 +77,7 @@ export class TransientSession {
     const readMatrix = new MNAMatrix(this.nodeCount, vsCount);
     for (const comp of components) {
       const r = comp.readResults(dcSolution, readMatrix);
-      if (r && comp instanceof TwoTerminalComponent) {
+      if (r) {
         comp._setResults(r.voltage, r.current);
       }
     }
@@ -139,7 +139,7 @@ export class TransientSession {
     // Update each component's voltage/current for live UI display
     for (const comp of this.components) {
       const r = comp.readResults(solution, readMatrix);
-      if (r && comp instanceof TwoTerminalComponent) {
+      if (r) {
         comp._setResults(r.voltage, r.current);
       }
     }

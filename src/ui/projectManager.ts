@@ -16,7 +16,12 @@ export interface ProjectBridge {
   setProjectName(name: string): void;
 }
 
-export function initProjectManager(bridge: ProjectBridge): void {
+export interface ProjectManagerAPI {
+  /** Carrega um exemplo pelo slug (deep link `?example=<slug>`). Retorna false se o slug nao existe. */
+  loadExampleBySlug(slug: string): boolean;
+}
+
+export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
   const dropdown = document.getElementById('project-dropdown')!;
   const btnProject = document.getElementById('btn-project')!;
   const dialog = document.getElementById('project-dialog')!;
@@ -98,6 +103,16 @@ export function initProjectManager(bridge: ProjectBridge): void {
     bridge.setSettings(project.settings);
     if (project.view) bridge.setView(project.view);
     bridge.render();
+  }
+
+  function loadExampleBySlug(slug: string): boolean {
+    const example = EXAMPLE_PROJECTS.find(p => p.slug === slug);
+    if (!example) return false;
+    // Deep clone para nao mutar o template do exemplo
+    const clone = JSON.parse(JSON.stringify(example)) as ProjectData;
+    loadProjectData(clone);
+    updateTitle();
+    return true;
   }
 
   // ─── Actions ──────────────────────────────────────────────────────────
@@ -252,4 +267,6 @@ export function initProjectManager(bridge: ProjectBridge): void {
   }
 
   updateTitle();
+
+  return { loadExampleBySlug };
 }

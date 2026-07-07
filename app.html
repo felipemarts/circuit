@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Circuit Forge — Simulador</title>
+  <link rel="icon" href="/favicon.svg" />
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --panel: #0f172a;
+      --panel-2: #111a2e;
+      --panel-3: #17223a;
+      --border: #1e293b;
+      --border-strong: #334155;
+      --text: #e2e8f0;
+      --text-muted: #64748b;
+      --text-dim: #475569;
+      --accent: #22d3ee;
+      --accent-dim: rgba(34, 211, 238, 0.12);
+      --accent-dim-strong: rgba(34, 211, 238, 0.22);
+      --danger: #f87171;
+      --danger-bg: rgba(248, 113, 113, 0.08);
+      --warn: #fbbf24;
+      --green: #34d399;
+      --radius: 6px;
+      --radius-lg: 10px;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-size: 12px;
+    }
+
+    /* ─── Top bar ──────────────────────────────────────────────────────── */
+
+    header {
+      background: var(--panel);
+      height: 40px;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: inherit;
+      transition: color 0.12s ease;
+    }
+
+    .brand-link:hover h1 { color: var(--accent); }
+
+    .brand svg {
+      width: 18px;
+      height: 18px;
+      color: var(--accent);
+    }
+
+    .brand h1 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.2px;
+    }
+
+    .sep-v {
+      width: 1px;
+      height: 18px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .actions {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    /* Neutral action button - unified style */
+    .act, #btn-project {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid transparent;
+      padding: 5px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      transition: all 0.12s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .act svg, #btn-project svg {
+      width: 11px;
+      height: 11px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+    }
+
+    .act:hover, #btn-project:hover {
+      background: var(--panel-2);
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .act.primary {
+      color: #0a0e17;
+      background: #22d3ee;
+      font-weight: 600;
+    }
+
+    .act.primary:hover {
+      background: #22d3ee;
+      border-color: transparent;
+      color: #0a0e17;
+      box-shadow: 0 0 16px rgba(34, 211, 238, 0.4);
+      filter: brightness(1.1);
+    }
+
+    /* Time scale slider */
+    .time-scale {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      height: 28px;
+      border-radius: var(--radius);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+    }
+    .time-scale-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+    .time-scale input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 110px;
+      height: 4px;
+      background: var(--border-strong);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    .time-scale input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      transition: transform 0.12s;
+    }
+    .time-scale input[type=range]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: none;
+    }
+    .time-scale input[type=range]:hover::-webkit-slider-thumb {
+      transform: scale(1.2);
+    }
+    .time-scale-value {
+      font-size: 10.5px;
+      color: var(--text);
+      font-family: var(--mono);
+      min-width: 56px;
+      text-align: right;
+    }
+
+    .act.act-danger { color: var(--text-muted); }
+    .act.act-danger:hover {
+      background: var(--danger-bg);
+      color: var(--danger);
+      border-color: transparent;
+    }
+
+    /* ─── Main layout ───────────────────────────────────────────────── */
+
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ─── Tool rail (vertical left sidebar) ────────────────────────── */
+
+    .tool-rail {
+      width: 72px;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 6px 0;
+      gap: 1px;
+      overflow-y: auto;
+      flex-shrink: 0;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .tool-rail::-webkit-scrollbar { width: 4px; }
+    .tool-rail::-webkit-scrollbar-track { background: transparent; }
+    .tool-rail::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .tool {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      border-left: 2px solid transparent;
+      padding: 8px 4px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 9.5px;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+      width: 100%;
+      letter-spacing: 0.1px;
+    }
+
+    .tool svg {
+      width: 26px;
+      height: 26px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .tool:hover {
+      background: var(--panel-2);
+      color: var(--text);
+    }
+
+    .tool.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-left-color: var(--accent);
+    }
+
+    .tool-sep {
+      height: 1px;
+      background: var(--border);
+      margin: 6px 12px;
+    }
+
+    /* ─── Canvas area ──────────────────────────────────────────────── */
+
+    .canvas-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      min-width: 0;
+    }
+
+    #canvas {
+      flex: 1;
+      display: block;
+      cursor: crosshair;
+      background: var(--bg);
+    }
+
+    /* ─── Oscilloscope overlay ─────────────────────────────────────── */
+
+    .scope-overlay {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      height: 220px;
+      background: rgba(10, 14, 23, 0.92);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 5;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .scope-overlay[hidden] { display: none; }
+
+    #scope-canvas {
+      flex: 1;
+      display: block;
+      min-height: 0;
+    }
+
+    .scope-stats {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 6px 14px;
+      font-size: 11px;
+      border-top: 1px solid var(--border);
+      background: var(--panel);
+      flex-shrink: 0;
+    }
+
+    .scope-stats span {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .scope-stats b {
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .scope-stats em {
+      color: var(--accent);
+      font-style: normal;
+      font-weight: 600;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .scope-close {
+      margin-left: auto;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 16px;
+      cursor: pointer;
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.12s;
+      line-height: 1;
+      padding: 0;
+    }
+
+    .scope-close:hover {
+      background: var(--panel-2);
+      color: var(--text);
+    }
+
+    /* ─── Bottom panel ──────────────────────────────────────────────── */
+
+    .bottom-panel {
+      height: 260px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      background: var(--panel);
+    }
+
+    .bottom-tabs {
+      display: flex;
+      align-items: center;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0 10px;
+      gap: 2px;
+      flex-shrink: 0;
+      height: 32px;
+    }
+
+    .bottom-tabs .tab {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      padding: 0 14px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      font-weight: 500;
+      border-bottom: 2px solid transparent;
+      transition: all 0.12s;
+      height: 32px;
+      letter-spacing: 0.2px;
+    }
+
+    .bottom-tabs .tab:hover { color: var(--text); }
+
+    .bottom-tabs .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .bottom-tabs .tab-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .bottom-tabs .tab-actions button {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      transition: all 0.12s;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 24px;
+    }
+
+    .bottom-tabs .tab-actions button svg {
+      width: 10px; height: 10px;
+      stroke: currentColor; fill: none; stroke-width: 1.8;
+    }
+
+    .bottom-tabs .tab-actions button:hover {
+      background: var(--panel-2);
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+
+    .bottom-tabs .tab-actions .run-btn {
+      background: #22d3ee;
+      color: #0a0e17;
+      border-color: transparent;
+      font-weight: 600;
+    }
+
+    .bottom-tabs .tab-actions .run-btn:hover {
+      color: #0a0e17;
+      border-color: transparent;
+      background: #22d3ee;
+      box-shadow: 0 0 14px rgba(34, 211, 238, 0.4);
+      filter: brightness(1.1);
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow: hidden;
+      display: none;
+      min-height: 0;
+    }
+
+    .tab-content.active { display: flex; }
+
+    .editor-area {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .editor-area-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #console-output {
+      flex: 2;
+      background: var(--bg);
+      border-left: 1px solid var(--border);
+      padding: 8px 12px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--text-muted);
+    }
+
+    #console-output .log-line { color: var(--text); }
+    #console-output .error-line { color: var(--danger); }
+    #console-output .warn-line { color: var(--warn); }
+
+    #chart-content { position: relative; }
+
+    #chart-content .chart-close-btn {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      z-index: 5;
+      background: var(--panel-2);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    #chart-content .chart-close-btn:hover {
+      background: var(--panel-3);
+      color: var(--text);
+    }
+
+    #chart-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* ─── Sidebar (right: properties) ──────────────────────────────── */
+
+    .sidebar {
+      width: 272px;
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      padding: 14px 16px;
+      overflow-y: auto;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .sidebar h2 {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+
+    .sidebar .prop-group { margin-bottom: 12px; }
+
+    .sidebar label {
+      display: block;
+      font-size: 9.5px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 500;
+    }
+
+    .sidebar input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 9px;
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-family: inherit;
+      transition: all 0.12s;
+    }
+
+    .sidebar input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+
+    .results { margin-top: 16px; }
+
+    .results .result-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 7px 10px;
+      border-radius: var(--radius);
+      margin-bottom: 4px;
+      font-family: var(--mono);
+      font-size: 11px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .results .result-item .comp-name {
+      color: var(--accent);
+      font-weight: 600;
+      min-width: 50px;
+    }
+
+    .results .result-item .value { color: var(--warn); }
+
+    .sidebar .sim-controls {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .sidebar .sim-controls h2 {
+      color: var(--text-muted);
+      border-bottom-color: var(--border);
+    }
+
+    /* ─── Status bar ────────────────────────────────────────────────── */
+
+    .status-bar {
+      background: var(--panel);
+      padding: 4px 14px;
+      font-size: 10.5px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      border-top: 1px solid var(--border);
+      height: 24px;
+      flex-shrink: 0;
+    }
+
+    .status-bar .spacer { flex: 1; }
+
+    .status-bar .stat {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+    }
+
+    .status-bar .stat b {
+      color: var(--text-dim);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-family: var(--sans);
+      font-size: 9.5px;
+    }
+
+    .status-bar .stat em {
+      color: var(--text);
+      font-style: normal;
+    }
+
+    /* ─── Dialogs ───────────────────────────────────────────────────── */
+
+    #value-dialog, #project-dialog {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.65);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    #value-dialog.visible, #project-dialog.visible { display: flex; }
+
+    #value-dialog .dialog-box, #project-dialog .dialog-box {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+      min-width: 320px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    #project-dialog .dialog-box {
+      min-width: 380px;
+      max-width: 500px;
+      max-height: 70vh;
+    }
+
+    #value-dialog .dialog-box h3, #project-dialog .dialog-box h3 {
+      color: var(--text);
+      margin-bottom: 16px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    #value-dialog .dialog-box input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 12px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: var(--mono);
+      margin-bottom: 16px;
+    }
+
+    #value-dialog .dialog-box input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+
+    #value-dialog .dialog-buttons, #project-dialog .dialog-buttons {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+
+    #value-dialog .dialog-buttons button, #project-dialog .dialog-buttons button {
+      padding: 7px 18px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      font-weight: 500;
+      background: transparent;
+      color: var(--text-muted);
+      transition: all 0.12s;
+    }
+
+    #value-dialog .dialog-buttons .btn-ok, #project-dialog .dialog-buttons .btn-ok {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    #value-dialog .dialog-buttons .btn-ok:hover,
+    #project-dialog .dialog-buttons .btn-ok:hover {
+      background: var(--accent-dim-strong);
+    }
+
+    #value-dialog .dialog-buttons .btn-cancel:hover,
+    #project-dialog .dialog-buttons .btn-cancel:hover {
+      background: var(--panel-2);
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+
+    /* ─── Project menu dropdown ─────────────────────────────────────── */
+
+    .project-menu-wrapper { position: relative; }
+
+    .project-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      min-width: 190px;
+      z-index: 50;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      padding: 4px;
+    }
+
+    .project-dropdown.visible { display: block; }
+
+    .project-dropdown button {
+      display: block;
+      width: 100%;
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      padding: 7px 12px;
+      text-align: left;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      border-radius: 4px;
+      transition: all 0.12s;
+    }
+
+    .project-dropdown button:hover {
+      background: var(--panel-3);
+      color: var(--text);
+    }
+
+    .project-dropdown hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 4px 0;
+    }
+
+    /* ─── File tabs bar ─────────────────────────────────────────────── */
+
+    .file-tabs-bar {
+      display: flex;
+      align-items: center;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      height: 28px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+
+    .file-tabs-bar::-webkit-scrollbar { display: none; }
+
+    .file-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+      user-select: none;
+      transition: all 0.12s;
+      height: 28px;
+    }
+
+    .file-tab:hover { color: var(--text); background: var(--panel-2); }
+
+    .file-tab.active {
+      color: var(--accent);
+      background: var(--panel);
+    }
+
+    .file-tab.drag-over { border-left: 2px solid var(--accent); }
+    .file-tab.dragging { opacity: 0.4; }
+
+    .file-tab .close-btn {
+      font-size: 13px;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.12s;
+      color: var(--text-muted);
+    }
+
+    .file-tab:hover .close-btn { opacity: 0.7; }
+    .file-tab .close-btn:hover { opacity: 1; color: var(--danger); }
+
+    .file-tab-add {
+      color: var(--text-dim);
+      font-size: 14px;
+      font-weight: bold;
+      padding: 4px 10px;
+      cursor: pointer;
+      border-right: none;
+    }
+
+    .file-tab-add:hover { color: var(--accent); background: var(--panel-2); }
+
+    /* ─── Code editor with line numbers ─────────────────────────────── */
+
+    .code-editor-wrapper {
+      flex: 3;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    .line-numbers {
+      width: 42px;
+      background: var(--bg);
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 10px 8px 10px 0;
+      text-align: right;
+      overflow: hidden;
+      user-select: none;
+      flex-shrink: 0;
+      white-space: pre;
+      border-right: 1px solid var(--border);
+    }
+
+    .editor-highlight {
+      position: absolute;
+      top: 0;
+      left: 42px;
+      right: 0;
+      bottom: 0;
+      margin: 0;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      overflow: hidden;
+      pointer-events: none;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      color: var(--text);
+      tab-size: 2;
+      z-index: 1;
+    }
+
+    .editor-highlight .hl-keyword { color: #c084fc; }
+    .editor-highlight .hl-string { color: #86efac; }
+    .editor-highlight .hl-number { color: var(--warn); }
+    .editor-highlight .hl-comment { color: var(--text-dim); font-style: italic; }
+
+    #code-editor {
+      flex: 1;
+      background: transparent;
+      color: transparent;
+      caret-color: var(--text);
+      border: none;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+      position: relative;
+      z-index: 2;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    /* ─── Project list (in project dialog) ──────────────────────────── */
+
+    .project-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .project-list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-radius: var(--radius);
+      margin-bottom: 4px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+    }
+
+    .project-list-item:hover { background: var(--panel-2); }
+
+    .project-list-name {
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .project-list-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .project-list-open, .project-list-delete {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 4px 10px !important;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px !important;
+      min-width: auto !important;
+      width: auto !important;
+      font-family: inherit;
+    }
+
+    .project-list-open:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim) !important;
+    }
+
+    .project-list-delete:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: var(--danger-bg) !important;
+    }
+
+    /* ─── Welcome overlay ───────────────────────────────────────────── */
+
+    #welcome-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 260px; /* fica sobre o canvas, acima do painel inferior */
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 20; /* acima do canvas e do osciloscópio, abaixo dos diálogos (100) */
+      pointer-events: none;
+      padding: 16px;
+    }
+
+    #welcome-overlay.visible { display: flex; }
+
+    .welcome-card {
+      pointer-events: auto;
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--border-strong);
+      border-radius: 16px;
+      padding: 28px 32px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), 0 0 40px rgba(34, 211, 238, 0.08);
+    }
+
+    .welcome-card svg.welcome-logo {
+      width: 34px;
+      height: 34px;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    .welcome-card h2 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 10px;
+      letter-spacing: -0.2px;
+    }
+
+    .welcome-card p {
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .welcome-cta {
+      display: inline-block;
+      margin-top: 16px;
+      background: #22d3ee;
+      color: #0a0e17;
+      font-weight: 600;
+      font-size: 12.5px;
+      font-family: inherit;
+      border: none;
+      border-radius: 999px;
+      padding: 9px 22px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+
+    .welcome-cta:hover {
+      box-shadow: 0 0 18px rgba(34, 211, 238, 0.4);
+      filter: brightness(1.1);
+    }
+
+    .welcome-site-link {
+      display: block;
+      margin-top: 12px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.12s;
+    }
+
+    .welcome-site-link:hover { color: var(--accent); }
+
+    .welcome-close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: all 0.12s;
+    }
+
+    .welcome-close:hover {
+      background: var(--panel-2);
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <a class="brand-link" href="./" title="Voltar ao site">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v6M12 17v6M1 12h6M17 12h6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/>
+        </svg>
+        <h1>Circuit Forge</h1>
+      </a>
+    </div>
+    <div class="actions">
+      <a class="act" href="docs.html" title="Documentação">Docs</a>
+      <a class="act" href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener" title="GitHub">
+        <svg viewBox="0 0 16 16" style="width:14px;height:14px" fill="currentColor" stroke="none" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+      </a>
+      <div class="sep-v"></div>
+      <div class="project-menu-wrapper">
+        <button id="btn-project">
+          <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v11H3z"/></svg>
+          Projeto
+          <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="project-dropdown" id="project-dropdown">
+          <button data-action="new">Novo Projeto</button>
+          <button data-action="save">Salvar</button>
+          <button data-action="save-as">Salvar Como...</button>
+          <hr/>
+          <button data-action="open">Abrir Projeto...</button>
+          <hr/>
+          <button data-action="export">Exportar JSON</button>
+          <button data-action="import">Importar JSON</button>
+          <hr/>
+          <button data-action="examples">Exemplos</button>
+        </div>
+      </div>
+      <div class="sep-v"></div>
+      <button class="act primary" id="btn-play" title="Iniciar/pausar simulação (espaço)">
+        <svg id="btn-play-icon" viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
+        <span id="btn-play-label">Play</span>
+      </button>
+      <div class="time-scale" title="Escala de tempo da simulação (s simulado / s real)">
+        <span class="time-scale-label">Tempo</span>
+        <input type="range" id="time-scale" min="-3" max="2" step="0.1" value="-1" />
+        <span class="time-scale-value" id="time-scale-value">100 ms/s</span>
+      </div>
+      <button class="act" id="btn-demo" title="Carregar demo RLC">Demo RLC</button>
+      <button class="act act-danger" id="btn-clear" title="Limpar circuito">Limpar</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- Left tool rail: components + tools -->
+    <aside class="tool-rail" id="toolbar">
+      <button class="tool active" data-tool="select" title="Selecionar (esc)">
+        <svg viewBox="0 0 28 28">
+          <path d="M7 5L7 22 L11.5 17.5 L14.5 23.5 L17.5 22 L14.5 16 L20 16 Z"/>
+        </svg>
+        <span>Selec.</span>
+      </button>
+      <div class="tool-sep"></div>
+      <button class="tool" data-tool="VoltageSource" title="Fonte de tensão">
+        <svg viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="8"/>
+          <line x1="11" y1="10" x2="17" y2="10"/>
+          <line x1="14" y1="7" x2="14" y2="13"/>
+          <line x1="11" y1="18" x2="17" y2="18"/>
+        </svg>
+        <span>Fonte V</span>
+      </button>
+      <button class="tool" data-tool="CurrentSource" title="Fonte de corrente">
+        <svg viewBox="0 0 28 28">
+          <circle cx="14" cy="14" r="8"/>
+          <line x1="14" y1="9" x2="14" y2="19"/>
+          <path d="M10 15 L14 19 L18 15"/>
+        </svg>
+        <span>Fonte I</span>
+      </button>
+      <div class="tool-sep"></div>
+      <button class="tool" data-tool="Resistor" title="Resistor">
+        <svg viewBox="0 0 28 28">
+          <line x1="1" y1="14" x2="5" y2="14"/>
+          <polyline points="5,14 7,10 10,18 13,10 16,18 19,10 22,18 23,14 27,14"/>
+        </svg>
+        <span>Resistor</span>
+      </button>
+      <button class="tool" data-tool="Capacitor" title="Capacitor">
+        <svg viewBox="0 0 28 28">
+          <line x1="1" y1="14" x2="12" y2="14"/>
+          <line x1="12" y1="7" x2="12" y2="21"/>
+          <line x1="16" y1="7" x2="16" y2="21"/>
+          <line x1="16" y1="14" x2="27" y2="14"/>
+        </svg>
+        <span>Capac.</span>
+      </button>
+      <button class="tool" data-tool="Inductor" title="Indutor">
+        <svg viewBox="0 0 28 28">
+          <line x1="1" y1="16" x2="5" y2="16"/>
+          <path d="M5 16 Q7.5 8, 10 16 Q12.5 8, 15 16 Q17.5 8, 20 16 Q22.5 8, 23 16"/>
+          <line x1="23" y1="16" x2="27" y2="16"/>
+        </svg>
+        <span>Indutor</span>
+      </button>
+      <div class="tool-sep"></div>
+      <button class="tool" data-tool="Diode" title="Diodo">
+        <svg viewBox="0 0 28 28">
+          <line x1="1" y1="14" x2="9" y2="14"/>
+          <path d="M9 8 L9 20 L19 14 Z" fill="currentColor" fill-opacity="0.15"/>
+          <line x1="19" y1="8" x2="19" y2="20"/>
+          <line x1="19" y1="14" x2="27" y2="14"/>
+        </svg>
+        <span>Diodo</span>
+      </button>
+      <button class="tool" data-tool="LED" title="LED">
+        <svg viewBox="0 0 28 28">
+          <line x1="1" y1="18" x2="7" y2="18"/>
+          <path d="M7 12 L7 24 L17 18 Z" fill="currentColor" fill-opacity="0.15"/>
+          <line x1="17" y1="12" x2="17" y2="24"/>
+          <line x1="17" y1="18" x2="24" y2="18"/>
+          <path d="M18 9 L22 5 M22 5 L19.5 5 M22 5 L22 7.5"/>
+          <path d="M13 9 L17 5 M17 5 L14.5 5 M17 5 L17 7.5"/>
+        </svg>
+        <span>LED</span>
+      </button>
+      <div class="tool-sep"></div>
+      <button class="tool" data-tool="Switch" title="Switch SPDT (3 terminais)">
+        <svg viewBox="0 0 28 28">
+          <line x1="2" y1="14" x2="8" y2="14"/>
+          <circle cx="8" cy="14" r="2" fill="currentColor"/>
+          <line x1="8" y1="14" x2="20" y2="8"/>
+          <circle cx="20" cy="8" r="2" fill="currentColor"/>
+          <circle cx="20" cy="20" r="2" fill="currentColor"/>
+          <line x1="20" y1="8" x2="26" y2="8"/>
+          <line x1="20" y1="20" x2="26" y2="20"/>
+        </svg>
+        <span>Switch</span>
+      </button>
+      <button class="tool" data-tool="Button" title="Push-button (momentary)">
+        <svg viewBox="0 0 28 28">
+          <line x1="2" y1="18" x2="9" y2="18"/>
+          <circle cx="9" cy="18" r="2" fill="currentColor"/>
+          <line x1="9" y1="18" x2="19" y2="18"/>
+          <circle cx="19" cy="18" r="2" fill="currentColor"/>
+          <line x1="19" y1="18" x2="26" y2="18"/>
+          <line x1="6" y1="11" x2="22" y2="11"/>
+          <line x1="14" y1="11" x2="14" y2="6"/>
+          <circle cx="14" cy="4" r="2"/>
+        </svg>
+        <span>Button</span>
+      </button>
+      <div class="tool-sep"></div>
+      <button class="tool" data-tool="wire" title="Fio">
+        <svg viewBox="0 0 28 28">
+          <path d="M4 8 L14 8 L14 20 L24 20"/>
+          <circle cx="4" cy="8" r="2" fill="currentColor"/>
+          <circle cx="24" cy="20" r="2" fill="currentColor"/>
+        </svg>
+        <span>Fio</span>
+      </button>
+      <button class="tool" data-tool="Ground" title="Terra (GND)">
+        <svg viewBox="0 0 28 28">
+          <line x1="14" y1="4" x2="14" y2="14"/>
+          <line x1="6" y1="14" x2="22" y2="14"/>
+          <line x1="9" y1="18" x2="19" y2="18"/>
+          <line x1="12" y1="22" x2="16" y2="22"/>
+        </svg>
+        <span>GND</span>
+      </button>
+      <button class="tool" data-tool="probe" title="Probe (ponta de prova)">
+        <svg viewBox="0 0 28 28">
+          <path d="M14 4 L22 14 L14 24 L6 14 Z"/>
+          <circle cx="14" cy="14" r="2.5" fill="currentColor"/>
+        </svg>
+        <span>Probe</span>
+      </button>
+      <div class="tool-sep"></div>
+      <button class="tool" id="btn-rotate" title="Rotacionar 90° (R)">
+        <svg viewBox="0 0 28 28">
+          <path d="M5 14 A9 9 0 1 1 14 23"/>
+          <path d="M10 23 L14 23 L14 19"/>
+        </svg>
+        <span>Rodar</span>
+      </button>
+    </aside>
+
+    <div class="canvas-area">
+      <div class="scope-overlay" id="scope-overlay" hidden>
+        <canvas id="scope-canvas"></canvas>
+        <div class="scope-stats">
+          <span><b>Max</b><em id="scope-max">—</em></span>
+          <span><b>Min</b><em id="scope-min">—</em></span>
+          <span><b>Range</b><em id="scope-range">—</em></span>
+          <span><b>Freq</b><em id="scope-freq">—</em></span>
+          <span><b>RMS</b><em id="scope-rms">—</em></span>
+          <button class="scope-close" id="scope-close" title="Fechar osciloscópio">×</button>
+        </div>
+      </div>
+      <canvas id="canvas"></canvas>
+      <div id="welcome-overlay">
+        <div class="welcome-card">
+          <button class="welcome-close" id="welcome-close" title="Fechar">×</button>
+          <svg class="welcome-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6M12 17v6M1 12h6M17 12h6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/>
+          </svg>
+          <h2>Bem-vindo ao Circuit Forge</h2>
+          <p>Arraste componentes da paleta à esquerda para montar seu circuito no canvas.</p>
+          <p>Ou escreva o circuito em código na aba Editor e clique em Executar.</p>
+          <button class="welcome-cta" id="welcome-cta">Carregar um exemplo</button>
+          <a class="welcome-site-link" href="./">Ver o site</a>
+        </div>
+      </div>
+      <div class="bottom-panel" id="bottom-panel">
+        <div class="bottom-tabs">
+          <button class="tab active" data-tab="editor">Editor</button>
+          <button class="tab" data-tab="chart">Gráfico</button>
+          <div class="tab-actions">
+            <button class="run-btn" id="btn-run-code" title="Executar código">
+              <svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
+              Executar
+            </button>
+            <button class="gen-btn" id="btn-gen-code" title="Gerar código do circuito atual">Gerar Código</button>
+          </div>
+        </div>
+        <div class="tab-content active" id="editor-content" data-tab="editor">
+          <div class="editor-area">
+            <textarea id="code-editor" spellcheck="false"></textarea>
+            <div id="console-output"></div>
+          </div>
+        </div>
+        <div class="tab-content" id="chart-content" data-tab="chart">
+          <canvas id="chart-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <aside class="sidebar" id="sidebar">
+      <h2>Propriedades</h2>
+      <div id="props-content">
+        <p style="color: var(--text-dim); font-size: 12px;">Selecione um componente</p>
+      </div>
+      <div class="results" id="results"></div>
+      <div class="sim-controls">
+        <h2>Transiente</h2>
+        <div class="prop-group">
+          <label>Passo (s)</label>
+          <input type="text" id="sim-dt" value="1e-6" />
+        </div>
+        <div class="prop-group">
+          <label>Duração (s)</label>
+          <input type="text" id="sim-duration" value="5e-3" />
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="status-bar">
+    <span id="status-text">Pronto</span>
+    <span class="spacer"></span>
+    <span class="stat"><b>X</b><em id="mouse-x">0</em></span>
+    <span class="stat"><b>Y</b><em id="mouse-y">0</em></span>
+    <span class="stat"><b>Zoom</b><em id="zoom-level">100%</em></span>
+  </div>
+
+  <div id="value-dialog">
+    <div class="dialog-box">
+      <h3 id="dialog-title">Valor do componente</h3>
+      <input type="text" id="dialog-input" />
+      <div class="dialog-buttons">
+        <button class="btn-cancel" id="dialog-cancel">Cancelar</button>
+        <button class="btn-ok" id="dialog-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="project-dialog">
+    <div class="dialog-box">
+      <h3 id="project-dialog-title">Projeto</h3>
+      <div id="project-dialog-body"></div>
+      <div class="dialog-buttons">
+        <button class="btn-cancel" id="project-dialog-cancel">Cancelar</button>
+        <button class="btn-ok" id="project-dialog-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="import-file-input" accept=".json" style="display:none" />
+
+  <script>
+    // Overlay de boas-vindas: só aparece sem autosave e sem ?example= na URL.
+    (function () {
+      var overlay = document.getElementById('welcome-overlay');
+      if (!overlay) return;
+
+      var hasExample = new URLSearchParams(window.location.search).has('example');
+      var hasAutosave = false;
+      try {
+        for (var i = 0; i < localStorage.length; i++) {
+          var key = localStorage.key(i);
+          if (key && key.indexOf('circuit:') === 0) { hasAutosave = true; break; }
+        }
+      } catch (e) { /* localStorage indisponível: não mostra */ hasAutosave = true; }
+
+      if (hasExample || hasAutosave) return;
+
+      overlay.classList.add('visible');
+
+      function dismiss() {
+        overlay.style.display = 'none';
+        var canvas = document.getElementById('canvas');
+        if (canvas) canvas.removeEventListener('pointerdown', dismiss);
+      }
+
+      document.getElementById('welcome-close').addEventListener('click', dismiss);
+      document.getElementById('welcome-cta').addEventListener('click', function () {
+        dismiss();
+        window.location.href = 'app.html?example=rc-lowpass';
+      });
+      var canvas = document.getElementById('canvas');
+      if (canvas) canvas.addEventListener('pointerdown', dismiss);
+    })();
+  </script>
+  <script type="module" src="/src/ui/main.ts"></script>
+</body>
+</html>

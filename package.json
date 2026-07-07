@@ -12,6 +12,9 @@
     "test:watch": "vitest",
     "forge": "node bin/forge.mjs"
   },
+  "dependencies": {
+    "esbuild": "^0.25.0"
+  },
   "devDependencies": {
     "@types/node": "^26.1.0",
     "typescript": "^5.4.0",
