@@ -1,74 +1,74 @@
-# Diagnósticos — taxonomia de códigos e formato do RunRecord
+# Diagnostics — code taxonomy and RunRecord format
 
-Códigos são **permanentes**: parsers e agentes podem depender deles; nunca são renumerados.
-`forge explain <código>` traz a explicação longa de cada um.
+Codes are **permanent**: parsers and agents can depend on them; they are never renumbered.
+`forge explain <code>` gives the long explanation of each one.
 
-## Faixas
+## Ranges
 
-| Faixa | Fase | Significado |
+| Range | Phase | Meaning |
 |-------|------|-------------|
-| `F1xx` | lint (pré-solver) | topologia estrutural |
-| `S1xx` | solver linear | sistema insolúvel |
-| `S2xx` | solver não-linear | Newton-Raphson |
-| `A3xx` | asserções | spec não atingido |
-| `T0xx` | ferramenta | erro de autoria da bancada |
+| `F1xx` | lint (pre-solver) | structural topology |
+| `S1xx` | linear solver | unsolvable system |
+| `S2xx` | nonlinear solver | Newton-Raphson |
+| `A3xx` | assertions | spec not met |
+| `T0xx` | tooling | bench authoring error |
 
-## Códigos ativos
+## Active codes
 
-| Código | Slug | Severidade | Quando dispara |
+| Code | Slug | Severity | When it fires |
 |--------|------|-----------|----------------|
-| `F101` | floating-net | error | net sem caminho DC até o ground (isolada por capacitor/fonte de corrente) |
-| `F103` | unreached-component | error | componente (ou ilha) sem conexão com o circuito aterrado — seria silenciosamente ignorado pelo solver |
-| `F104` | voltage-source-short / voltage-source-loop | error | fonte ideal em curto, ou loop de fontes ideais (indutor conta como fonte 0 V em DC) |
-| `F105` | source-clamped-diode | error | diodo/LED polarizado direto grampeado numa fonte ideal sem resistência em série |
-| `F106` | dangling-pin | warning | pino sem nenhuma conexão |
-| `S101` | unsolvable-system | error | matriz singular que o lint não modelou (raro; reportar) |
-| `S201` | nr-nonconvergence | error | NR não convergiu no ponto DC — carrega componente culpado, ΔV e histórico de oscilação |
-| `S202` | nr-nonconvergence | error | NR não convergiu num passo do transiente |
-| `A301` | assertion-failed | fail | asserção falhou — carrega medido, esperado, margem e hint verificado quando há `tb.param` |
-| `T001` | bench-error | error | a própria bancada lançou exceção na elaboração |
-| `T002` | stage-crash | error | um estágio (op/tran) quebrou após a elaboração — bug de plataforma; o RunRecord ainda é emitido (exit 3) |
+| `F101` | floating-net | error | net with no DC path to ground (isolated by a capacitor/current source) |
+| `F103` | unreached-component | error | component (or island) with no connection to the grounded circuit — would be silently ignored by the solver |
+| `F104` | voltage-source-short / voltage-source-loop | error | ideal source shorted, or a loop of ideal sources (an inductor counts as a 0 V source in DC) |
+| `F105` | source-clamped-diode | error | forward-biased diode/LED clamped directly across an ideal source with no series resistance |
+| `F106` | dangling-pin | warning | pin with no connection at all |
+| `S101` | unsolvable-system | error | singular matrix that lint did not model (rare; please report) |
+| `S201` | nr-nonconvergence | error | NR did not converge at the DC point — carries the offending component, ΔV, and oscillation history |
+| `S202` | nr-nonconvergence | error | NR did not converge at a transient step |
+| `A301` | assertion-failed | fail | assertion failed — carries measured, expected, margin, and a verified hint when `tb.param` is present |
+| `T001` | bench-error | error | the bench itself threw an exception during elaboration |
+| `T002` | stage-crash | error | a stage (op/tran) crashed after elaboration — platform bug; the RunRecord is still emitted (exit 3) |
 
-Notas de semântica:
-- O lint **sempre roda** (mesmo com `--stage op`): resolver um circuito que o lint rejeitaria
-  significaria descartar componentes silenciosamente e reportar números fabricados.
-- `settleWithin` que nunca estabiliza reporta `measured` = fim da janela (finito) — nunca
-  `Infinity`, que viraria `null` no JSON.
-- O `hint.passingRange` cobre apenas a **maior sequência contígua** de amostras aprovadas
-  (cada amostra passa no lint E em todas as asserções op); os valores exatos simulados
-  estão em `passingSamples`.
+Semantic notes:
+- Lint **always runs** (even with `--stage op`): solving a circuit that lint would reject
+  would mean silently discarding components and reporting fabricated numbers.
+- A `settleWithin` that never settles reports `measured` = end of the window (finite) — never
+  `Infinity`, which would become `null` in JSON.
+- `hint.passingRange` covers only the **longest contiguous run** of passing samples
+  (each sample passes lint AND all op assertions); the exact simulated values
+  are in `passingSamples`.
 
-## Contrato de confiança dos fixes
+## Fix confidence contract
 
-Todo fix carrega `confidence`:
+Every fix carries a `confidence`:
 
-- **`verified`** — a plataforma **simulou** a correção e ela passa em todas as asserções do
-  estágio. O agente deve aplicar diretamente.
-- **`mechanical`** — transformação determinística (não simulada, mas sem julgamento).
-- **`suggested`** — heurística; o agente deve raciocinar antes de aplicar.
+- **`verified`** — the platform **simulated** the fix and it passes all of the stage's
+  assertions. The agent should apply it directly.
+- **`mechanical`** — deterministic transformation (not simulated, but no judgment required).
+- **`suggested`** — heuristic; the agent should reason before applying.
 
-Invariantes (aplicados em code review): nunca emitir fix que referencia flag/capacidade que
-não existe; nunca emitir número não simulado sem rótulo `suggested`.
+Invariants (enforced in code review): never emit a fix that references a flag/capability that
+does not exist; never emit an unsimulated number without a `suggested` label.
 
 ## Exit codes
 
-| Código | Significado | Ação do agente |
+| Code | Meaning | Agent action |
 |--------|-------------|----------------|
-| `0` | todos os estágios pedidos passaram | pronto |
-| `1` | asserção falhou (circuito válido) | ajustar valores (hint!) ou topologia |
-| `2` | circuito inválido/insolúvel (F/S com severidade error) | consertar estrutura antes de tudo |
-| `3` | erro de ferramenta (uso incorreto, bancada lançou) | consertar a bancada/invocação |
+| `0` | all requested stages passed | done |
+| `1` | assertion failed (valid circuit) | adjust values (hint!) or topology |
+| `2` | invalid/unsolvable circuit (F/S with error severity) | fix the structure first |
+| `3` | tooling error (misuse, bench threw) | fix the bench/invocation |
 
 ## RunRecord (`forge verify --json`)
 
 ```jsonc
 {
-  "runId": "cb4f1e998fc8-001",        // presente quando gravado no ledger
+  "runId": "cb4f1e998fc8-001",        // present when recorded in the ledger
   "schema": "forge-run/0.1",
   "bench": "led-overcurrent",
   "engine": "circuit-forge@0.1.0",
   "netlist": {
-    "hash": "cb4f1e998fc8…",          // FNV-1a 64 do netlist canônico (identidade)
+    "hash": "cb4f1e998fc8…",          // FNV-1a 64 of the canonical netlist (identity)
     "components": [
       { "id": "D1", "type": "LED", "params": { "Is": 1e-20, "n": 2, "Vt": 0.02585 },
         "pins": { "anode": "n2", "cathode": "gnd" }, "at": "bench/….bench.ts:14" },
@@ -78,7 +78,7 @@ não existe; nunca emitir número não simulado sem rótulo `suggested`.
     ],
     "nets": { "gnd": ["D1.cathode", "V1.-"], "n1": ["R1.1", "V1.+"], "n2": ["D1.anode", "R1.2"] }
   },
-  "overrides": { "R1": 280 },          // quando --set / micro-sweep
+  "overrides": { "R1": 280 },          // when --set / micro-sweep
   "stages": {
     "lint": { "verdict": "pass" },
     "op": {
@@ -101,24 +101,24 @@ não existe; nunca emitir número não simulado sem rótulo `suggested`.
     },
     "tran": { "verdict": "skipped", "reason": "op assertions failed" }
   },
-  "diagnostics": [],                    // objetos Diagnostic (código/subject/note/fixes/at)
+  "diagnostics": [],                    // Diagnostic objects (code/subject/note/fixes/at)
   "verdict": "fail",
   "firstFailure": "a1",
   "exitCode": 1
 }
 ```
 
-Determinismo: a saída não contém timestamps (só o ledger adiciona `at` na gravação); dois
-runs idênticos produzem registros byte-idênticos — o diff entre iterações do agente fica
+Determinism: the output contains no timestamps (only the ledger adds `at` on write); two
+identical runs produce byte-identical records — the diff between agent iterations stays
 trivial.
 
-## Gramática de sondas
+## Probe grammar
 
 ```
-'<id>.i'    corrente no componente     ex.: 'D1.i'
-'<id>.v'    tensão sobre o componente  ex.: 'R1.v'
-'<net>'     tensão do net nomeado via tb.name(...)   (apenas estágio op)
+'<id>.i'    current through the component  e.g.: 'D1.i'
+'<id>.v'    voltage across the component   e.g.: 'R1.v'
+'<net>'     voltage of a net named via tb.name(...)   (op stage only)
 ```
 
-Nets automáticos (`n1`, `n2`, …) não são endereçáveis de propósito — nomeie com
-`tb.name('out', pin)` para garantir estabilidade entre edições.
+Automatic nets (`n1`, `n2`, …) are deliberately not addressable — name them with
+`tb.name('out', pin)` to guarantee stability across edits.
