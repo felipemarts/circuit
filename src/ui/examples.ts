@@ -1,15 +1,15 @@
 import type { ProjectData } from './types';
 
 /**
- * Projeto de exemplo com metadados de deep link.
+ * Example project with deep-link metadata.
  *
- * `slug` é o identificador estável usado na URL (`app.html?example=<slug>`)
- * e é um contrato com a landing page — não renomeie sem atualizar os links.
- * `description` é o texto curto exibido nas listagens.
+ * `slug` is the stable identifier used in the URL (`app.html?example=<slug>`)
+ * and is a contract with the landing page — do not rename it without updating the links.
+ * `description` is the short text shown in listings.
  *
- * `ExampleProject` estende `ProjectData`, então tudo que consome
- * `ProjectData` (ex.: projectManager, que usa apenas `.name` e os campos
- * padrão) continua funcionando sem alterações.
+ * `ExampleProject` extends `ProjectData`, so everything that consumes
+ * `ProjectData` (e.g. projectManager, which only uses `.name` and the default
+ * fields) keeps working without changes.
  */
 export interface ExampleProject extends ProjectData {
   slug: string;
@@ -18,9 +18,9 @@ export interface ExampleProject extends ProjectData {
 
 const VOLTAGE_DIVIDER: ExampleProject = {
   version: 1,
-  name: 'Divisor de Tensao',
+  name: 'Voltage Divider',
   slug: 'divisor-tensao',
-  description: 'Dois resistores em serie dividindo 10 V — o circuito mais fundamental da eletronica.',
+  description: 'Two resistors in series dividing 10 V — the most fundamental circuit in electronics.',
   files: [
     {
       name: 'main.js',
@@ -39,7 +39,7 @@ v1.pin('-').connect(gnd.pin('1'));
 circuit.analyze('dc');
 
 console.log('V_out (R2):', r2.voltage.toFixed(3), 'V');
-console.log('Corrente:', (r1.current * 1000).toFixed(3), 'mA');`,
+console.log('Current:', (r1.current * 1000).toFixed(3), 'mA');`,
     },
   ],
   canvas: { components: [], wires: [], grounds: [], probes: [] },
@@ -48,13 +48,13 @@ console.log('Corrente:', (r1.current * 1000).toFixed(3), 'mA');`,
 
 const RC_LOWPASS: ExampleProject = {
   version: 1,
-  name: 'Filtro RC Passa-Baixa',
+  name: 'RC Low-Pass Filter',
   slug: 'rc-lowpass',
-  description: 'Degrau de 5 V carregando um capacitor atraves de um resistor — a curva exponencial classica.',
+  description: 'A 5 V step charging a capacitor through a resistor — the classic exponential curve.',
   files: [
     {
       name: 'main.js',
-      content: `// Filtro RC passa-baixa de 1a ordem
+      content: `// 1st-order RC low-pass filter
 //
 //   5V ──[ R 1k ]──┬── Vout
 //                  │
@@ -62,14 +62,14 @@ const RC_LOWPASS: ExampleProject = {
 //                  │
 //                 GND
 //
-// Ao aplicar o degrau de 5 V, o capacitor carrega exponencialmente:
-//   Vc(t) = 5 * (1 - e^(-t/tau)),  com tau = R*C = 1k * 1u = 1 ms.
-// Apos 5*tau (5 ms), Vc ja alcancou ~99.3% do valor final.
+// When the 5 V step is applied, the capacitor charges exponentially:
+//   Vc(t) = 5 * (1 - e^(-t/tau)),  with tau = R*C = 1k * 1u = 1 ms.
+// After 5*tau (5 ms), Vc has reached ~99.3% of its final value.
 
 const circuit = new Circuit();
 const gnd = new Ground();
 
-const v1 = new VoltageSource(5);     // degrau de 5 V em t = 0
+const v1 = new VoltageSource(5);     // 5 V step at t = 0
 const r1 = new Resistor(1000);       // 1 kOhm
 const c1 = new Capacitor(0.000001);  // 1 uF
 
@@ -78,21 +78,21 @@ r1.pin('2').connect(c1.pin('1'));
 c1.pin('2').connect(gnd.pin('1'));
 v1.pin('-').connect(gnd.pin('1'));
 
-// Sonda de tensao no capacitor — a curva de carga aparece no grafico
+// Voltage probe on the capacitor — the charge curve shows up in the chart
 circuit.probe(c1, 'voltage');
 
-// Transiente: 5 ms de duracao com passo de 10 us
+// Transient: 5 ms duration with a 10 us step
 const result = circuit.analyze('transient', {
   timeStep: 0.00001,
   duration: 0.005,
 });
 
-// Confronto teoria x simulacao: ultimo ponto da sonda no capacitor
-const curva = result.probes[0].values;
-const vcFinal = curva[curva.length - 1];
+// Theory vs simulation: last point of the capacitor probe
+const curve = result.probes[0].values;
+const vcFinal = curve[curve.length - 1];
 const tau = 1000 * 0.000001; // R * C = 1 ms
-console.log('Tau teorico (R*C):', (tau * 1000).toFixed(2), 'ms');
-console.log('Vc apos 5*tau:', vcFinal.toFixed(3), 'V (teorico ~4.966 V)');`,
+console.log('Theoretical tau (R*C):', (tau * 1000).toFixed(2), 'ms');
+console.log('Vc after 5*tau:', vcFinal.toFixed(3), 'V (theory ~4.966 V)');`,
     },
   ],
   canvas: { components: [], wires: [], grounds: [], probes: [] },
@@ -101,13 +101,13 @@ console.log('Vc apos 5*tau:', vcFinal.toFixed(3), 'V (teorico ~4.966 V)');`,
 
 const RLC_TRANSIENT: ExampleProject = {
   version: 1,
-  name: 'RLC Transiente',
+  name: 'RLC Transient',
   slug: 'rlc-ressonante',
-  description: 'Circuito RLC serie subamortecido — oscilacao ressonante visivel no grafico.',
+  description: 'Underdamped series RLC circuit — resonant oscillation visible in the chart.',
   files: [
     {
       name: 'main.js',
-      content: `// Circuito RLC serie — resposta ao degrau
+      content: `// Series RLC circuit — step response
 //
 //   10V ──[ R 1 ]──[ L 1m ]──┬── Vout
 //                            │
@@ -115,20 +115,20 @@ const RLC_TRANSIENT: ExampleProject = {
 //                            │
 //                           GND
 //
-// Com R baixo o circuito e SUBAMORTECIDO: a tensao no capacitor
-// oscila em torno de 10 V antes de assentar (ringing).
+// With low R the circuit is UNDERDAMPED: the capacitor voltage
+// oscillates around 10 V before settling (ringing).
 //
-//   f0 = 1 / (2*pi*sqrt(L*C)) ≈ 1.59 kHz   (frequencia de ressonancia)
-//   Q  = (1/R) * sqrt(L/C)    = 10          (fator de qualidade)
+//   f0 = 1 / (2*pi*sqrt(L*C)) ≈ 1.59 kHz   (resonant frequency)
+//   Q  = (1/R) * sqrt(L/C)    = 10          (quality factor)
 //
-// Experimente aumentar R para 20 (amortecimento critico ~ 2*sqrt(L/C))
-// e veja a oscilacao desaparecer.
+// Try raising R to 20 (critical damping ~ 2*sqrt(L/C))
+// and watch the oscillation disappear.
 
 const circuit = new Circuit();
 const gnd = new Ground();
 
-const v1 = new VoltageSource(10);   // degrau de 10 V em t = 0
-const r1 = new Resistor(1);         // 1 Ohm — baixo de proposito, para oscilar
+const v1 = new VoltageSource(10);   // 10 V step at t = 0
+const r1 = new Resistor(1);         // 1 Ohm — deliberately low, so it oscillates
 const l1 = new Inductor(0.001);     // 1 mH
 const c1 = new Capacitor(0.00001);  // 10 uF
 
@@ -138,10 +138,10 @@ l1.pin('2').connect(c1.pin('1'));
 c1.pin('2').connect(gnd.pin('1'));
 v1.pin('-').connect(gnd.pin('1'));
 
-// Sonda no capacitor — o ringing aparece no grafico
+// Probe on the capacitor — the ringing shows up in the chart
 circuit.probe(c1, 'voltage');
 
-// 5 ms cobre ~8 ciclos de oscilacao (T = 1/f0 ≈ 0.63 ms)
+// 5 ms covers ~8 oscillation cycles (T = 1/f0 ≈ 0.63 ms)
 circuit.analyze('transient', {
   timeStep: 1e-6,
   duration: 5e-3,
@@ -154,46 +154,46 @@ circuit.analyze('transient', {
 
 const SWITCH_SPDT: ExampleProject = {
   version: 1,
-  name: 'Chave SPDT + 2 LEDs',
+  name: 'SPDT Switch + 2 LEDs',
   slug: 'switch-spdt',
-  description: 'Chave de 1 polo e 2 posicoes alternando a corrente entre dois LEDs.',
+  description: 'A single-pole double-throw switch routing current between two LEDs.',
   files: [
     {
       name: 'main.js',
-      content: `// Chave SPDT (1 polo, 2 posicoes) alternando dois LEDs
+      content: `// SPDT switch (1 pole, 2 positions) toggling two LEDs
 //
-//          ┌─ a ──[ R 330 ]──▶|── GND    (canal A -> LED1)
+//          ┌─ a ──[ R 330 ]──▶|── GND    (channel A -> LED1)
 //   5V ── com
-//          └─ b ──[ R 330 ]──▶|── GND    (canal B -> LED2)
+//          └─ b ──[ R 330 ]──▶|── GND    (channel B -> LED2)
 //
-// A chave conecta 'com' ao canal A (padrao) ou ao canal B.
-// So o LED do canal ativo recebe corrente: ~(5 - Vf) / 330 ≈ 9 mA.
+// The switch connects 'com' to channel A (default) or channel B.
+// Only the active channel's LED gets current: ~(5 - Vf) / 330 ≈ 9 mA.
 
 const circuit = new Circuit();
 const gnd = new Ground();
 
 const v1 = new VoltageSource(5);
-const sw = new Switch();       // posicao A por padrao (closed = false)
-const ra = new Resistor(330);  // limita a corrente do LED1
-const rb = new Resistor(330);  // limita a corrente do LED2
+const sw = new Switch();       // position A by default (closed = false)
+const ra = new Resistor(330);  // limits LED1 current
+const rb = new Resistor(330);  // limits LED2 current
 const led1 = new LED();
 const led2 = new LED();
 
 v1.pin('+').connect(sw.pin('com'));
 
-// Canal A: com ─ a ─ R ─ LED1 ─ GND
+// Channel A: com ─ a ─ R ─ LED1 ─ GND
 sw.pin('a').connect(ra.pin('1'));
 ra.pin('2').connect(led1.pin('anode'));
 led1.pin('cathode').connect(gnd.pin('1'));
 
-// Canal B: com ─ b ─ R ─ LED2 ─ GND
+// Channel B: com ─ b ─ R ─ LED2 ─ GND
 sw.pin('b').connect(rb.pin('1'));
 rb.pin('2').connect(led2.pin('anode'));
 led2.pin('cathode').connect(gnd.pin('1'));
 
 v1.pin('-').connect(gnd.pin('1'));
 
-// Sondas de corrente nos dois LEDs
+// Current probes on both LEDs
 circuit.probe(led1, 'current');
 circuit.probe(led2, 'current');
 
@@ -202,8 +202,8 @@ circuit.analyze('dc');
 const i1 = led1.current * 1000; // mA
 const i2 = led2.current * 1000; // mA
 console.log('LED1:', i1.toFixed(2), 'mA | LED2:', i2.toFixed(2), 'mA');
-console.log('Aceso agora:', i1 > i2 ? 'LED1 (canal A)' : 'LED2 (canal B)');
-console.log('Dica: clique na chave no canvas e rode Play para alternar.');`,
+console.log('Lit now:', i1 > i2 ? 'LED1 (channel A)' : 'LED2 (channel B)');
+console.log('Tip: click the switch on the canvas and hit Play to toggle.');`,
     },
   ],
   canvas: { components: [], wires: [], grounds: [], probes: [] },
@@ -214,11 +214,11 @@ const MCU_LEDS: ExampleProject = {
   version: 1,
   name: 'MCU + 2 LEDs',
   slug: 'mcu-leds',
-  description: 'Componente customizado com defineComponent: um microcontrolador piscando dois LEDs.',
+  description: 'A custom component built with defineComponent: a microcontroller blinking two LEDs.',
   files: [
     {
       name: 'components.js',
-      content: `// Microcontrolador customizado com 2 GPIOs
+      content: `// Custom microcontroller with 2 GPIOs
 const MCU = defineComponent({
   name: 'MCU',
   pins: ['gnd', 'gpio0', 'gpio1'],
@@ -232,7 +232,7 @@ const MCU = defineComponent({
     state.gpio1 = 0;
   },
   onStep(ctx) {
-    // Programa: alterna LEDs a cada 1ms
+    // Program: toggle the LEDs every 1ms
     const period = 0.002;
     const phase = (ctx.time % period) / period;
     ctx.state.gpio0 = phase < 0.5 ? 1 : 0;
@@ -264,7 +264,7 @@ const r2 = new Resistor(330);
 const led1 = new LED();
 const led2 = new LED();
 
-// Conectar MCU ground
+// Connect MCU ground
 mcu.pin('gnd').connect(gnd.pin('1'));
 
 // GPIO0 -> R1 -> LED1 -> GND
@@ -277,7 +277,7 @@ mcu.pin('gpio1').connect(r2.pin('1'));
 r2.pin('2').connect(led2.pin('anode'));
 led2.pin('cathode').connect(gnd.pin('1'));
 
-// Probes nos LEDs
+// Probes on the LEDs
 circuit.probe(led1, 'voltage');
 circuit.probe(led2, 'voltage');
 

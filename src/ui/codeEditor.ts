@@ -123,7 +123,7 @@ export function initCodeEditor(container: HTMLElement): CodeEditorAPI {
       // Double-click to rename
       nameSpan.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        const newName = prompt('Renomear arquivo:', file.name);
+        const newName = prompt('Rename file:', file.name);
         if (newName && newName !== file.name && !files.some(f => f.name === newName)) {
           if (activeFile === file.name) activeFile = newName;
           file.name = newName;
@@ -139,7 +139,7 @@ export function initCodeEditor(container: HTMLElement): CodeEditorAPI {
         closeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           if (files.length <= 1) return;
-          if (!confirm(`Excluir "${file.name}"?`)) return;
+          if (!confirm(`Delete "${file.name}"?`)) return;
           files = files.filter(f => f.name !== file.name);
           if (activeFile === file.name) {
             activeFile = files[0].name;
@@ -192,7 +192,7 @@ export function initCodeEditor(container: HTMLElement): CodeEditorAPI {
     const addBtn = document.createElement('div');
     addBtn.className = 'file-tab file-tab-add';
     addBtn.textContent = '+';
-    addBtn.title = 'Novo arquivo';
+    addBtn.title = 'New file';
     addBtn.addEventListener('click', () => {
       let n = files.length + 1;
       let name = `file${n}.js`;
@@ -200,7 +200,7 @@ export function initCodeEditor(container: HTMLElement): CodeEditorAPI {
         n++;
         name = `file${n}.js`;
       }
-      const inputName = prompt('Nome do arquivo:', name);
+      const inputName = prompt('File name:', name);
       if (!inputName) return;
       saveCurrentContent();
       files.push({ name: inputName, content: '' });

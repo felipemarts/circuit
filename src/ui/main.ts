@@ -159,7 +159,7 @@ circuit.analyze('transient', {
 });`;
 
 // Project name
-let projectName = 'Sem titulo';
+let projectName = 'Untitled';
 
 function resize() {
   const canvasArea = canvas.parentElement!;
@@ -731,11 +731,11 @@ async function placeComponent(type: ComponentType, x: number, y: number) {
 
   let value = def.defaultValue;
   if (def.unit) {
-    const result = await promptValue(`Valor do ${type}`, String(def.defaultValue));
+    const result = await promptValue(`${type} value`, String(def.defaultValue));
     if (result === null) return;
     value = parseFloat(result);
     if (isNaN(value) || value <= 0) {
-      statusText.textContent = 'Valor invalido';
+      statusText.textContent = 'Invalid value';
       return;
     }
   }
@@ -758,7 +758,7 @@ async function placeComponent(type: ComponentType, x: number, y: number) {
 
 function updateProps() {
   if (!selectedId) {
-    propsContent.innerHTML = '<p style="color:#475569; font-size:12px;">Selecione um componente</p>';
+    propsContent.innerHTML = '<p style="color:#475569; font-size:12px;">Select a component</p>';
     return;
   }
 
@@ -768,18 +768,18 @@ function updateProps() {
   const def = getComponentDef(comp.type);
   let html = `
     <div class="prop-group">
-      <label>Tipo</label>
+      <label>Type</label>
       <input type="text" value="${comp.type}" readonly style="opacity:0.5" />
     </div>
     <div class="prop-group">
-      <label>Nome</label>
+      <label>Name</label>
       <input type="text" id="prop-label" value="${comp.label}" />
     </div>`;
 
   if (def?.unit) {
     html += `
     <div class="prop-group">
-      <label>Valor (${def.unit})</label>
+      <label>Value (${def.unit})</label>
       <input type="number" id="prop-value" value="${comp.value}" step="any" />
     </div>`;
   }
@@ -792,14 +792,14 @@ function updateProps() {
       <input type="number" id="prop-ac-amp" value="${comp.acAmplitude ?? 0}" step="any" />
     </div>
     <div class="prop-group">
-      <label>Frequencia (Hz)</label>
+      <label>Frequency (Hz)</label>
       <input type="number" id="prop-freq" value="${comp.frequency ?? 0}" step="any" />
     </div>`;
   }
 
   html += `
     <div class="prop-group">
-      <label>Rotacao (graus)</label>
+      <label>Rotation (degrees)</label>
       <div style="display:flex;gap:4px;">
         <input type="number" id="prop-rotation" value="${comp.rotation}" step="90" style="flex:1" />
         <button id="prop-rotate-btn" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:14px">&#8635;</button>
@@ -808,7 +808,7 @@ function updateProps() {
     <div class="prop-group" style="margin-top:12px">
       <button onclick="document.dispatchEvent(new CustomEvent('delete-selected'))"
         style="background:#dc2626;border:none;color:white;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px;width:100%">
-        Excluir
+        Delete
       </button>
     </div>`;
 
@@ -1222,11 +1222,11 @@ function setPlayButton(playing: boolean): void {
 
 function startSimulation(): void {
   if (components.length === 0) {
-    statusText.textContent = 'Nenhum componente no circuito';
+    statusText.textContent = 'No components in the circuit';
     return;
   }
   if (!hasAnyGround()) {
-    statusText.textContent = 'Adicione pelo menos um GND';
+    statusText.textContent = 'Add at least one GND';
     return;
   }
 
@@ -1246,11 +1246,11 @@ function startSimulation(): void {
     simChartLastUpdate = 0;
     showResults = true;
     setPlayButton(true);
-    statusText.textContent = 'Simulando…';
+    statusText.textContent = 'Simulating…';
 
     simulationLoop();
   } catch (error) {
-    statusText.textContent = `Erro: ${error instanceof Error ? error.message : String(error)}`;
+    statusText.textContent = `Error: ${error instanceof Error ? error.message : String(error)}`;
     simSession = null;
     simSimComponents = null;
   }
@@ -1267,7 +1267,7 @@ function pauseSimulation(): void {
   }
   simSimComponents = null;
   setPlayButton(false);
-  statusText.textContent = 'Pausado';
+  statusText.textContent = 'Paused';
   render();
 }
 
@@ -1305,7 +1305,7 @@ function simulationLoop(): void {
   try {
     for (let i = 0; i < nSteps; i++) simSession.step(dt);
   } catch (error) {
-    statusText.textContent = `Erro na simulacao: ${error instanceof Error ? error.message : String(error)}`;
+    statusText.textContent = `Simulation error: ${error instanceof Error ? error.message : String(error)}`;
     pauseSimulation();
     return;
   }
@@ -1507,7 +1507,7 @@ function executeUserCode(code: string) {
       analyze: (type: string, config?: any) => {
         if (type === 'transient') {
           if (trackedProbes.length === 0) {
-            throw new Error('Adicione pelo menos uma probe antes de analyze("transient")');
+            throw new Error('Add at least one probe before analyze("transient")');
           }
           const specs: ProbeSpec[] = trackedProbes.map(p => ({
             label: p.label,
@@ -1721,13 +1721,13 @@ function executeUserCode(code: string) {
       transientResult = state.transientResult;
       switchTab('chart');
       resize();
-      statusText.textContent = `Codigo executado: ${tracked.length} componentes, transiente ${state.transientResult.timePoints.length} pontos`;
+      statusText.textContent = `Code executed: ${tracked.length} components, transient ${state.transientResult.timePoints.length} points`;
     } else {
-      statusText.textContent = `Codigo executado: ${tracked.length} componentes`;
+      statusText.textContent = `Code executed: ${tracked.length} components`;
     }
   } catch (err) {
     customConsole.error(String(err));
-    statusText.textContent = 'Erro na execucao do codigo';
+    statusText.textContent = 'Error running code';
   }
 }
 
@@ -2035,7 +2035,7 @@ document.getElementById('btn-run-code')!.addEventListener('click', () => {
 document.getElementById('btn-gen-code')!.addEventListener('click', () => {
   editorAPI.setActiveContent(generateCode());
   switchTab('editor');
-  statusText.textContent = 'Codigo gerado a partir do circuito visual';
+  statusText.textContent = 'Code generated from the visual circuit';
 });
 
 // Handle Ctrl+Enter in code editor (textarea still exists in DOM)
@@ -2117,7 +2117,7 @@ function loadDemoRLC() {
   (document.getElementById('sim-dt') as HTMLInputElement).value = '1e-6';
   (document.getElementById('sim-duration') as HTMLInputElement).value = '5e-3';
 
-  statusText.textContent = 'Demo RLC carregado — clique Transiente para simular';
+  statusText.textContent = 'RLC demo loaded — click Transient to simulate';
   updateProps();
   resize();
 }
@@ -2127,7 +2127,7 @@ function loadDemoRLC() {
 function updateResults() {
   if (!showResults) { resultsDiv.innerHTML = ''; return; }
 
-  let html = '<h2>Resultados</h2>';
+  let html = '<h2>Results</h2>';
   for (const comp of components) {
     if (comp.voltage === undefined) continue;
     html += `
@@ -2145,15 +2145,15 @@ function updateResults() {
 function updateStatus() {
   if (wireStart) {
     const comp = components.find(c => c.id === wireStart!.componentId)!;
-    statusText.textContent = `${comp.label}.${wireStart.pinName} → clique em outro pino`;
+    statusText.textContent = `${comp.label}.${wireStart.pinName} → click another pin`;
   } else if (currentTool === 'select') {
-    statusText.textContent = 'Arraste para mover | Pino→pino para conectar | R ou clique-direito para rotacionar';
+    statusText.textContent = 'Drag to move | Pin→pin to connect | R or right-click to rotate';
   } else if (currentTool === 'wire') {
-    statusText.textContent = 'Clique em um pino para iniciar um fio';
+    statusText.textContent = 'Click a pin to start a wire';
   } else if (currentTool === 'probe') {
-    statusText.textContent = 'Clique em um pino para adicionar/remover probe';
+    statusText.textContent = 'Click a pin to add/remove a probe';
   } else {
-    statusText.textContent = `Clique no canvas para posicionar ${currentTool}`;
+    statusText.textContent = `Click the canvas to place ${currentTool}`;
   }
 }
 
@@ -2562,7 +2562,7 @@ window.addEventListener('beforeunload', () => {
 
 const saved = loadAutoSave();
 if (saved && saved.files && saved.files.length > 0) {
-  projectName = saved.name || 'Sem titulo';
+  projectName = saved.name || 'Untitled';
   editorAPI.setFiles(saved.files);
   if (saved.canvas) {
     projectBridge.setCanvasState(saved.canvas);
@@ -2575,22 +2575,22 @@ if (saved && saved.files && saved.files.length > 0) {
   }
   // Update title
   const h1 = document.querySelector('header h1')!;
-  h1.textContent = projectName !== 'Sem titulo' ? `Circuit Forge — ${projectName}` : 'Circuit Forge';
+  h1.textContent = projectName !== 'Untitled' ? `Circuit Forge — ${projectName}` : 'Circuit Forge';
 } else {
   // Set default content
   editorAPI.setFiles([{ name: 'main.js', content: DEFAULT_CODE }]);
 }
 
 // ─── Deep link: app.html?example=<slug> ─────────────────────────────────────
-// Carrega o exemplo por cima do auto-save restaurado e ja dispara a execucao
-// (mesmo caminho do botao "Executar"); transientes trocam para a aba de grafico.
+// Load the example over the restored auto-save and run it right away
+// (same path as the "Run" button); transients switch to the chart tab.
 
 const exampleSlug = new URLSearchParams(location.search).get('example');
 if (exampleSlug) {
   if (projectManager.loadExampleBySlug(exampleSlug)) {
     executeUserCode(editorAPI.getCombinedCode());
   } else {
-    console.warn(`Exemplo desconhecido: "${exampleSlug}"`);
+    console.warn(`Unknown example: "${exampleSlug}"`);
   }
 }
 

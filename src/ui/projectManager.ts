@@ -17,7 +17,7 @@ export interface ProjectBridge {
 }
 
 export interface ProjectManagerAPI {
-  /** Carrega um exemplo pelo slug (deep link `?example=<slug>`). Retorna false se o slug nao existe. */
+  /** Loads an example by slug (deep link `?example=<slug>`). Returns false if the slug does not exist. */
   loadExampleBySlug(slug: string): boolean;
 }
 
@@ -108,7 +108,7 @@ export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
   function loadExampleBySlug(slug: string): boolean {
     const example = EXAMPLE_PROJECTS.find(p => p.slug === slug);
     if (!example) return false;
-    // Deep clone para nao mutar o template do exemplo
+    // Deep clone so we don't mutate the example template
     const clone = JSON.parse(JSON.stringify(example)) as ProjectData;
     loadProjectData(clone);
     updateTitle();
@@ -125,8 +125,8 @@ export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
 
     switch (action) {
       case 'new': {
-        if (!confirm('Criar novo projeto? Alteracoes nao salvas serao perdidas.')) return;
-        bridge.setProjectName('Sem titulo');
+        if (!confirm('Create a new project? Unsaved changes will be lost.')) return;
+        bridge.setProjectName('Untitled');
         bridge.getEditorAPI().setFiles([{ name: 'main.js', content: '' }]);
         bridge.setCanvasState({ components: [], wires: [], grounds: [], probes: [] });
         bridge.render();
@@ -135,10 +135,10 @@ export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
 
       case 'save': {
         const name = bridge.getProjectName();
-        if (name === 'Sem titulo') {
+        if (name === 'Untitled') {
           // Fall through to save-as
-          const result = await showDialog('Salvar Projeto', `
-            <input type="text" placeholder="Nome do projeto" style="width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:10px 14px;border-radius:8px;font-size:14px;margin-top:8px;" />
+          const result = await showDialog('Save Project', `
+            <input type="text" placeholder="Project name" style="width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:10px 14px;border-radius:8px;font-size:14px;margin-top:8px;" />
           `);
           if (!result) return;
           bridge.setProjectName(result);
@@ -150,8 +150,8 @@ export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
       }
 
       case 'save-as': {
-        const result = await showDialog('Salvar Como', `
-          <input type="text" placeholder="Nome do projeto" value="${bridge.getProjectName()}" style="width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:10px 14px;border-radius:8px;font-size:14px;margin-top:8px;" />
+        const result = await showDialog('Save As', `
+          <input type="text" placeholder="Project name" value="${bridge.getProjectName()}" style="width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:10px 14px;border-radius:8px;font-size:14px;margin-top:8px;" />
         `);
         if (!result) return;
         bridge.setProjectName(result);
@@ -164,19 +164,19 @@ export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
       case 'open': {
         const projects = listProjects();
         if (projects.length === 0) {
-          alert('Nenhum projeto salvo.');
+          alert('No saved projects.');
           return;
         }
         const listHTML = projects.map(p => `
           <div class="project-list-item" data-name="${p.name}">
             <span class="project-list-name">${p.name}</span>
             <div class="project-list-actions">
-              <button class="project-list-open" data-open="${p.name}">Abrir</button>
-              <button class="project-list-delete" data-delete="${p.name}">Excluir</button>
+              <button class="project-list-open" data-open="${p.name}">Open</button>
+              <button class="project-list-delete" data-delete="${p.name}">Delete</button>
             </div>
           </div>
         `).join('');
-        await showDialog('Abrir Projeto', `<div class="project-list">${listHTML}</div>`);
+        await showDialog('Open Project', `<div class="project-list">${listHTML}</div>`);
         break;
       }
 
@@ -195,10 +195,10 @@ export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
         const listHTML = EXAMPLE_PROJECTS.map((p, i) => `
           <div class="project-list-item" data-example="${i}">
             <span class="project-list-name">${p.name}</span>
-            <button class="project-list-open" data-load-example="${i}">Carregar</button>
+            <button class="project-list-open" data-load-example="${i}">Load</button>
           </div>
         `).join('');
-        await showDialog('Exemplos', `<div class="project-list">${listHTML}</div>`);
+        await showDialog('Examples', `<div class="project-list">${listHTML}</div>`);
         break;
       }
     }
@@ -221,7 +221,7 @@ export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
 
     const deleteName = target.dataset.delete;
     if (deleteName) {
-      if (confirm(`Excluir projeto "${deleteName}"?`)) {
+      if (confirm(`Delete project "${deleteName}"?`)) {
         deleteProject(deleteName);
         // Remove the item from the list
         const item = target.closest('.project-list-item');
@@ -263,7 +263,7 @@ export function initProjectManager(bridge: ProjectBridge): ProjectManagerAPI {
   function updateTitle() {
     const h1 = document.querySelector('header h1')!;
     const name = bridge.getProjectName();
-    h1.textContent = name !== 'Sem titulo' ? `Circuit Forge — ${name}` : 'Circuit Forge';
+    h1.textContent = name !== 'Untitled' ? `Circuit Forge — ${name}` : 'Circuit Forge';
   }
 
   updateTitle();

@@ -53,15 +53,15 @@ export function importProject(file: File): Promise<ProjectData> {
       try {
         const data = JSON.parse(reader.result as string) as ProjectData;
         if (!data.version || !data.name || !data.files) {
-          reject(new Error('Formato de projeto invalido'));
+          reject(new Error('Invalid project format'));
           return;
         }
         resolve(data);
       } catch {
-        reject(new Error('Erro ao ler arquivo JSON'));
+        reject(new Error('Error reading JSON file'));
       }
     };
-    reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+    reader.onerror = () => reject(new Error('Error reading file'));
     reader.readAsText(file);
   });
 }
