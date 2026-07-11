@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <script>(function(){var L="en",A="app.pt.html";try{var p=localStorage.getItem("cf-lang");if(p&&p!==L){location.replace(A+location.search+location.hash);return;}}catch(e){}document.addEventListener("click",function(e){var t=e.target&&e.target.closest&&e.target.closest("[data-setlang]");if(!t)return;try{localStorage.setItem("cf-lang",t.getAttribute("data-setlang"));}catch(_){}});})();</script>
+  <script>(function(){var L="pt",A="app.html";try{var p=localStorage.getItem("cf-lang");if(p&&p!==L){location.replace(A+location.search+location.hash);return;}}catch(e){}document.addEventListener("click",function(e){var t=e.target&&e.target.closest&&e.target.closest("[data-setlang]");if(!t)return;try{localStorage.setItem("cf-lang",t.getAttribute("data-setlang"));}catch(_){}});})();</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Circuit Forge — Simulator</title>
+  <title>Circuit Forge — Simulador</title>
   <link rel="icon" href="/favicon.svg" />
   <style>
     :root {
@@ -1008,11 +1008,11 @@
       top: 0;
       left: 0;
       right: 0;
-      bottom: 260px; /* sits over the canvas, above the bottom panel */
+      bottom: 260px; /* fica sobre o canvas, acima do painel inferior */
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 20; /* above the canvas and the oscilloscope, below the dialogs (100) */
+      z-index: 20; /* acima do canvas e do osciloscópio, abaixo dos diálogos (100) */
       pointer-events: none;
       padding: 16px;
     }
@@ -1115,7 +1115,7 @@
 <body>
   <header>
     <div class="brand">
-      <a class="brand-link" href="./" title="Back to the site">
+      <a class="brand-link" href="index.pt.html" title="Voltar ao site">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M12 1v6M12 17v6M1 12h6M17 12h6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/>
@@ -1124,8 +1124,8 @@
       </a>
     </div>
     <div class="actions">
-      <a class="act lang-switch" href="app.pt.html" data-setlang="pt" title="Português">PT</a>
-      <a class="act" href="docs.html" title="Documentation">Docs</a>
+      <a class="act lang-switch" href="app.html" data-setlang="en" title="English">EN</a>
+      <a class="act" href="docs.pt.html" title="Documentação">Docs</a>
       <a class="act" href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener" title="GitHub">
         <svg viewBox="0 0 16 16" style="width:14px;height:14px" fill="currentColor" stroke="none" aria-hidden="true">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -1135,63 +1135,63 @@
       <div class="project-menu-wrapper">
         <button id="btn-project">
           <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v11H3z"/></svg>
-          Project
+          Projeto
           <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <div class="project-dropdown" id="project-dropdown">
-          <button data-action="new">New Project</button>
-          <button data-action="save">Save</button>
-          <button data-action="save-as">Save As...</button>
+          <button data-action="new">Novo Projeto</button>
+          <button data-action="save">Salvar</button>
+          <button data-action="save-as">Salvar Como...</button>
           <hr/>
-          <button data-action="open">Open Project...</button>
+          <button data-action="open">Abrir Projeto...</button>
           <hr/>
-          <button data-action="export">Export JSON</button>
-          <button data-action="import">Import JSON</button>
+          <button data-action="export">Exportar JSON</button>
+          <button data-action="import">Importar JSON</button>
           <hr/>
-          <button data-action="examples">Examples</button>
+          <button data-action="examples">Exemplos</button>
         </div>
       </div>
       <div class="sep-v"></div>
-      <button class="act primary" id="btn-play" title="Start/pause simulation (space)">
+      <button class="act primary" id="btn-play" title="Iniciar/pausar simulação (espaço)">
         <svg id="btn-play-icon" viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
         <span id="btn-play-label">Play</span>
       </button>
-      <div class="time-scale" title="Simulation time scale (simulated s / real s)">
-        <span class="time-scale-label">Time</span>
+      <div class="time-scale" title="Escala de tempo da simulação (s simulado / s real)">
+        <span class="time-scale-label">Tempo</span>
         <input type="range" id="time-scale" min="-3" max="2" step="0.1" value="-1" />
         <span class="time-scale-value" id="time-scale-value">100 ms/s</span>
       </div>
-      <button class="act" id="btn-demo" title="Load RLC demo">Demo RLC</button>
-      <button class="act act-danger" id="btn-clear" title="Clear circuit">Clear</button>
+      <button class="act" id="btn-demo" title="Carregar demo RLC">Demo RLC</button>
+      <button class="act act-danger" id="btn-clear" title="Limpar circuito">Limpar</button>
     </div>
   </header>
 
   <div class="main">
     <!-- Left tool rail: components + tools -->
     <aside class="tool-rail" id="toolbar">
-      <button class="tool active" data-tool="select" title="Select (esc)">
+      <button class="tool active" data-tool="select" title="Selecionar (esc)">
         <svg viewBox="0 0 28 28">
           <path d="M7 5L7 22 L11.5 17.5 L14.5 23.5 L17.5 22 L14.5 16 L20 16 Z"/>
         </svg>
-        <span>Select</span>
+        <span>Selec.</span>
       </button>
       <div class="tool-sep"></div>
-      <button class="tool" data-tool="VoltageSource" title="Voltage source">
+      <button class="tool" data-tool="VoltageSource" title="Fonte de tensão">
         <svg viewBox="0 0 28 28">
           <circle cx="14" cy="14" r="8"/>
           <line x1="11" y1="10" x2="17" y2="10"/>
           <line x1="14" y1="7" x2="14" y2="13"/>
           <line x1="11" y1="18" x2="17" y2="18"/>
         </svg>
-        <span>V Source</span>
+        <span>Fonte V</span>
       </button>
-      <button class="tool" data-tool="CurrentSource" title="Current source">
+      <button class="tool" data-tool="CurrentSource" title="Fonte de corrente">
         <svg viewBox="0 0 28 28">
           <circle cx="14" cy="14" r="8"/>
           <line x1="14" y1="9" x2="14" y2="19"/>
           <path d="M10 15 L14 19 L18 15"/>
         </svg>
-        <span>I Source</span>
+        <span>Fonte I</span>
       </button>
       <div class="tool-sep"></div>
       <button class="tool" data-tool="Resistor" title="Resistor">
@@ -1208,25 +1208,25 @@
           <line x1="16" y1="7" x2="16" y2="21"/>
           <line x1="16" y1="14" x2="27" y2="14"/>
         </svg>
-        <span>Cap.</span>
+        <span>Capac.</span>
       </button>
-      <button class="tool" data-tool="Inductor" title="Inductor">
+      <button class="tool" data-tool="Inductor" title="Indutor">
         <svg viewBox="0 0 28 28">
           <line x1="1" y1="16" x2="5" y2="16"/>
           <path d="M5 16 Q7.5 8, 10 16 Q12.5 8, 15 16 Q17.5 8, 20 16 Q22.5 8, 23 16"/>
           <line x1="23" y1="16" x2="27" y2="16"/>
         </svg>
-        <span>Inductor</span>
+        <span>Indutor</span>
       </button>
       <div class="tool-sep"></div>
-      <button class="tool" data-tool="Diode" title="Diode">
+      <button class="tool" data-tool="Diode" title="Diodo">
         <svg viewBox="0 0 28 28">
           <line x1="1" y1="14" x2="9" y2="14"/>
           <path d="M9 8 L9 20 L19 14 Z" fill="currentColor" fill-opacity="0.15"/>
           <line x1="19" y1="8" x2="19" y2="20"/>
           <line x1="19" y1="14" x2="27" y2="14"/>
         </svg>
-        <span>Diode</span>
+        <span>Diodo</span>
       </button>
       <button class="tool" data-tool="LED" title="LED">
         <svg viewBox="0 0 28 28">
@@ -1240,7 +1240,7 @@
         <span>LED</span>
       </button>
       <div class="tool-sep"></div>
-      <button class="tool" data-tool="Switch" title="SPDT switch (3 terminals)">
+      <button class="tool" data-tool="Switch" title="Switch SPDT (3 terminais)">
         <svg viewBox="0 0 28 28">
           <line x1="2" y1="14" x2="8" y2="14"/>
           <circle cx="8" cy="14" r="2" fill="currentColor"/>
@@ -1266,15 +1266,15 @@
         <span>Button</span>
       </button>
       <div class="tool-sep"></div>
-      <button class="tool" data-tool="wire" title="Wire">
+      <button class="tool" data-tool="wire" title="Fio">
         <svg viewBox="0 0 28 28">
           <path d="M4 8 L14 8 L14 20 L24 20"/>
           <circle cx="4" cy="8" r="2" fill="currentColor"/>
           <circle cx="24" cy="20" r="2" fill="currentColor"/>
         </svg>
-        <span>Wire</span>
+        <span>Fio</span>
       </button>
-      <button class="tool" data-tool="Ground" title="Ground (GND)">
+      <button class="tool" data-tool="Ground" title="Terra (GND)">
         <svg viewBox="0 0 28 28">
           <line x1="14" y1="4" x2="14" y2="14"/>
           <line x1="6" y1="14" x2="22" y2="14"/>
@@ -1283,7 +1283,7 @@
         </svg>
         <span>GND</span>
       </button>
-      <button class="tool" data-tool="probe" title="Probe">
+      <button class="tool" data-tool="probe" title="Probe (ponta de prova)">
         <svg viewBox="0 0 28 28">
           <path d="M14 4 L22 14 L14 24 L6 14 Z"/>
           <circle cx="14" cy="14" r="2.5" fill="currentColor"/>
@@ -1291,12 +1291,12 @@
         <span>Probe</span>
       </button>
       <div class="tool-sep"></div>
-      <button class="tool" id="btn-rotate" title="Rotate 90° (R)">
+      <button class="tool" id="btn-rotate" title="Rotacionar 90° (R)">
         <svg viewBox="0 0 28 28">
           <path d="M5 14 A9 9 0 1 1 14 23"/>
           <path d="M10 23 L14 23 L14 19"/>
         </svg>
-        <span>Rotate</span>
+        <span>Rodar</span>
       </button>
     </aside>
 
@@ -1309,34 +1309,34 @@
           <span><b>Range</b><em id="scope-range">—</em></span>
           <span><b>Freq</b><em id="scope-freq">—</em></span>
           <span><b>RMS</b><em id="scope-rms">—</em></span>
-          <button class="scope-close" id="scope-close" title="Close oscilloscope">×</button>
+          <button class="scope-close" id="scope-close" title="Fechar osciloscópio">×</button>
         </div>
       </div>
       <canvas id="canvas"></canvas>
       <div id="welcome-overlay">
         <div class="welcome-card">
-          <button class="welcome-close" id="welcome-close" title="Close">×</button>
+          <button class="welcome-close" id="welcome-close" title="Fechar">×</button>
           <svg class="welcome-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M12 1v6M12 17v6M1 12h6M17 12h6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/>
           </svg>
-          <h2>Welcome to Circuit Forge</h2>
-          <p>Drag components from the palette on the left to build your circuit on the canvas.</p>
-          <p>Or write the circuit in code in the Editor tab and click Run.</p>
-          <button class="welcome-cta" id="welcome-cta">Load an example</button>
-          <a class="welcome-site-link" href="./">See the site</a>
+          <h2>Bem-vindo ao Circuit Forge</h2>
+          <p>Arraste componentes da paleta à esquerda para montar seu circuito no canvas.</p>
+          <p>Ou escreva o circuito em código na aba Editor e clique em Executar.</p>
+          <button class="welcome-cta" id="welcome-cta">Carregar um exemplo</button>
+          <a class="welcome-site-link" href="./">Ver o site</a>
         </div>
       </div>
       <div class="bottom-panel" id="bottom-panel">
         <div class="bottom-tabs">
           <button class="tab active" data-tab="editor">Editor</button>
-          <button class="tab" data-tab="chart">Chart</button>
+          <button class="tab" data-tab="chart">Gráfico</button>
           <div class="tab-actions">
-            <button class="run-btn" id="btn-run-code" title="Run code">
+            <button class="run-btn" id="btn-run-code" title="Executar código">
               <svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8V4z" fill="currentColor" stroke="none"/></svg>
-              Run
+              Executar
             </button>
-            <button class="gen-btn" id="btn-gen-code" title="Generate code from the current circuit">Generate Code</button>
+            <button class="gen-btn" id="btn-gen-code" title="Gerar código do circuito atual">Gerar Código</button>
           </div>
         </div>
         <div class="tab-content active" id="editor-content" data-tab="editor">
@@ -1352,19 +1352,19 @@
     </div>
 
     <aside class="sidebar" id="sidebar">
-      <h2>Properties</h2>
+      <h2>Propriedades</h2>
       <div id="props-content">
-        <p style="color: var(--text-dim); font-size: 12px;">Select a component</p>
+        <p style="color: var(--text-dim); font-size: 12px;">Selecione um componente</p>
       </div>
       <div class="results" id="results"></div>
       <div class="sim-controls">
-        <h2>Transient</h2>
+        <h2>Transiente</h2>
         <div class="prop-group">
-          <label>Step (s)</label>
+          <label>Passo (s)</label>
           <input type="text" id="sim-dt" value="1e-6" />
         </div>
         <div class="prop-group">
-          <label>Duration (s)</label>
+          <label>Duração (s)</label>
           <input type="text" id="sim-duration" value="5e-3" />
         </div>
       </div>
@@ -1372,7 +1372,7 @@
   </div>
 
   <div class="status-bar">
-    <span id="status-text">Ready</span>
+    <span id="status-text">Pronto</span>
     <span class="spacer"></span>
     <span class="stat"><b>X</b><em id="mouse-x">0</em></span>
     <span class="stat"><b>Y</b><em id="mouse-y">0</em></span>
@@ -1381,10 +1381,10 @@
 
   <div id="value-dialog">
     <div class="dialog-box">
-      <h3 id="dialog-title">Component value</h3>
+      <h3 id="dialog-title">Valor do componente</h3>
       <input type="text" id="dialog-input" />
       <div class="dialog-buttons">
-        <button class="btn-cancel" id="dialog-cancel">Cancel</button>
+        <button class="btn-cancel" id="dialog-cancel">Cancelar</button>
         <button class="btn-ok" id="dialog-ok">OK</button>
       </div>
     </div>
@@ -1392,10 +1392,10 @@
 
   <div id="project-dialog">
     <div class="dialog-box">
-      <h3 id="project-dialog-title">Project</h3>
+      <h3 id="project-dialog-title">Projeto</h3>
       <div id="project-dialog-body"></div>
       <div class="dialog-buttons">
-        <button class="btn-cancel" id="project-dialog-cancel">Cancel</button>
+        <button class="btn-cancel" id="project-dialog-cancel">Cancelar</button>
         <button class="btn-ok" id="project-dialog-ok">OK</button>
       </div>
     </div>
@@ -1404,7 +1404,7 @@
   <input type="file" id="import-file-input" accept=".json" style="display:none" />
 
   <script>
-    // Welcome overlay: only shows when there's no autosave and no ?example= in the URL.
+    // Overlay de boas-vindas: só aparece sem autosave e sem ?example= na URL.
     (function () {
       var overlay = document.getElementById('welcome-overlay');
       if (!overlay) return;
@@ -1416,7 +1416,7 @@
           var key = localStorage.key(i);
           if (key && key.indexOf('circuit:') === 0) { hasAutosave = true; break; }
         }
-      } catch (e) { /* localStorage unavailable: don't show */ hasAutosave = true; }
+      } catch (e) { /* localStorage indisponível: não mostra */ hasAutosave = true; }
 
       if (hasExample || hasAutosave) return;
 

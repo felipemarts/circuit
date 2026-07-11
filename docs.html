@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
+<script>(function(){var L="en",A="docs.pt.html";try{var p=localStorage.getItem("cf-lang");if(p&&p!==L){location.replace(A+location.search+location.hash);return;}}catch(e){}document.addEventListener("click",function(e){var t=e.target&&e.target.closest&&e.target.closest("[data-setlang]");if(!t)return;try{localStorage.setItem("cf-lang",t.getAttribute("data-setlang"));}catch(_){}});})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Documentação — Circuit Forge</title>
+<title>Documentation — Circuit Forge</title>
 <link rel="icon" href="/favicon.svg">
 <style>
   :root {
@@ -23,7 +24,7 @@
   a { color:var(--accent); text-decoration:none; }
   a:hover { text-decoration:underline; }
 
-  /* ===== NAV (contrato compartilhado) ===== */
+  /* ===== NAV (shared contract) ===== */
   nav.topnav {
     position:fixed; top:0; left:0; right:0; z-index:100;
     display:flex; align-items:center; justify-content:space-between;
@@ -37,7 +38,7 @@
   nav.topnav .links a { color:var(--muted); font-size:14px; font-weight:500; }
   nav.topnav .links a:hover { color:var(--accent); text-decoration:none; }
 
-  /* ===== LAYOUT DOCS ===== */
+  /* ===== DOCS LAYOUT ===== */
   .wrap {
     max-width:1160px; margin:0 auto; padding:92px 24px 80px;
     display:grid; grid-template-columns:230px minmax(0,760px); gap:48px;
@@ -103,11 +104,11 @@
     font-family:var(--mono); font-size:13px; line-height:1.6; color:var(--text);
   }
   pre code { background:none; border:none; padding:0; color:inherit; white-space:pre; }
-  .cm { color:var(--dim); }            /* comentário */
+  .cm { color:var(--dim); }            /* comment */
   .st { color:var(--current); }        /* string */
   .kw { color:var(--violet); }         /* keyword */
-  .fn { color:var(--accent); }         /* função / comando */
-  .nu { color:var(--current); }        /* número */
+  .fn { color:var(--accent); }         /* function / command */
+  .nu { color:var(--current); }        /* number */
 
   /* ===== Terminal mockup ===== */
   .term { background:var(--bg-deep); border:1px solid var(--border); border-radius:12px; margin:16px 0; overflow:hidden; }
@@ -119,7 +120,7 @@
   .t-pass { color:var(--green); } .t-fail { color:var(--red); }
   .t-code { color:var(--current); } .t-cmd { color:var(--accent); } .t-dim { color:var(--dim); }
 
-  /* ===== Tabelas ===== */
+  /* ===== Tables ===== */
   .tbl-wrap { overflow-x:auto; margin:16px 0; border:1px solid var(--border); border-radius:12px; }
   table { border-collapse:collapse; width:100%; font-size:14px; min-width:560px; }
   th, td { padding:10px 14px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
@@ -128,7 +129,7 @@
   td code { white-space:nowrap; }
   tbody tr:hover { background:rgba(34,211,238,.03); }
 
-  /* ===== Badges de diagnóstico ===== */
+  /* ===== Diagnostic badges ===== */
   .bd { font-family:var(--mono); font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; display:inline-block; }
   .bd-f { color:var(--current); background:rgba(251,191,36,.12); border:1px solid rgba(251,191,36,.35); }
   .bd-s { color:var(--red); background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.35); }
@@ -138,7 +139,7 @@
   .sev-warn { color:var(--current); font-weight:600; }
   .sev-fail { color:var(--red); font-weight:600; }
 
-  /* ===== Cards de confiança / exit codes ===== */
+  /* ===== Confidence / exit code cards ===== */
   .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin:16px 0; }
   .card {
     background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px 18px;
@@ -158,7 +159,7 @@
 
   footer.docfoot { margin-top:64px; padding-top:20px; border-top:1px solid var(--border); color:var(--dim); font-size:13px; }
 
-  /* ===== Responsivo ===== */
+  /* ===== Responsive ===== */
   @media (max-width: 900px) {
     .wrap { grid-template-columns:1fr; gap:0; padding:84px 16px 60px; }
     aside.toc { display:none; }
@@ -184,70 +185,71 @@
     <span class="bname">Circuit Forge</span>
   </a>
   <div class="links">
-    <a href="app.html">Simulador</a>
-    <a href="docs.html">Documentação</a>
-    <a href="index.html#exemplos">Exemplos</a>
+    <a href="app.html">Simulator</a>
+    <a href="docs.html">Documentation</a>
+    <a href="index.html#exemplos">Examples</a>
     <a href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener">GitHub</a>
+      <a href="docs.pt.html" class="lang-switch" data-setlang="pt" style="border:1px solid currentColor;padding:1px 8px;border-radius:6px;opacity:.8">Português</a>
   </div>
 </nav>
 
 <div class="wrap">
 
-  <aside class="toc" aria-label="Seções da documentação">
-    <div class="toc-title">Documentação</div>
+  <aside class="toc" aria-label="Documentation sections">
+    <div class="toc-title">Documentation</div>
     <ul id="toc-list">
-      <li><a href="#inicio-rapido">Início rápido</a></li>
-      <li><a href="#bancadas">Bancadas</a></li>
-      <li><a href="#sondas">Sondas</a></li>
-      <li><a href="#assercoes">Asserções</a></li>
-      <li><a href="#diagnosticos">Diagnósticos</a></li>
+      <li><a href="#inicio-rapido">Quick start</a></li>
+      <li><a href="#bancadas">Benches</a></li>
+      <li><a href="#sondas">Probes</a></li>
+      <li><a href="#assercoes">Assertions</a></li>
+      <li><a href="#diagnosticos">Diagnostics</a></li>
       <li><a href="#cli">CLI</a></li>
-      <li><a href="#componentes">Componentes</a></li>
+      <li><a href="#componentes">Components</a></li>
       <li><a href="#roadmap">Roadmap</a></li>
     </ul>
   </aside>
 
   <main>
-    <div class="breadcrumb"><a href="index.html">Circuit Forge</a> / Documentação</div>
+    <div class="breadcrumb"><a href="index.html">Circuit Forge</a> / Documentation</div>
 
     <details class="toc-mobile">
-      <summary>Seções</summary>
+      <summary>Sections</summary>
       <ul>
-        <li><a href="#inicio-rapido">Início rápido</a></li>
-        <li><a href="#bancadas">Bancadas</a></li>
-        <li><a href="#sondas">Sondas</a></li>
-        <li><a href="#assercoes">Asserções</a></li>
-        <li><a href="#diagnosticos">Diagnósticos</a></li>
+        <li><a href="#inicio-rapido">Quick start</a></li>
+        <li><a href="#bancadas">Benches</a></li>
+        <li><a href="#sondas">Probes</a></li>
+        <li><a href="#assercoes">Assertions</a></li>
+        <li><a href="#diagnosticos">Diagnostics</a></li>
         <li><a href="#cli">CLI</a></li>
-        <li><a href="#componentes">Componentes</a></li>
+        <li><a href="#componentes">Components</a></li>
         <li><a href="#roadmap">Roadmap</a></li>
       </ul>
     </details>
 
     <header>
-      <h1>Documentação</h1>
-      <p class="lead">Código vira circuito — e a verificação fecha o loop.</p>
+      <h1>Documentation</h1>
+      <p class="lead">Code becomes a circuit — and verification closes the loop.</p>
     </header>
 
     <!-- ============================================================ -->
     <section id="inicio-rapido">
-      <h2>Início rápido<a class="anchor" href="#inicio-rapido">§</a></h2>
+      <h2>Quick start<a class="anchor" href="#inicio-rapido">§</a></h2>
 
-      <p>O <strong>Circuit Forge</strong> é um simulador de circuitos analógicos <strong>baseado em código</strong> que roda 100% no navegador, sem backend. Você descreve o circuito em TypeScript — com pinos nomeados como <code>anode</code>/<code>cathode</code> e <code>+</code>/<code>-</code> — e o motor numérico (Modified Nodal Analysis + Newton-Raphson, análises DC e transiente) resolve tudo localmente. O editor visual em canvas, com probes e osciloscópio, é uma <em>projeção</em> do código, nunca o contrário.</p>
+      <p><strong>Circuit Forge</strong> is a <strong>code-based</strong> analog circuit simulator that runs 100% in the browser, with no backend. You describe the circuit in TypeScript — with named pins like <code>anode</code>/<code>cathode</code> and <code>+</code>/<code>-</code> — and the numerical engine (Modified Nodal Analysis + Newton-Raphson, DC and transient analyses) solves everything locally. The visual canvas editor, with probes and an oscilloscope, is a <em>projection</em> of the code, never the other way around.</p>
 
-      <p>Além do simulador, existe o <strong>forge</strong>: um loop de verificação pensado para agentes LLM (e humanos). Uma bancada <code>.bench.ts</code> descreve circuito + spec; o CLI roda a escada <code>lint → op → tran</code> e devolve diagnósticos com código estável (tipo <span class="bd bd-f">F105</span>), localização no código-fonte, hints de dimensionamento <em>verificados por simulação</em> e exit codes com semântica — para que um agente convirja para um circuito funcional em poucas iterações, sem parsear texto solto.</p>
+      <p>Beyond the simulator there's <strong>forge</strong>: a verification loop designed for LLM agents (and humans). A <code>.bench.ts</code> bench describes a circuit + spec; the CLI runs the <code>lint → op → tran</code> ladder and returns diagnostics with a stable code (like <span class="bd bd-f">F105</span>), a source-code location, <em>simulation-verified</em> sizing hints, and exit codes with semantics — so that an agent converges on a working circuit in a few iterations, without parsing loose text.</p>
 
-      <h3>Como rodar<a class="anchor" href="#inicio-rapido">§</a></h3>
+      <h3>Running it<a class="anchor" href="#inicio-rapido">§</a></h3>
       <div class="term">
         <div class="term-bar"><span class="d1"></span><span class="d2"></span><span class="d3"></span><span class="t-title">terminal</span></div>
         <pre><span class="t-dim">$</span> <span class="t-cmd">npm install</span>
-<span class="t-dim">$</span> <span class="t-cmd">npm run dev</span>                                          <span class="t-dim"># app em http://localhost:5173</span>
-<span class="t-dim">$</span> <span class="t-cmd">npm test</span>                                             <span class="t-dim"># suíte Vitest</span>
-<span class="t-dim">$</span> <span class="t-cmd">npm run forge -- verify bench/led-driver.bench.ts</span>    <span class="t-dim"># escada de verificação</span></pre>
+<span class="t-dim">$</span> <span class="t-cmd">npm run dev</span>                                          <span class="t-dim"># app at http://localhost:5173</span>
+<span class="t-dim">$</span> <span class="t-cmd">npm test</span>                                             <span class="t-dim"># Vitest suite</span>
+<span class="t-dim">$</span> <span class="t-cmd">npm run forge -- verify bench/led-driver.bench.ts</span>    <span class="t-dim"># verification ladder</span></pre>
       </div>
 
-      <h3>Primeiro circuito no simulador<a class="anchor" href="#inicio-rapido">§</a></h3>
-      <p>No editor de código do simulador (aba <em>Simulador</em>), este divisor de tensão é o "olá, mundo": crie o circuito, conecte os pinos, analise e leia os resultados no console.</p>
+      <h3>First circuit in the simulator<a class="anchor" href="#inicio-rapido">§</a></h3>
+      <p>In the simulator's code editor (the <em>Simulator</em> tab), this voltage divider is the "hello, world": build the circuit, connect the pins, analyze, and read the results in the console.</p>
       <pre><code><span class="kw">const</span> circuit = <span class="kw">new</span> <span class="fn">Circuit</span>();
 <span class="kw">const</span> gnd = <span class="kw">new</span> <span class="fn">Ground</span>();
 
@@ -264,119 +266,119 @@ circuit.<span class="fn">analyze</span>(<span class="st">'dc'</span>);
 
 console.<span class="fn">log</span>(<span class="st">'V_out (R2):'</span>, r2.voltage.<span class="fn">toFixed</span>(<span class="nu">3</span>), <span class="st">'V'</span>);
 console.<span class="fn">log</span>(<span class="st">'Corrente:'</span>, (r1.current * <span class="nu">1000</span>).<span class="fn">toFixed</span>(<span class="nu">3</span>), <span class="st">'mA'</span>);</code></pre>
-      <p>Você deve ver <code>V_out (R2): 6.667 V</code> — o divisor 1k/2k sobre 10 V. A partir daí, abra os <a href="index.html#exemplos">exemplos prontos</a> ou vá direto para as <a href="#bancadas">bancadas</a>.</p>
+      <p>You should see <code>V_out (R2): 6.667 V</code> — the 1k/2k divider across 10 V. From there, open the <a href="index.html#exemplos">ready-made examples</a> or go straight to the <a href="#bancadas">benches</a>.</p>
     </section>
 
     <!-- ============================================================ -->
     <section id="bancadas">
-      <h2>Bancadas<a class="anchor" href="#bancadas">§</a></h2>
+      <h2>Benches<a class="anchor" href="#bancadas">§</a></h2>
 
-      <p>Uma <strong>bancada</strong> (arquivo <code>.bench.ts</code>) é o artefato completo de verificação: circuito + parâmetros livres + asserções. A função <code>bench(nome, fn)</code> recebe um <em>testbench builder</em> <code>tb</code> com esta API:</p>
+      <p>A <strong>bench</strong> (a <code>.bench.ts</code> file) is the complete verification artifact: circuit + free parameters + assertions. The <code>bench(name, fn)</code> function receives a <em>testbench builder</em> <code>tb</code> with this API:</p>
 
       <ul class="list">
-        <li><code>tb.add(id, componente)</code> — registra um componente com <strong>id estável</strong> (<code>'R1'</code>, <code>'D1'</code>…). Esse id é a identidade nos diagnósticos, nas sondas e no <code>--set</code>.</li>
-        <li><code>tb.gnd</code> — o nó de referência (terra). Todo circuito precisa de caminho DC até ele.</li>
-        <li><code>tb.name(nome, pin)</code> — dá nome estável a um net (ex.: <code>'out'</code>) para poder sondá-lo em asserções <code>op</code>.</li>
-        <li><code>tb.param(id, {min, max, scale})</code> — <strong>delegação de dimensionamento</strong>: declara o parâmetro livre. LLMs são bons em topologia e ruins em dimensionamento contínuo; quando uma asserção falha, a plataforma varre a faixa, <em>simula</em> cada ponto e devolve a faixa que passa (hint verificado) — o agente nunca chuta números.</li>
-        <li><code>tb.expect.op(...)</code> / <code>tb.expect.tran(...)</code> — as <a href="#assercoes">asserções</a>: o spec como teste.</li>
+        <li><code>tb.add(id, component)</code> — registers a component with a <strong>stable id</strong> (<code>'R1'</code>, <code>'D1'</code>…). This id is the identity in diagnostics, in probes, and in <code>--set</code>.</li>
+        <li><code>tb.gnd</code> — the reference node (ground). Every circuit needs a DC path to it.</li>
+        <li><code>tb.name(name, pin)</code> — gives a net a stable name (e.g. <code>'out'</code>) so it can be probed in <code>op</code> assertions.</li>
+        <li><code>tb.param(id, {min, max, scale})</code> — <strong>sizing delegation</strong>: declares the free parameter. LLMs are good at topology and bad at continuous sizing; when an assertion fails, the platform sweeps the range, <em>simulates</em> each point, and returns the passing range (verified hint) — the agent never guesses numbers.</li>
+        <li><code>tb.expect.op(...)</code> / <code>tb.expect.tran(...)</code> — the <a href="#assercoes">assertions</a>: the spec as a test.</li>
       </ul>
 
-      <h3>Unidades<a class="anchor" href="#bancadas">§</a></h3>
-      <p>Valores aceitam número ou string com sufixo de engenharia: <code>'4.7k'</code>, <code>'10m'</code>, <code>'2u'</code>, <code>'1M'</code>, <code>'1e-6'</code>.</p>
-      <div class="callout"><strong>Atenção:</strong> <code>m</code> ≠ <code>M</code> — <code>m</code> é <em>mili</em> (10⁻³) e <code>M</code> é <em>mega</em> (10⁶). <code>'10m'</code> são 10 mΩ/mA/ms; <code>'1M'</code> é 1 MΩ.</div>
+      <h3>Units<a class="anchor" href="#bancadas">§</a></h3>
+      <p>Values accept a number or a string with an engineering suffix: <code>'4.7k'</code>, <code>'10m'</code>, <code>'2u'</code>, <code>'1M'</code>, <code>'1e-6'</code>.</p>
+      <div class="callout"><strong>Watch out:</strong> <code>m</code> ≠ <code>M</code> — <code>m</code> is <em>milli</em> (10⁻³) and <code>M</code> is <em>mega</em> (10⁶). <code>'10m'</code> is 10 mΩ/mA/ms; <code>'1M'</code> is 1 MΩ.</div>
 
-      <h3><code>bench/led-driver.bench.ts</code> comentado<a class="anchor" href="#bancadas">§</a></h3>
+      <h3><code>bench/led-driver.bench.ts</code> annotated<a class="anchor" href="#bancadas">§</a></h3>
       <pre><code><span class="kw">import</span> { bench, VoltageSource, Resistor, LED } <span class="kw">from</span> <span class="st">'circuit-forge'</span>;
 
 <span class="cm">/**
- * Driver de LED: fonte de 5 V, resistor em série, LED para o terra.
- * O "olá, mundo" canônico da escada de verificação — passa como está.
+ * LED driver: 5 V source, series resistor, LED to ground.
+ * The canonical "hello, world" of the verification ladder — passes as-is.
  */</span>
 <span class="kw">export default</span> <span class="fn">bench</span>(<span class="st">'led-driver'</span>, (tb) =&gt; {
-  <span class="cm">// ids estáveis: são a identidade nos diagnósticos, sondas e --set</span>
+  <span class="cm">// stable ids: they are the identity in diagnostics, probes, and --set</span>
   <span class="kw">const</span> v1 = tb.<span class="fn">add</span>(<span class="st">'V1'</span>, <span class="kw">new</span> <span class="fn">VoltageSource</span>(<span class="nu">5</span>));
   <span class="kw">const</span> r1 = tb.<span class="fn">add</span>(<span class="st">'R1'</span>, <span class="kw">new</span> <span class="fn">Resistor</span>(<span class="st">'330'</span>));
   <span class="kw">const</span> d1 = tb.<span class="fn">add</span>(<span class="st">'D1'</span>, <span class="kw">new</span> <span class="fn">LED</span>());
 
-  <span class="cm">// pinos nomeados eliminam a classe de erro mais comum dos LLMs</span>
+  <span class="cm">// named pins eliminate the most common class of LLM error</span>
   v1.<span class="fn">pin</span>(<span class="st">'+'</span>).<span class="fn">connect</span>(r1.<span class="fn">pin</span>(<span class="st">'1'</span>));
   r1.<span class="fn">pin</span>(<span class="st">'2'</span>).<span class="fn">connect</span>(d1.<span class="fn">pin</span>(<span class="st">'anode'</span>));
   d1.<span class="fn">pin</span>(<span class="st">'cathode'</span>).<span class="fn">connect</span>(tb.gnd);
   v1.<span class="fn">pin</span>(<span class="st">'-'</span>).<span class="fn">connect</span>(tb.gnd);
 
-  <span class="cm">// net nomeado: agora 'led' é endereçável nas asserções op</span>
+  <span class="cm">// named net: now 'led' is addressable in op assertions</span>
   tb.<span class="fn">name</span>(<span class="st">'led'</span>, d1.<span class="fn">pin</span>(<span class="st">'anode'</span>));
 
-  <span class="cm">// dimensionamento é da plataforma: se uma asserção op falhar,</span>
-  <span class="cm">// ela varre esta faixa e devolve um hint VERIFICADO por simulação</span>
+  <span class="cm">// sizing is the platform's job: if an op assertion fails,</span>
+  <span class="cm">// it sweeps this range and returns a simulation-VERIFIED hint</span>
   tb.<span class="fn">param</span>(<span class="st">'R1'</span>, { min: <span class="st">'100'</span>, max: <span class="st">'10k'</span>, scale: <span class="st">'log'</span> });
 
-  <span class="cm">// o spec como teste</span>
-  tb.expect.<span class="fn">op</span>(<span class="st">'D1.i'</span>).<span class="fn">toBeWithin</span>(<span class="st">'5m'</span>, <span class="st">'15m'</span>); <span class="cm">// LED aceso, mas seguro</span>
-  tb.expect.<span class="fn">op</span>(<span class="st">'led'</span>).<span class="fn">toBeWithin</span>(<span class="nu">1.8</span>, <span class="nu">2.6</span>);     <span class="cm">// queda direta plausível</span>
+  <span class="cm">// the spec as a test</span>
+  tb.expect.<span class="fn">op</span>(<span class="st">'D1.i'</span>).<span class="fn">toBeWithin</span>(<span class="st">'5m'</span>, <span class="st">'15m'</span>); <span class="cm">// LED lit, but safe</span>
+  tb.expect.<span class="fn">op</span>(<span class="st">'led'</span>).<span class="fn">toBeWithin</span>(<span class="nu">1.8</span>, <span class="nu">2.6</span>);     <span class="cm">// plausible forward drop</span>
 });</code></pre>
 
-      <p>Rode com <code>npm run forge -- verify bench/led-driver.bench.ts</code>. Há exemplos quebrados de propósito em <code>bench/broken/</code> para ver cada diagnóstico em ação.</p>
+      <p>Run it with <code>npm run forge -- verify bench/led-driver.bench.ts</code>. There are intentionally broken examples in <code>bench/broken/</code> to see each diagnostic in action.</p>
     </section>
 
     <!-- ============================================================ -->
     <section id="sondas">
-      <h2>Sondas<a class="anchor" href="#sondas">§</a></h2>
+      <h2>Probes<a class="anchor" href="#sondas">§</a></h2>
 
-      <p>Toda asserção mede uma <strong>sonda</strong>. A gramática é curta:</p>
+      <p>Every assertion measures a <strong>probe</strong>. The grammar is short:</p>
 
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Sonda</th><th>Mede</th><th>Exemplo</th><th>Onde vale</th></tr></thead>
+          <thead><tr><th>Probe</th><th>Measures</th><th>Example</th><th>Where valid</th></tr></thead>
           <tbody>
-            <tr><td><code>'&lt;id&gt;.i'</code></td><td>corrente através do componente</td><td><code>'D1.i'</code></td><td>op e tran</td></tr>
-            <tr><td><code>'&lt;id&gt;.v'</code></td><td>tensão sobre o componente</td><td><code>'R1.v'</code></td><td>op e tran</td></tr>
-            <tr><td><code>'&lt;net&gt;'</code></td><td>tensão de um net nomeado via <code>tb.name(...)</code></td><td><code>'out'</code></td><td><strong>apenas op</strong></td></tr>
+            <tr><td><code>'&lt;id&gt;.i'</code></td><td>current through the component</td><td><code>'D1.i'</code></td><td>op and tran</td></tr>
+            <tr><td><code>'&lt;id&gt;.v'</code></td><td>voltage across the component</td><td><code>'R1.v'</code></td><td>op and tran</td></tr>
+            <tr><td><code>'&lt;net&gt;'</code></td><td>voltage of a net named via <code>tb.name(...)</code></td><td><code>'out'</code></td><td><strong>op only</strong></td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>Nets automáticos (<code>n1</code>, <code>n2</code>, …) <strong>não são endereçáveis de propósito</strong>: a numeração muda quando você adiciona ou remove componentes, então uma sonda <code>'n3'</code> quebraria silenciosamente entre edições. Nomeie o net com <code>tb.name('out', pin)</code> para garantir estabilidade — e por isso o padrão <code>n&lt;dígitos&gt;</code> é <strong>reservado</strong> e não pode ser usado como nome de net.</p>
+      <p>Automatic nets (<code>n1</code>, <code>n2</code>, …) are <strong>deliberately not addressable</strong>: the numbering changes when you add or remove components, so a <code>'n3'</code> probe would silently break across edits. Name the net with <code>tb.name('out', pin)</code> to guarantee stability — and that's why the <code>n&lt;digits&gt;</code> pattern is <strong>reserved</strong> and cannot be used as a net name.</p>
 
-      <pre><code>tb.<span class="fn">name</span>(<span class="st">'out'</span>, r1.<span class="fn">pin</span>(<span class="st">'2'</span>));          <span class="cm">// nomeia o net do pino</span>
-tb.expect.<span class="fn">op</span>(<span class="st">'out'</span>).<span class="fn">toBeCloseTo</span>(<span class="nu">2.5</span>, <span class="nu">0.1</span>); <span class="cm">// agora é sondável</span></code></pre>
+      <pre><code>tb.<span class="fn">name</span>(<span class="st">'out'</span>, r1.<span class="fn">pin</span>(<span class="st">'2'</span>));          <span class="cm">// names the pin's net</span>
+tb.expect.<span class="fn">op</span>(<span class="st">'out'</span>).<span class="fn">toBeCloseTo</span>(<span class="nu">2.5</span>, <span class="nu">0.1</span>); <span class="cm">// now it's probeable</span></code></pre>
     </section>
 
     <!-- ============================================================ -->
     <section id="assercoes">
-      <h2>Asserções<a class="anchor" href="#assercoes">§</a></h2>
+      <h2>Assertions<a class="anchor" href="#assercoes">§</a></h2>
 
-      <h3>Estágio op — ponto de operação DC<a class="anchor" href="#assercoes">§</a></h3>
-      <p>Formato: <code>tb.expect.op(sonda).método(...)</code>.</p>
+      <h3>op stage — DC operating point<a class="anchor" href="#assercoes">§</a></h3>
+      <p>Format: <code>tb.expect.op(probe).method(...)</code>.</p>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Método</th><th>O que mede</th><th>Exemplo</th></tr></thead>
+          <thead><tr><th>Method</th><th>What it measures</th><th>Example</th></tr></thead>
           <tbody>
-            <tr><td><code>toBeWithin(min, max)</code></td><td>valor DC dentro do intervalo fechado</td><td><code>tb.expect.op('D1.i').toBeWithin('8m', '12m')</code></td></tr>
-            <tr><td><code>toBeCloseTo(v, tol)</code></td><td>valor DC igual a <code>v</code> com tolerância ± <code>tol</code></td><td><code>tb.expect.op('out').toBeCloseTo(5, 0.01)</code></td></tr>
-            <tr><td><code>toBeAbove(v)</code></td><td>valor DC acima de <code>v</code></td><td><code>tb.expect.op('R1.v').toBeAbove(1.2)</code></td></tr>
-            <tr><td><code>toBeBelow(v)</code></td><td>valor DC abaixo de <code>v</code></td><td><code>tb.expect.op('D1.i').toBeBelow('20m')</code></td></tr>
+            <tr><td><code>toBeWithin(min, max)</code></td><td>DC value within the closed interval</td><td><code>tb.expect.op('D1.i').toBeWithin('8m', '12m')</code></td></tr>
+            <tr><td><code>toBeCloseTo(v, tol)</code></td><td>DC value equal to <code>v</code> within ± <code>tol</code></td><td><code>tb.expect.op('out').toBeCloseTo(5, 0.01)</code></td></tr>
+            <tr><td><code>toBeAbove(v)</code></td><td>DC value above <code>v</code></td><td><code>tb.expect.op('R1.v').toBeAbove(1.2)</code></td></tr>
+            <tr><td><code>toBeBelow(v)</code></td><td>DC value below <code>v</code></td><td><code>tb.expect.op('D1.i').toBeBelow('20m')</code></td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Estágio tran — transiente<a class="anchor" href="#assercoes">§</a></h3>
-      <p>Formato: <code>tb.expect.tran({tstop, dt}).probe(sonda).método(...)</code> — encadeável, com múltiplas sondas e checagens na mesma janela.</p>
+      <h3>tran stage — transient<a class="anchor" href="#assercoes">§</a></h3>
+      <p>Format: <code>tb.expect.tran({tstop, dt}).probe(probe).method(...)</code> — chainable, with multiple probes and checks in the same window.</p>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Método</th><th>O que mede</th><th>Exemplo</th></tr></thead>
+          <thead><tr><th>Method</th><th>What it measures</th><th>Example</th></tr></thead>
           <tbody>
-            <tr><td><code>toSettleWithin({target, tol, by})</code></td><td>o sinal estabiliza em <code>target</code> ± <code>tol</code> (fração) até o instante <code>by</code>; mede o tempo de acomodação</td><td><code>.toSettleWithin({target: 5, tol: 0.05, by: '4m'})</code></td></tr>
-            <tr><td><code>toNeverExceed(v)</code></td><td>o sinal nunca ultrapassa <code>v</code> em toda a janela (overshoot/pico)</td><td><code>.toNeverExceed('25m')</code></td></tr>
-            <tr><td><code>toStayAbove(v, {from})</code></td><td>o sinal permanece acima de <code>v</code> (opcionalmente a partir de <code>from</code>)</td><td><code>.toStayAbove(4.5, {from: '2m'})</code></td></tr>
-            <tr><td><code>toStayBelow(v, {from})</code></td><td>o sinal permanece abaixo de <code>v</code> (opcionalmente a partir de <code>from</code>)</td><td><code>.toStayBelow('6m')</code></td></tr>
-            <tr><td><code>toRippleBelow(amp, {from})</code></td><td>a amplitude pico-a-pico do ripple fica abaixo de <code>amp</code> (a partir de <code>from</code>)</td><td><code>.toRippleBelow('50m', {from: '3m'})</code></td></tr>
-            <tr><td><code>toEndCloseTo(v, tol)</code></td><td>o valor final da janela é <code>v</code> ± <code>tol</code></td><td><code>.toEndCloseTo(5, 0.1)</code></td></tr>
+            <tr><td><code>toSettleWithin({target, tol, by})</code></td><td>the signal settles at <code>target</code> ± <code>tol</code> (fraction) by the instant <code>by</code>; measures the settling time</td><td><code>.toSettleWithin({target: 5, tol: 0.05, by: '4m'})</code></td></tr>
+            <tr><td><code>toNeverExceed(v)</code></td><td>the signal never exceeds <code>v</code> across the whole window (overshoot/peak)</td><td><code>.toNeverExceed('25m')</code></td></tr>
+            <tr><td><code>toStayAbove(v, {from})</code></td><td>the signal stays above <code>v</code> (optionally starting from <code>from</code>)</td><td><code>.toStayAbove(4.5, {from: '2m'})</code></td></tr>
+            <tr><td><code>toStayBelow(v, {from})</code></td><td>the signal stays below <code>v</code> (optionally starting from <code>from</code>)</td><td><code>.toStayBelow('6m')</code></td></tr>
+            <tr><td><code>toRippleBelow(amp, {from})</code></td><td>the peak-to-peak ripple amplitude stays below <code>amp</code> (starting from <code>from</code>)</td><td><code>.toRippleBelow('50m', {from: '3m'})</code></td></tr>
+            <tr><td><code>toEndCloseTo(v, tol)</code></td><td>the window's final value is <code>v</code> ± <code>tol</code></td><td><code>.toEndCloseTo(5, 0.1)</code></td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>Exemplo real, de <code>bench/rc-lowpass.bench.ts</code> (R = 1k, C = 1µ, τ = 1 ms):</p>
+      <p>A real example, from <code>bench/rc-lowpass.bench.ts</code> (R = 1k, C = 1µ, τ = 1 ms):</p>
       <pre><code>tb.expect
   .<span class="fn">tran</span>({ tstop: <span class="st">'6m'</span>, dt: <span class="st">'10u'</span> })
   .<span class="fn">probe</span>(<span class="st">'C1.v'</span>)
@@ -384,76 +386,76 @@ tb.expect.<span class="fn">op</span>(<span class="st">'out'</span>).<span class=
   .<span class="fn">toNeverExceed</span>(<span class="nu">5.5</span>)
   .<span class="fn">toEndCloseTo</span>(<span class="nu">5</span>, <span class="nu">0.1</span>)
   .<span class="fn">probe</span>(<span class="st">'R1.i'</span>)
-  .<span class="fn">toStayBelow</span>(<span class="st">'6m'</span>); <span class="cm">// corrente de inrush limitada por V/R</span></code></pre>
+  .<span class="fn">toStayBelow</span>(<span class="st">'6m'</span>); <span class="cm">// inrush current limited by V/R</span></code></pre>
     </section>
 
     <!-- ============================================================ -->
     <section id="diagnosticos">
-      <h2>Diagnósticos<a class="anchor" href="#diagnosticos">§</a></h2>
+      <h2>Diagnostics<a class="anchor" href="#diagnosticos">§</a></h2>
 
-      <p>Todo erro tem <strong>código estável</strong> (nunca renumerado — parsers e agentes podem depender dele), localização no código-fonte e correção. <code>forge explain &lt;código&gt;</code> traz a explicação longa com a física por trás de cada um.</p>
+      <p>Every error has a <strong>stable code</strong> (never renumbered — parsers and agents can depend on it), a source-code location, and a fix. <code>forge explain &lt;code&gt;</code> gives the long explanation with the physics behind each one.</p>
 
-      <h3>Faixas<a class="anchor" href="#diagnosticos">§</a></h3>
+      <h3>Ranges<a class="anchor" href="#diagnosticos">§</a></h3>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Faixa</th><th>Fase</th><th>Significado</th></tr></thead>
+          <thead><tr><th>Range</th><th>Phase</th><th>Meaning</th></tr></thead>
           <tbody>
-            <tr><td><span class="bd bd-f">F1xx</span></td><td>lint (pré-solver)</td><td>topologia estrutural</td></tr>
-            <tr><td><span class="bd bd-s">S1xx</span></td><td>solver linear</td><td>sistema insolúvel</td></tr>
-            <tr><td><span class="bd bd-s">S2xx</span></td><td>solver não-linear</td><td>Newton-Raphson</td></tr>
-            <tr><td><span class="bd bd-a">A3xx</span></td><td>asserções</td><td>spec não atingido</td></tr>
-            <tr><td><span class="bd bd-t">T0xx</span></td><td>ferramenta</td><td>erro de autoria da bancada</td></tr>
+            <tr><td><span class="bd bd-f">F1xx</span></td><td>lint (pre-solver)</td><td>structural topology</td></tr>
+            <tr><td><span class="bd bd-s">S1xx</span></td><td>linear solver</td><td>unsolvable system</td></tr>
+            <tr><td><span class="bd bd-s">S2xx</span></td><td>nonlinear solver</td><td>Newton-Raphson</td></tr>
+            <tr><td><span class="bd bd-a">A3xx</span></td><td>assertions</td><td>spec not met</td></tr>
+            <tr><td><span class="bd bd-t">T0xx</span></td><td>tooling</td><td>bench authoring error</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Códigos ativos<a class="anchor" href="#diagnosticos">§</a></h3>
+      <h3>Active codes<a class="anchor" href="#diagnosticos">§</a></h3>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Código</th><th>Slug</th><th>Severidade</th><th>Quando dispara</th></tr></thead>
+          <thead><tr><th>Code</th><th>Slug</th><th>Severity</th><th>When it fires</th></tr></thead>
           <tbody>
-            <tr><td><span class="bd bd-f">F101</span></td><td><code>floating-net</code></td><td class="sev-err">error</td><td>net sem caminho DC até o ground (isolada por capacitor/fonte de corrente)</td></tr>
-            <tr><td><span class="bd bd-f">F103</span></td><td><code>unreached-component</code></td><td class="sev-err">error</td><td>componente (ou ilha) sem conexão com o circuito aterrado — seria silenciosamente ignorado pelo solver</td></tr>
-            <tr><td><span class="bd bd-f">F104</span></td><td><code>voltage-source-short / voltage-source-loop</code></td><td class="sev-err">error</td><td>fonte ideal em curto, ou loop de fontes ideais (indutor conta como fonte 0 V em DC)</td></tr>
-            <tr><td><span class="bd bd-f">F105</span></td><td><code>source-clamped-diode</code></td><td class="sev-err">error</td><td>diodo/LED polarizado direto grampeado numa fonte ideal sem resistência em série</td></tr>
-            <tr><td><span class="bd bd-f">F106</span></td><td><code>dangling-pin</code></td><td class="sev-warn">warning</td><td>pino sem nenhuma conexão</td></tr>
-            <tr><td><span class="bd bd-s">S101</span></td><td><code>unsolvable-system</code></td><td class="sev-err">error</td><td>matriz singular que o lint não modelou (raro; reportar)</td></tr>
-            <tr><td><span class="bd bd-s">S201</span></td><td><code>nr-nonconvergence</code></td><td class="sev-err">error</td><td>NR não convergiu no ponto DC — carrega componente culpado, ΔV e histórico de oscilação</td></tr>
-            <tr><td><span class="bd bd-s">S202</span></td><td><code>nr-nonconvergence</code></td><td class="sev-err">error</td><td>NR não convergiu num passo do transiente</td></tr>
-            <tr><td><span class="bd bd-a">A301</span></td><td><code>assertion-failed</code></td><td class="sev-fail">fail</td><td>asserção falhou — carrega medido, esperado, margem e hint verificado quando há <code>tb.param</code></td></tr>
-            <tr><td><span class="bd bd-t">T001</span></td><td><code>bench-error</code></td><td class="sev-err">error</td><td>a própria bancada lançou exceção na elaboração</td></tr>
-            <tr><td><span class="bd bd-t">T002</span></td><td><code>stage-crash</code></td><td class="sev-err">error</td><td>um estágio (op/tran) quebrou após a elaboração — bug de plataforma; o RunRecord ainda é emitido (exit 3)</td></tr>
+            <tr><td><span class="bd bd-f">F101</span></td><td><code>floating-net</code></td><td class="sev-err">error</td><td>net with no DC path to ground (isolated by a capacitor/current source)</td></tr>
+            <tr><td><span class="bd bd-f">F103</span></td><td><code>unreached-component</code></td><td class="sev-err">error</td><td>component (or island) with no connection to the grounded circuit — would be silently ignored by the solver</td></tr>
+            <tr><td><span class="bd bd-f">F104</span></td><td><code>voltage-source-short / voltage-source-loop</code></td><td class="sev-err">error</td><td>ideal source shorted, or a loop of ideal sources (an inductor counts as a 0 V source in DC)</td></tr>
+            <tr><td><span class="bd bd-f">F105</span></td><td><code>source-clamped-diode</code></td><td class="sev-err">error</td><td>forward-biased diode/LED clamped directly across an ideal source with no series resistance</td></tr>
+            <tr><td><span class="bd bd-f">F106</span></td><td><code>dangling-pin</code></td><td class="sev-warn">warning</td><td>pin with no connection at all</td></tr>
+            <tr><td><span class="bd bd-s">S101</span></td><td><code>unsolvable-system</code></td><td class="sev-err">error</td><td>singular matrix that lint did not model (rare; please report)</td></tr>
+            <tr><td><span class="bd bd-s">S201</span></td><td><code>nr-nonconvergence</code></td><td class="sev-err">error</td><td>NR did not converge at the DC point — carries the offending component, ΔV, and oscillation history</td></tr>
+            <tr><td><span class="bd bd-s">S202</span></td><td><code>nr-nonconvergence</code></td><td class="sev-err">error</td><td>NR did not converge at a transient step</td></tr>
+            <tr><td><span class="bd bd-a">A301</span></td><td><code>assertion-failed</code></td><td class="sev-fail">fail</td><td>assertion failed — carries measured, expected, margin, and a verified hint when <code>tb.param</code> is present</td></tr>
+            <tr><td><span class="bd bd-t">T001</span></td><td><code>bench-error</code></td><td class="sev-err">error</td><td>the bench itself threw an exception during elaboration</td></tr>
+            <tr><td><span class="bd bd-t">T002</span></td><td><code>stage-crash</code></td><td class="sev-err">error</td><td>a stage (op/tran) crashed after elaboration — platform bug; the RunRecord is still emitted (exit 3)</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Contrato de confiança dos fixes<a class="anchor" href="#diagnosticos">§</a></h3>
-      <p>Todo fix carrega <code>confidence</code>:</p>
+      <h3>Fix confidence contract<a class="anchor" href="#diagnosticos">§</a></h3>
+      <p>Every fix carries a <code>confidence</code>:</p>
       <div class="cards">
-        <div class="card"><h4 class="c-green">verified</h4><p>A plataforma <strong>simulou</strong> a correção e ela passa em todas as asserções do estágio. O agente deve aplicar diretamente.</p></div>
-        <div class="card"><h4 class="c-cyan">mechanical</h4><p>Transformação determinística (não simulada, mas sem julgamento).</p></div>
-        <div class="card"><h4 class="c-amber">suggested</h4><p>Heurística; o agente deve raciocinar antes de aplicar.</p></div>
+        <div class="card"><h4 class="c-green">verified</h4><p>The platform <strong>simulated</strong> the fix and it passes all of the stage's assertions. The agent should apply it directly.</p></div>
+        <div class="card"><h4 class="c-cyan">mechanical</h4><p>Deterministic transformation (not simulated, but no judgment required).</p></div>
+        <div class="card"><h4 class="c-amber">suggested</h4><p>Heuristic; the agent should reason before applying.</p></div>
       </div>
-      <p class="note">Invariantes (aplicados em code review): nunca emitir fix que referencia flag ou capacidade que não existe; nunca emitir número não simulado sem rótulo <code>suggested</code>.</p>
+      <p class="note">Invariants (enforced in code review): never emit a fix that references a flag or capability that does not exist; never emit an unsimulated number without a <code>suggested</code> label.</p>
 
       <h3>Exit codes<a class="anchor" href="#diagnosticos">§</a></h3>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Código</th><th>Significado</th><th>Ação do agente</th></tr></thead>
+          <thead><tr><th>Code</th><th>Meaning</th><th>Agent action</th></tr></thead>
           <tbody>
-            <tr><td><code class="t-pass" style="color:var(--green)">0</code></td><td>todos os estágios pedidos passaram</td><td>pronto</td></tr>
-            <tr><td><code style="color:var(--current)">1</code></td><td>asserção falhou (circuito válido)</td><td>ajustar valores (use o hint!) ou topologia</td></tr>
-            <tr><td><code style="color:var(--red)">2</code></td><td>circuito inválido/insolúvel (F/S com severidade error)</td><td>consertar a estrutura antes de tudo</td></tr>
-            <tr><td><code style="color:var(--red)">3</code></td><td>erro de ferramenta (uso incorreto, bancada lançou)</td><td>consertar a bancada/invocação</td></tr>
+            <tr><td><code class="t-pass" style="color:var(--green)">0</code></td><td>all requested stages passed</td><td>done</td></tr>
+            <tr><td><code style="color:var(--current)">1</code></td><td>assertion failed (valid circuit)</td><td>adjust values (use the hint!) or topology</td></tr>
+            <tr><td><code style="color:var(--red)">2</code></td><td>invalid/unsolvable circuit (F/S with error severity)</td><td>fix the structure first</td></tr>
+            <tr><td><code style="color:var(--red)">3</code></td><td>tooling error (misuse, bench threw)</td><td>fix the bench/invocation</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Notas de semântica<a class="anchor" href="#diagnosticos">§</a></h3>
+      <h3>Semantic notes<a class="anchor" href="#diagnosticos">§</a></h3>
       <ul class="list">
-        <li>O lint <strong>sempre roda</strong> (mesmo com <code>--stage op</code>): resolver um circuito que o lint rejeitaria significaria descartar componentes silenciosamente e reportar números fabricados.</li>
-        <li><code>settleWithin</code> que nunca estabiliza reporta <code>measured</code> = fim da janela (finito) — nunca <code>Infinity</code>, que viraria <code>null</code> no JSON.</li>
-        <li>O <code>hint.passingRange</code> cobre apenas a <strong>maior sequência contígua</strong> de amostras aprovadas (cada amostra passa no lint E em todas as asserções op); os valores exatos simulados estão em <code>passingSamples</code>.</li>
+        <li>Lint <strong>always runs</strong> (even with <code>--stage op</code>): solving a circuit that lint would reject would mean silently discarding components and reporting fabricated numbers.</li>
+        <li>A <code>settleWithin</code> that never settles reports <code>measured</code> = end of the window (finite) — never <code>Infinity</code>, which would become <code>null</code> in JSON.</li>
+        <li><code>hint.passingRange</code> covers only the <strong>longest contiguous run</strong> of passing samples (each sample passes lint AND all op assertions); the exact simulated values are in <code>passingSamples</code>.</li>
       </ul>
     </section>
 
@@ -461,30 +463,30 @@ tb.expect.<span class="fn">op</span>(<span class="st">'out'</span>).<span class=
     <section id="cli">
       <h2>CLI<a class="anchor" href="#cli">§</a></h2>
 
-      <p>O <code>forge</code> roda via <code>npm run forge -- &lt;comando&gt;</code>. A saída é determinística — sem timestamps e sem cores no texto —, então dois runs idênticos fazem diff limpo.</p>
+      <p><code>forge</code> runs via <code>npm run forge -- &lt;command&gt;</code>. The output is deterministic — no timestamps and no colors in the text — so two identical runs diff cleanly.</p>
 
       <div class="term">
-        <div class="term-bar"><span class="d1"></span><span class="d2"></span><span class="d3"></span><span class="t-title">forge — comandos</span></div>
+        <div class="term-bar"><span class="d1"></span><span class="d2"></span><span class="d3"></span><span class="t-title">forge — commands</span></div>
         <pre><span class="t-dim">USAGE</span>
-  <span class="t-cmd">forge verify</span> &lt;bench.ts&gt; [opções]    <span class="t-dim"># roda a escada: lint → op → tran</span>
-  <span class="t-cmd">forge log list</span> [--json]             <span class="t-dim"># lista runs do ledger (.forge/runs.jsonl)</span>
-  <span class="t-cmd">forge log show</span> &lt;runId&gt; [--json]     <span class="t-dim"># RunRecord completo de um run passado</span>
-  <span class="t-cmd">forge explain</span> &lt;código&gt;              <span class="t-dim"># docs de um diagnóstico, ex.: forge explain F101</span>
-  <span class="t-cmd">forge catalog</span> [tipo] [--json]       <span class="t-dim"># datasheet dos componentes + gramática</span>
+  <span class="t-cmd">forge verify</span> &lt;bench.ts&gt; [options]    <span class="t-dim"># runs the ladder: lint → op → tran</span>
+  <span class="t-cmd">forge log list</span> [--json]             <span class="t-dim"># lists ledger runs (.forge/runs.jsonl)</span>
+  <span class="t-cmd">forge log show</span> &lt;runId&gt; [--json]     <span class="t-dim"># full RunRecord of a past run</span>
+  <span class="t-cmd">forge explain</span> &lt;code&gt;                <span class="t-dim"># docs for a diagnostic, e.g.: forge explain F101</span>
+  <span class="t-cmd">forge catalog</span> [type] [--json]       <span class="t-dim"># component datasheet + grammar</span>
 
-<span class="t-dim">OPÇÕES DO VERIFY</span>
-  <span class="t-cmd">--stage op,tran</span>        <span class="t-dim"># roda só estes estágios (o lint SEMPRE roda)</span>
-  <span class="t-cmd">--set R1=330,V1=5</span>      <span class="t-dim"># sobrescreve valores sem editar a bancada</span>
-  <span class="t-cmd">--json</span>                 <span class="t-dim"># emite o RunRecord completo em JSON no stdout</span>
-  <span class="t-cmd">--no-hints</span>             <span class="t-dim"># pula hints verificados de dimensionamento (mais rápido)</span>
-  <span class="t-cmd">--no-ledger</span>            <span class="t-dim"># não grava este run em .forge/runs.jsonl</span></pre>
+<span class="t-dim">VERIFY OPTIONS</span>
+  <span class="t-cmd">--stage op,tran</span>        <span class="t-dim"># runs only these stages (lint ALWAYS runs)</span>
+  <span class="t-cmd">--set R1=330,V1=5</span>      <span class="t-dim"># overrides values without editing the bench</span>
+  <span class="t-cmd">--json</span>                 <span class="t-dim"># emits the full RunRecord as JSON on stdout</span>
+  <span class="t-cmd">--no-hints</span>             <span class="t-dim"># skips verified sizing hints (faster)</span>
+  <span class="t-cmd">--no-ledger</span>            <span class="t-dim"># does not record this run in .forge/runs.jsonl</span></pre>
       </div>
 
-      <h3>Sessão completa: fail com hint → <code>--set</code> → pass<a class="anchor" href="#cli">§</a></h3>
-      <p>Com <code>bench/broken/led-overcurrent.bench.ts</code> — resistor de série pequeno demais (LED a ~28 mA contra spec de 8–12 mA):</p>
+      <h3>Full session: fail with hint → <code>--set</code> → pass<a class="anchor" href="#cli">§</a></h3>
+      <p>With <code>bench/broken/led-overcurrent.bench.ts</code> — series resistor too small (LED at ~28 mA against a spec of 8–12 mA):</p>
 
       <div class="term">
-        <div class="term-bar"><span class="d1"></span><span class="d2"></span><span class="d3"></span><span class="t-title">sessão forge</span></div>
+        <div class="term-bar"><span class="d1"></span><span class="d2"></span><span class="d3"></span><span class="t-title">forge session</span></div>
         <pre><span class="t-dim">$</span> <span class="t-cmd">npm run forge -- verify bench/broken/led-overcurrent.bench.ts</span>
 
 bench led-overcurrent  netlist cb4f1e998fc8  (circuit-forge@0.1.0)
@@ -510,121 +512,121 @@ bench led-overcurrent  netlist cb4f1e998fc8  set R1=280  (circuit-forge@0.1.0)
 <span class="t-pass">PASS</span> · exit <span class="t-pass">0</span></pre>
       </div>
 
-      <p>Exit code <span class="bd bd-f">1</span> disse "circuito válido, spec não atingido"; o hint <em>verificado</em> deu a faixa que passa; <code>--set R1=280</code> aplicou a correção sem editar código. Para agentes, <code>--json</code> devolve o mesmo conteúdo como RunRecord estruturado, e <code>forge log list</code> mantém o histórico do que já foi tentado fora do contexto (anti <em>context attrition</em>).</p>
+      <p>Exit code <span class="bd bd-f">1</span> said "valid circuit, spec not met"; the <em>verified</em> hint gave the passing range; <code>--set R1=280</code> applied the fix without editing code. For agents, <code>--json</code> returns the same content as a structured RunRecord, and <code>forge log list</code> keeps the history of what has already been tried outside the context (anti <em>context attrition</em>).</p>
     </section>
 
     <!-- ============================================================ -->
     <section id="componentes">
-      <h2>Componentes<a class="anchor" href="#componentes">§</a></h2>
+      <h2>Components<a class="anchor" href="#componentes">§</a></h2>
 
-      <p>O catálogo abaixo é o mesmo que <code>forge catalog</code> devolve — o "datasheet" que o agente consulta. Valores aceitam número ou string com unidades (<code>'4.7k'</code>, <code>'10m'</code>, <code>'2u'</code>, <code>'1M'</code>; lembre: <code>m</code> = mili, <code>M</code> = mega).</p>
+      <p>The catalog below is the same one that <code>forge catalog</code> returns — the "datasheet" the agent consults. Values accept a number or a string with units (<code>'4.7k'</code>, <code>'10m'</code>, <code>'2u'</code>, <code>'1M'</code>; remember: <code>m</code> = milli, <code>M</code> = mega).</p>
 
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Tipo</th><th>Exemplo</th><th>Pinos</th><th>Valor</th><th>Comportamento DC</th></tr></thead>
+          <thead><tr><th>Type</th><th>Example</th><th>Pins</th><th>Value</th><th>DC behavior</th></tr></thead>
           <tbody>
             <tr>
               <td><strong>Resistor</strong></td>
               <td><code>tb.add('R1', new Resistor('4.7k'))</code></td>
               <td><code>'1'</code>, <code>'2'</code></td>
-              <td>resistência em ohms (finita, &gt; 0); aceita string com unidades</td>
-              <td>conduz; varrível via <code>tb.param</code></td>
+              <td>resistance in ohms (finite, &gt; 0); accepts a string with units</td>
+              <td>conducts; sweepable via <code>tb.param</code></td>
             </tr>
             <tr>
               <td><strong>Capacitor</strong></td>
               <td><code>tb.add('C1', new Capacitor('10u'))</code></td>
               <td><code>'1'</code>, <code>'2'</code></td>
-              <td>capacitância em farads (finita, &gt; 0)</td>
-              <td>ABERTO em DC — nets isolados atrás dele precisam de caminho DC (ver <span class="bd bd-f">F101</span>); varrível</td>
+              <td>capacitance in farads (finite, &gt; 0)</td>
+              <td>OPEN in DC — nets isolated behind it need a DC path (see <span class="bd bd-f">F101</span>); sweepable</td>
             </tr>
             <tr>
               <td><strong>Inductor</strong></td>
               <td><code>tb.add('L1', new Inductor('10m'))</code></td>
               <td><code>'1'</code>, <code>'2'</code></td>
-              <td>indutância em henries (finita, &gt; 0)</td>
-              <td>curto de 0 V em DC — em paralelo com fonte ideal dispara <span class="bd bd-f">F104</span>; varrível</td>
+              <td>inductance in henries (finite, &gt; 0)</td>
+              <td>0 V short in DC — in parallel with an ideal source it fires <span class="bd bd-f">F104</span>; sweepable</td>
             </tr>
             <tr>
               <td><strong>VoltageSource</strong></td>
               <td><code>tb.add('V1', new VoltageSource(5))</code></td>
               <td><code>'+'</code>, <code>'-'</code></td>
-              <td>volts DC (finito); defina <code>.acAmplitude</code>/<code>.frequency</code> para senoide no transiente</td>
-              <td>fonte ideal — fontes em paralelo disparam <span class="bd bd-f">F104</span>; varrível</td>
+              <td>volts DC (finite); set <code>.acAmplitude</code>/<code>.frequency</code> for a sine wave in the transient</td>
+              <td>ideal source — sources in parallel fire <span class="bd bd-f">F104</span>; sweepable</td>
             </tr>
             <tr>
               <td><strong>CurrentSource</strong></td>
               <td><code>tb.add('I1', new CurrentSource('1m'))</code></td>
               <td><code>'+'</code>, <code>'-'</code></td>
-              <td>ampères (finito); a corrente flui para o pino <code>+</code> externamente</td>
-              <td>não fixa tensões de nó — nó alimentado só por ela flutua (<span class="bd bd-f">F101</span>); varrível</td>
+              <td>amperes (finite); the current flows into the <code>+</code> pin externally</td>
+              <td>does not fix node voltages — a node fed only by it floats (<span class="bd bd-f">F101</span>); sweepable</td>
             </tr>
             <tr>
               <td><strong>Diode</strong></td>
               <td><code>tb.add('D1', new Diode({ Is: 1e-14, n: 1 }))</code></td>
               <td><code>'anode'</code>, <code>'cathode'</code></td>
-              <td>parâmetros de Shockley <code>{Is, n, Vt}</code>; não-linear (Newton-Raphson)</td>
-              <td>precisa de resistência em série ou o NR pode não convergir (<span class="bd bd-s">S201</span>)</td>
+              <td>Shockley parameters <code>{Is, n, Vt}</code>; nonlinear (Newton-Raphson)</td>
+              <td>needs series resistance or NR may fail to converge (<span class="bd bd-s">S201</span>)</td>
             </tr>
             <tr>
               <td><strong>LED</strong></td>
               <td><code>tb.add('D1', new LED())</code></td>
               <td><code>'anode'</code>, <code>'cathode'</code></td>
-              <td>diodo com defaults de LED (~2 V de queda direta em correntes de mA)</td>
-              <td>SEMPRE use resistor em série; sonde <code>D1.i</code> para a corrente de operação</td>
+              <td>diode with LED defaults (~2 V forward drop at mA currents)</td>
+              <td>ALWAYS use a series resistor; probe <code>D1.i</code> for the operating current</td>
             </tr>
             <tr>
               <td><strong>Switch</strong></td>
               <td><code>tb.add('SW1', new Switch(false))</code></td>
               <td><code>'com'</code>, <code>'a'</code>, <code>'b'</code></td>
-              <td>SPDT: <code>closed=false</code> roteia com→a, <code>closed=true</code> roteia com→b; <code>.toggle()</code></td>
-              <td>conduz (canal 1 mΩ fechado / 1 TΩ aberto)</td>
+              <td>SPDT: <code>closed=false</code> routes com→a, <code>closed=true</code> routes com→b; <code>.toggle()</code></td>
+              <td>conducts (channel 1 mΩ closed / 1 TΩ open)</td>
             </tr>
             <tr>
               <td><strong>Button</strong></td>
               <td><code>tb.add('BT1', new Button(false))</code></td>
               <td><code>'1'</code>, <code>'2'</code></td>
-              <td>momentâneo: conduz enquanto <code>.pressed === true</code></td>
-              <td>conduz (1 mΩ pressionado / 1 TΩ solto)</td>
+              <td>momentary: conducts while <code>.pressed === true</code></td>
+              <td>conducts (1 mΩ pressed / 1 TΩ released)</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <p>Além dos built-in, componentes customizados podem ser definidos via <code>defineComponent({ pins, params, stamp, onStep, ... })</code> — com estado interno e flag <code>nonlinear</code> — como no exemplo <a href="app.html?example=mcu-leds">MCU + LEDs</a>.</p>
+      <p>Beyond the built-ins, custom components can be defined via <code>defineComponent({ pins, params, stamp, onStep, ... })</code> — with internal state and a <code>nonlinear</code> flag — as in the <a href="app.html?example=mcu-leds">MCU + LEDs</a> example.</p>
     </section>
 
     <!-- ============================================================ -->
     <section id="roadmap">
       <h2>Roadmap<a class="anchor" href="#roadmap">§</a></h2>
 
-      <p>O v0.1 já entrega o loop completo: motor MNA validado (DC + transiente, Newton-Raphson), DSL <code>bench()</code>, lint estrutural pré-solver, hints verificados por simulação e o CLI com ledger. Daqui em diante:</p>
+      <p>v0.1 already delivers the complete loop: validated MNA engine (DC + transient, Newton-Raphson), the <code>bench()</code> DSL, pre-solver structural lint, simulation-verified hints, and the CLI with a ledger. From here on:</p>
 
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Fase</th><th>Entrega</th><th>Por quê</th></tr></thead>
+          <thead><tr><th>Phase</th><th>Deliverable</th><th>Why</th></tr></thead>
           <tbody>
-            <tr><td><code>v0.2</code></td><td>Estágio L2 (sweep/curvas de transferência), <code>forge sweep</code>, <code>forge probe</code> sobre o ledger</td><td>completa a escada de verificação em estágios</td></tr>
-            <tr><td><code>v0.3</code></td><td>Relatório com orçamento de tokens (failures-only + drill-down), <code>--watch</code> com timeout duro de solve</td><td>iteração sub-segundo; nunca travar o tool call do agente</td></tr>
-            <tr><td><code>v0.4</code></td><td><strong>Servidor MCP</strong> (<code>forge mcp</code>) com o mesmo schema do CLI</td><td>o agente usa como ferramenta nativa</td></tr>
-            <tr><td><code>v0.5</code></td><td><code>forge optimize</code> (Nelder-Mead sobre a escada), gmin/source stepping no NR</td><td>agente nunca mais escolhe resistor na mão</td></tr>
-            <tr><td><code>v0.6</code></td><td>UI = viewer do RunRecord: chips de asserção no schematic, bandas no osciloscópio, timeline do ledger</td><td>humano e agente veem o mesmo artefato</td></tr>
-            <tr><td><code>v0.7</code></td><td>Determinismo forte, export SPICE + cross-check ngspice em CI</td><td>credibilidade numérica pública</td></tr>
-            <tr><td><code>v0.8</code></td><td>MOSFET nível 1, BJT Ebers-Moll, fontes comportamentais, macro-modelo de op-amp</td><td>destrava specs reais</td></tr>
-            <tr><td><code>v1.0</code></td><td><strong>CircuitBench</strong>: eval público de "iterações-até-verde" por modelo; freeze do schema <code>forge-run/1.0</code></td><td>o padrão vence porque os agentes comprovadamente convergem nele</td></tr>
+            <tr><td><code>v0.2</code></td><td>L2 stage (sweep/transfer curves), <code>forge sweep</code>, <code>forge probe</code> over the ledger</td><td>completes the staged verification ladder</td></tr>
+            <tr><td><code>v0.3</code></td><td>Token-budget report (failures-only + drill-down), <code>--watch</code> with a hard solve timeout</td><td>sub-second iteration; never block the agent's tool call</td></tr>
+            <tr><td><code>v0.4</code></td><td><strong>MCP server</strong> (<code>forge mcp</code>) with the same schema as the CLI</td><td>the agent uses it as a native tool</td></tr>
+            <tr><td><code>v0.5</code></td><td><code>forge optimize</code> (Nelder-Mead over the ladder), gmin/source stepping in NR</td><td>the agent never picks a resistor by hand again</td></tr>
+            <tr><td><code>v0.6</code></td><td>UI = RunRecord viewer: assertion chips on the schematic, bands on the oscilloscope, ledger timeline</td><td>human and agent see the same artifact</td></tr>
+            <tr><td><code>v0.7</code></td><td>Strong determinism, SPICE export + ngspice cross-check in CI</td><td>public numerical credibility</td></tr>
+            <tr><td><code>v0.8</code></td><td>Level-1 MOSFET, Ebers-Moll BJT, behavioral sources, op-amp macro-model</td><td>unlocks real specs</td></tr>
+            <tr><td><code>v1.0</code></td><td><strong>CircuitBench</strong>: public eval of "iterations-to-green" per model; freeze of the <code>forge-run/1.0</code> schema</td><td>the standard wins because agents provably converge on it</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
     <footer class="docfoot">
-      Circuit Forge — simulador de circuitos e loop de verificação, 100% no navegador.
-      <a href="app.html">Abrir o simulador</a> · <a href="index.html#exemplos">Ver exemplos</a> · <a href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener">GitHub</a>
+      Circuit Forge — circuit simulator and verification loop, 100% in the browser.
+      <a href="app.html">Open the simulator</a> · <a href="index.html#exemplos">See examples</a> · <a href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener">GitHub</a>
     </footer>
   </main>
 </div>
 
 <script>
-  // Destaque da seção ativa na sidebar via IntersectionObserver
+  // Highlight the active section in the sidebar via IntersectionObserver
   (function () {
     var links = document.querySelectorAll('#toc-list a');
     var byId = {};
@@ -642,7 +644,7 @@ bench led-overcurrent  netlist cb4f1e998fc8  set R1=280  (circuit-forge@0.1.0)
         if (e.isIntersecting) visible.add(e.target.id);
         else visible.delete(e.target.id);
       });
-      // ativa a primeira seção visível na ordem do documento
+      // activate the first visible section in document order
       for (var i = 0; i < sections.length; i++) {
         if (visible.has(sections[i].id)) { setActive(sections[i].id); return; }
       }
