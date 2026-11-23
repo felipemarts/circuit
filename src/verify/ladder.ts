@@ -2,7 +2,7 @@ import { elaborate, type BenchDescriptor } from '../elab/bench';
 import { runLint } from './lint';
 import { runOp } from './op';
 import { runTran } from './tran';
-import { ENGINE } from '../schema/version';
+import { ENGINE, RUN_SCHEMA } from '../schema/version';
 import type { Diagnostic, RunRecord, StageName } from '../schema/types';
 
 export interface LadderOptions {
@@ -29,7 +29,7 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
   const requested = opts.stages ?? ['lint', 'op', 'tran'];
   const overrides = opts.overrides ?? {};
   const record: RunRecord = {
-    schema: 'forge-run/0.1',
+    schema: RUN_SCHEMA,
     bench: desc.name,
     netlist: EMPTY_NETLIST,
     engine: ENGINE,

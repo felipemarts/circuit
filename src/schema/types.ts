@@ -1,5 +1,5 @@
 /**
- * Circuit Forge platform schema — the single source of truth for everything
+ * CircuitsVibe platform schema — the single source of truth for everything
  * the verification ladder produces. The CLI (`--json`), the ledger, tests,
  * and (later) the MCP server and browser UI all consume exactly these shapes.
  *
@@ -139,7 +139,7 @@ export interface StageRecord {
 }
 
 export interface RunRecord {
-  schema: 'forge-run/0.1';
+  schema: 'circuitsvibe-run/0.1';
   bench: string;
   netlist: NetlistDoc;
   /** Engine + package version pin, for replay comparisons. */

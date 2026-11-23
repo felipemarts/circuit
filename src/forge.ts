@@ -1,7 +1,7 @@
 /**
- * circuit-forge platform entry — what bench files import.
+ * circuitsvibe platform entry — what bench files import.
  *
- *   import { bench, VoltageSource, Resistor, LED } from 'circuit-forge';
+ *   import { bench, VoltageSource, Resistor, LED } from 'circuitsvibe';
  *
  * Browser-safe: no Node APIs here (the CLI and ledger live elsewhere).
  */

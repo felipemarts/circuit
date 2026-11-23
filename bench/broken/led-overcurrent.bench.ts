@@ -1,11 +1,11 @@
-import { bench, VoltageSource, Resistor, LED } from 'circuit-forge';
+import { bench, VoltageSource, Resistor, LED } from 'circuitsvibe';
 
 /**
  * SEEDED BROKEN: series resistor too small — the LED runs at ~27 mA against a
  * 8–12 mA spec. Expected: A301 with a VERIFIED hint (the platform sweeps R1
  * and returns a passing range), exit 1. Applying the hint turns this green:
  *
- *   forge verify bench/broken/led-overcurrent.bench.ts --set R1=<suggested>
+ *   circuitsvibe verify bench/broken/led-overcurrent.bench.ts --set R1=<suggested>
  */
 export default bench('led-overcurrent', (tb) => {
   const v1 = tb.add('V1', new VoltageSource(5));

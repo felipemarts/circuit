@@ -1,4 +1,4 @@
-import { bench, VoltageSource, Resistor, Capacitor } from 'circuit-forge';
+import { bench, VoltageSource, Resistor, Capacitor } from 'circuitsvibe';
 
 /**
  * SEEDED BROKEN: a cap-coupled stage with no DC return path.

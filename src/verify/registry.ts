@@ -1,6 +1,6 @@
 /**
  * Diagnostic registry — the stable code taxonomy and its long-form
- * explanations (`forge explain <code>`). Codes are permanent: parsers and
+ * explanations (`circuitsvibe explain <code>`). Codes are permanent: parsers and
  * agents may key on them, so they are never renumbered or reworded away.
  *
  *   F1xx  structural lint (pre-solve topology)

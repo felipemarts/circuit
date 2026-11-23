@@ -1,4 +1,4 @@
-import { bench, VoltageSource, Resistor, Capacitor } from 'circuit-forge';
+import { bench, VoltageSource, Resistor, Capacitor } from 'circuitsvibe';
 
 /**
  * RC step response: 5 V into R(1k) + C(1u), τ = 1 ms.

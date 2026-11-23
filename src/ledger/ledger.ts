@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import type { RunRecord } from '../schema/types';
 
 /**
- * Append-only run ledger: .forge/runs.jsonl in the working directory.
+ * Append-only run ledger: .circuitsvibe/runs.jsonl in the working directory.
  * Persists every RunRecord so agents can query what was already tried
  * instead of re-deriving it from their own context (anti context-attrition).
  *
@@ -15,7 +15,7 @@ export interface LedgerEntry extends RunRecord {
   at: string;
 }
 
-const LEDGER_DIR = '.forge';
+export const LEDGER_DIR = '.circuitsvibe';
 const LEDGER_FILE = 'runs.jsonl';
 
 function ledgerPath(cwd: string): string {

@@ -1,27 +1,33 @@
 import { runLadder } from '../verify/ladder';
 import { renderHuman } from '../report/human';
 import { findDiagnosticDoc, DIAGNOSTIC_DOCS } from '../verify/registry';
-import { appendRun, listRuns, findRun } from '../ledger/ledger';
+import { appendRun, listRuns, findRun, LEDGER_DIR } from '../ledger/ledger';
 import { parseValue, formatEng } from '../elab/units';
 import { loadBench } from './load';
 import { COMPONENT_CATALOG, GRAMMAR_NOTES } from './catalog';
+import { CLI, ENGINE, VERSION } from '../schema/version';
+import { init } from './init';
+import AGENTS_MD from '../../AGENTS.md';
 import type { StageName } from '../schema/types';
 
-const USAGE = `forge — code becomes circuits; verification is the feedback loop
+const USAGE = `${CLI} — circuits as code; simulation is the feedback loop (${ENGINE})
 
 USAGE
-  forge verify <bench.ts> [options]   run the ladder: lint → op → tran
-  forge log list [--json]             list past runs from the ledger (.forge/runs.jsonl)
-  forge log show <runId> [--json]     full RunRecord of a past run
-  forge explain <code>                docs for a diagnostic code, e.g. forge explain F101
-  forge catalog [type] [--json]       component datasheet + probe/assertion grammar
+  ${CLI} init [name] [--force]        scaffold <name>.bench.ts + AGENTS.md here
+  ${CLI} verify <bench.ts> [options]  run the ladder: lint → op → tran
+  ${CLI} log list [--json]            list past runs from the ledger (${LEDGER_DIR}/runs.jsonl)
+  ${CLI} log show <runId>             full RunRecord of a past run (JSON)
+  ${CLI} explain <code>               docs for a diagnostic code, e.g. ${CLI} explain F101
+  ${CLI} catalog [type] [--json]      component datasheet + probe/assertion grammar
+  ${CLI} agents                       print the agent playbook (AGENTS.md)
+  ${CLI} version                      print the engine version
 
 VERIFY OPTIONS
   --stage op,tran        run only these stages (lint ALWAYS runs — it gates the solve)
   --set R1=330,V1=5      override scalar values without editing the bench
   --json                 emit the full RunRecord as JSON on stdout
   --no-hints             skip verified sizing hints (faster)
-  --no-ledger            do not append this run to .forge/runs.jsonl
+  --no-ledger            do not append this run to ${LEDGER_DIR}/runs.jsonl
 
 EXIT CODES
   0  all requested stages pass
@@ -30,10 +36,11 @@ EXIT CODES
   3  tooling error — bad usage or the bench file itself threw
 
 EXAMPLE
-  forge verify bench/led-driver.bench.ts --json`;
+  ${CLI} init led-driver && ${CLI} verify led-driver.bench.ts --json`;
 
 interface Flags {
   json: boolean;
+  force: boolean;
   hints: boolean;
   ledger: boolean;
   stages?: StageName[];
@@ -42,10 +49,11 @@ interface Flags {
 }
 
 function parseFlags(args: string[]): Flags {
-  const flags: Flags = { json: false, hints: true, ledger: true, overrides: {}, positional: [] };
+  const flags: Flags = { json: false, force: false, hints: true, ledger: true, overrides: {}, positional: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--json') flags.json = true;
+    else if (arg === '--force') flags.force = true;
     else if (arg === '--no-hints') flags.hints = false;
     else if (arg === '--no-ledger') flags.ledger = false;
     else if (arg === '--stage') {
@@ -83,6 +91,10 @@ export async function main(argv: string[]): Promise<number> {
     console.log(USAGE);
     return command ? 0 : 3;
   }
+  if (command === 'version' || command === '--version' || command === '-v') {
+    console.log(VERSION);
+    return 0;
+  }
 
   let flags: Flags;
   try {
@@ -102,6 +114,11 @@ export async function main(argv: string[]): Promise<number> {
         return explain(flags);
       case 'catalog':
         return catalog(flags);
+      case 'init':
+        return init(flags.positional[0], { force: flags.force });
+      case 'agents':
+        process.stdout.write(AGENTS_MD.endsWith('\n') ? AGENTS_MD : `${AGENTS_MD}\n`);
+        return 0;
       default:
         console.error(`error: unknown command '${command}'\n\n${USAGE}`);
         return 3;
@@ -115,7 +132,7 @@ export async function main(argv: string[]): Promise<number> {
 async function verify(flags: Flags): Promise<number> {
   const file = flags.positional[0];
   if (!file) {
-    console.error(`error: verify needs a bench file\n\nEXAMPLE\n  forge verify bench/led-driver.bench.ts --json`);
+    console.error(`error: verify needs a bench file\n\nEXAMPLE\n  ${CLI} verify led-driver.bench.ts --json`);
     return 3;
   }
 
@@ -146,7 +163,7 @@ async function verify(flags: Flags): Promise<number> {
     console.log(JSON.stringify(runId ? { runId, ...record } : record, null, 2));
   } else {
     console.log(renderHuman(record));
-    if (runId) console.log(`run ${runId} → .forge/runs.jsonl (forge log show ${runId})`);
+    if (runId) console.log(`run ${runId} → ${LEDGER_DIR}/runs.jsonl (${CLI} log show ${runId})`);
   }
   return record.exitCode;
 }
@@ -173,7 +190,7 @@ function log(flags: Flags): number {
       return 0;
     }
     if (runs.length === 0) {
-      console.log('no runs recorded yet — forge verify <bench.ts> appends to .forge/runs.jsonl');
+      console.log(`no runs recorded yet — ${CLI} verify <bench.ts> appends to ${LEDGER_DIR}/runs.jsonl`);
       return 0;
     }
     for (const r of runs) {
@@ -190,7 +207,7 @@ function log(flags: Flags): number {
   }
   if (sub === 'show') {
     if (!runId) {
-      console.error(`error: log show needs a runId\n\nEXAMPLE\n  forge log show 4be2a1c09d77-001`);
+      console.error(`error: log show needs a runId\n\nEXAMPLE\n  ${CLI} log show 4be2a1c09d77-001`);
       return 3;
     }
     const run = findRun(runId);
@@ -202,14 +219,14 @@ function log(flags: Flags): number {
     console.log(JSON.stringify(run, null, 2));
     return 0;
   }
-  console.error(`error: log needs 'list' or 'show <runId>'\n\nEXAMPLE\n  forge log list`);
+  console.error(`error: log needs 'list' or 'show <runId>'\n\nEXAMPLE\n  ${CLI} log list`);
   return 3;
 }
 
 function explain(flags: Flags): number {
   const code = flags.positional[0];
   if (!code) {
-    console.error(`error: explain needs a diagnostic code\n\nEXAMPLE\n  forge explain F101`);
+    console.error(`error: explain needs a diagnostic code\n\nEXAMPLE\n  ${CLI} explain F101`);
     return 3;
   }
   const doc = findDiagnosticDoc(code);

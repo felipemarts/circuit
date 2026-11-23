@@ -1,5 +1,5 @@
 /**
- * `forge catalog` — the agent's datasheet: every component type, its pins,
+ * `circuitsvibe catalog` — the agent's datasheet: every component type, its pins,
  * value semantics and DC behavior, plus the probe and assertion grammars.
  */
 

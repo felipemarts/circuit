@@ -1,5 +1,6 @@
 import type { AssertionResult, CheckSpec, Diagnostic, RunRecord, StageName } from '../schema/types';
 import { formatEng } from '../elab/units';
+import { CLI } from '../schema/version';
 
 /**
  * Deterministic human/agent-readable rendering of a RunRecord. No colors, no
@@ -59,7 +60,7 @@ function renderDiagnostic(d: Diagnostic): string[] {
   for (const fix of d.fixes) {
     lines.push(`          fix (${fix.confidence}): ${fix.detail}`);
   }
-  lines.push(`          docs: forge explain ${d.code}`);
+  lines.push(`          docs: ${CLI} explain ${d.code}`);
   return lines;
 }
 

@@ -1,4 +1,4 @@
-import { bench, VoltageSource, Resistor, LED } from 'circuit-forge';
+import { bench, VoltageSource, Resistor, LED } from 'circuitsvibe';
 
 /**
  * LED driver: 5 V supply, series resistor, LED to ground.

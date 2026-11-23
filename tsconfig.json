@@ -12,7 +12,7 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "circuit-forge": ["src/forge.ts"]
+      "circuitsvibe": ["src/forge.ts"]
     },
     "types": ["node"]
   },

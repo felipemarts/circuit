@@ -1,9 +1,10 @@
-import { bench, VoltageSource, LED } from 'circuit-forge';
+import { bench, VoltageSource, LED } from 'circuitsvibe';
 
 /**
  * SEEDED BROKEN: LED wired straight across the supply — the classic beginner
- * (and LLM) mistake. Expected: S201 Newton-Raphson non-convergence naming D1
- * as the culprit, with the series-resistance fix suggested. Exit 2.
+ * (and LLM) mistake. Expected: F105 source-clamped-diode from lint, before
+ * any solver runs (otherwise Newton-Raphson would diverge), naming D1 with
+ * the series-resistance fix suggested. Exit 2.
  */
 export default bench('led-no-resistor', (tb) => {
   const v1 = tb.add('V1', new VoltageSource(5));
