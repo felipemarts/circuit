@@ -32,8 +32,8 @@ partsByCategory('logic').map((p) => p.id);
 - **Sources**: every part has `sources: Citation[]` (publisher, title, document number,
   revision, URL, access date). The first citation is the primary datasheet and the default
   source of every value; a value from another document names it with `source: '<id>'`.
-  Model cards cite where their `.model` line comes from and copy it verbatim in
-  `modelLine`; `params` holds the same numbers in SI.
+  Model cards cite where their `.model` line comes from; `params` holds its numeric
+  values in SI. The library text itself is not copied (see the licensing note below).
 - **Omitted, not guessed**: when a datasheet does not print a value it is left out. There
   are no SPICE defaults filled in.
 - **Estimated values**: anything derived, fitted or read off a figure has
@@ -254,10 +254,10 @@ Known limits, which each card's note repeats:
 - **onsemi BJT model files** (2N3904, 2N3906, BC547B, BD139, TIP120 `.LIB`): these are
   automated MODPEX fits and some parameters look unusual (2N3904 NF = 1.5 and VAF = 1000;
   BC547B BF = 1343.6 with a large ISE/NE that pulls the effective gain down). They are
-  copied as published. Their headers also carry a Symmetry Design Systems "commercial use
+  copied as published. Their library files carry a Symmetry Design Systems "commercial use
   or resale restricted" notice, and the LTspice `standard.bjt` line used for BC557B is
-  Analog Devices library content. Review the licensing before redistributing the
-  verbatim `modelLine` text.
+  Analog Devices library content, so only the numeric parameter values are kept (with
+  the citation), never the library text.
 - **TIP120**: onsemi's model is a `.SUBCKT`. The `model` field holds its driver-transistor
   `.model`. A single transistor with these params is not a Darlington; the notes describe
   the subcircuit (output transistor area 2.80758, R1 = 10 kΩ, R2 = 1 kΩ, a C–E diode) and

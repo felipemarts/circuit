@@ -196,8 +196,6 @@ export interface SpiceModel<P> {
   /** SPICE level when relevant (MOSFET: 1). */
   level?: number;
   params: P;
-  /** The `.model` line as published by `source`, verbatim (when one exists). */
-  modelLine?: string;
   /** Citation id where the model card comes from. */
   source: string;
   /** True when the whole card is a fit/estimate rather than a published model. */

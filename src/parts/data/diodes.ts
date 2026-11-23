@@ -56,8 +56,6 @@ export const DIODES: DiodePart[] = [
     model: {
       type: 'D',
       source: 'model',
-      modelLine:
-        '.MODEL 1N4148 D \n+ IS = 4.352E-9 \n+ N = 1.906 \n+ BV = 110 \n+ IBV = 0.0001 \n+ RS = 0.6458 \n+ CJO = 7.048E-13 \n+ VJ = 0.869 \n+ M = 0.03 \n+ FC = 0.5 \n+ TT = 3.48E-9',
       params: {
         Is: 4.352e-9,
         N: 1.906,
@@ -139,8 +137,6 @@ export const DIODES: DiodePart[] = [
     model: {
       type: 'D',
       source: 'model',
-      modelLine:
-        '.MODEL DI_1N4007G D  ( IS=65.4p RS=42.2m BV=1.00k IBV=5.00u\n+ CJO=14.8p  M=0.333 N=1.36 TT=2.88u )',
       params: {
         Is: 65.4e-12,
         Rs: 42.2e-3,
@@ -206,8 +202,6 @@ export const DIODES: DiodePart[] = [
     model: {
       type: 'D',
       source: 'model',
-      modelLine:
-        '.MODEL DI_1N5819 D  ( IS=390n RS=0.115 BV=40.0 IBV=1.00m\n+ CJO=203p  M=0.333 N=1.70 TT=4.32u )',
       params: {
         Is: 390e-9,
         Rs: 0.115,

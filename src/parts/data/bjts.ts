@@ -52,19 +52,6 @@ export const BJTS: BjtPart[] = [
     model: {
       type: 'NPN',
       source: 'model',
-      modelLine: [
-        '.MODEL Q2n3904 npn',
-        '+IS=1.26532e-10 BF=206.302 NF=1.5 VAF=1000',
-        '+IKF=0.0272221 ISE=2.30771e-09 NE=3.31052 BR=20.6302',
-        '+NR=2.89609 VAR=9.39809 IKR=0.272221 ISC=2.30771e-09',
-        '+NC=1.9876 RB=5.8376 IRB=50.3624 RBM=0.634251',
-        '+RE=0.0001 RC=2.65711 XTB=0.1 XTI=1',
-        '+EG=1.05 CJE=4.64214e-12 VJE=0.4 MJE=0.256227',
-        '+TF=4.19578e-10 XTF=0.906167 VTF=8.75418 ITF=0.0105823',
-        '+CJC=3.76961e-12 VJC=0.4 MJC=0.238109 XCJC=0.8',
-        '+FC=0.512134 CJS=0 VJS=0.75 MJS=0.5',
-        '+TR=6.82023e-08 PTF=0 KF=0 AF=1',
-      ].join('\n'),
       params: {
         Is: 1.26532e-10, Bf: 206.302, Nf: 1.5, Vaf: 1000, Ikf: 0.0272221, Ise: 2.30771e-9,
         Ne: 3.31052, Br: 20.6302, Nr: 2.89609, Var: 9.39809, Ikr: 0.272221, Isc: 2.30771e-9,
@@ -148,19 +135,6 @@ export const BJTS: BjtPart[] = [
     model: {
       type: 'PNP',
       source: 'model',
-      modelLine: [
-        '.MODEL q2n3906 pnp',
-        '+IS=7.75521e-12 BF=194.093 NF=1.35509 VAF=156.436',
-        '+IKF=0.0660057 ISE=1.88546e-12 NE=1.81673 BR=3.41317',
-        '+NR=1.5 VAR=5.86061 IKR=1.70599 ISC=7.64281e-10',
-        '+NC=1.92376 RB=6.48961 IRB=0.1 RBM=0.1',
-        '+RE=0.0001 RC=2.45044 XTB=0.1 XTI=1',
-        '+EG=1.05 CJE=6.11928e-12 VJE=0.4 MJE=0.248812',
-        '+TF=5.21843e-10 XTF=0.932702 VTF=9.1046 ITF=0.0106472',
-        '+CJC=6.85007e-12 VJC=0.4 MJC=0.279018 XCJC=0.9',
-        '+FC=0.478887 CJS=0 VJS=0.75 MJS=0.5',
-        '+TR=4.30605e-07 PTF=0 KF=0 AF=1',
-      ].join('\n'),
       params: {
         Is: 7.75521e-12, Bf: 194.093, Nf: 1.35509, Vaf: 156.436, Ikf: 0.0660057, Ise: 1.88546e-12,
         Ne: 1.81673, Br: 3.41317, Nr: 1.5, Var: 5.86061, Ikr: 1.70599, Isc: 7.64281e-10,
@@ -247,19 +221,6 @@ export const BJTS: BjtPart[] = [
     model: {
       type: 'NPN',
       source: 'model',
-      modelLine: [
-        '.MODEL Qbc547b npn',
-        '+IS=7.443e-11 BF=1343.59 NF=1.42606 VAF=80.4901',
-        '+IKF=0.427163 ISE=2.4623e-10 NE=2.73946 BR=62.79',
-        '+NR=1.5 VAR=1.0092 IKR=4.27163 ISC=2.4623e-10',
-        '+NC=1.9119 RB=0.1 IRB=0.1 RBM=0.1',
-        '+RE=0.579065 RC=3.01102 XTB=0.1 XTI=2.25359',
-        '+EG=1.05 CJE=7.34106e-12 VJE=0.586136 MJE=0.33309',
-        '+TF=5.7202e-10 XTF=4.45797 VTF=26.03 ITF=0.487193',
-        '+CJC=4.04665e-12 VJC=0.95 MJC=0.343664 XCJC=0.799994',
-        '+FC=0.8 CJS=0 VJS=0.75 MJS=0.5',
-        '+TR=1e-07 PTF=0 KF=0 AF=1',
-      ].join('\n'),
       params: {
         Is: 7.443e-11, Bf: 1343.59, Nf: 1.42606, Vaf: 80.4901, Ikf: 0.427163, Ise: 2.4623e-10,
         Ne: 2.73946, Br: 62.79, Nr: 1.5, Var: 1.0092, Ikr: 4.27163, Isc: 2.4623e-10,
@@ -351,8 +312,6 @@ export const BJTS: BjtPart[] = [
     model: {
       type: 'PNP',
       source: 'ltspice',
-      modelLine:
-        '.model BC557B PNP(IS=3.83E-14 NF=1.008 ISE=1.22E-14 NE=1.528 BF=344.4 IKF=0.08039 VAF=21.11 NR=1.005 ISC=2.85E-13 NC=1.28 BR=14.84 IKR=0.047 VAR=32.02 RB=1 IRB=1.00E-06 RBM=1 RE=0.6202 RC=0.5713 XTB=0 EG=1.11 XTI=3 CJE=1.23E-11 VJE=0.6106 MJE=0.378 TF=5.60E-10 XTF=3.414 VTF=5.23 ITF=0.1483 PTF=0 CJC=1.08E-11 VJC=0.1022 MJC=0.3563 XCJC=0.6288 TR=1.00E-32 CJS=0 VJS=0.75 MJS=0.333 FC=0.8027 Vceo=45 Icrating=100m mfg=NXP)',
       params: {
         Is: 3.83e-14, Nf: 1.008, Ise: 1.22e-14, Ne: 1.528, Bf: 344.4, Ikf: 0.08039, Vaf: 21.11,
         Nr: 1.005, Isc: 2.85e-13, Nc: 1.28, Br: 14.84, Ikr: 0.047, Var: 32.02,
@@ -516,18 +475,6 @@ export const BJTS: BjtPart[] = [
     model: {
       type: 'NPN',
       source: 'model',
-      modelLine: [
-        '.MODEL qmodel npn',
-        '+IS=3.29109e-14 BF=391.787 NF=0.894469 VAF=33.1384',
-        '+IKF=0.198445 ISE=1.21403e-10 NE=1.6375 BR=0.1',
-        '+NR=1.34795 VAR=135.277 IKR=0.137744 ISC=1.01287e-13',
-        '+NC=1.97483 RB=4.90772 IRB=0.200762 RBM=4.90772',
-        '+RE=0.0826202 RC=0.413101 XTB=0.584577 XTI=2.92564 EG=1.05',
-        '+CJE=2.09731e-10 VJE=0.95 MJE=0.23 TF=1e-09',
-        '+XTF=1 VTF=10 ITF=0.01 CJC=1.53283e-10',
-        '+VJC=0.95 MJC=0.23 XCJC=0.9 FC=0.5',
-        '+TR=1e-07 PTF=0 KF=0 AF=1',
-      ].join('\n'),
       params: {
         Is: 3.29109e-14, Bf: 391.787, Nf: 0.894469, Vaf: 33.1384, Ikf: 0.198445, Ise: 1.21403e-10,
         Ne: 1.6375, Br: 0.1, Nr: 1.34795, Var: 135.277, Ikr: 0.137744, Isc: 1.01287e-13,
@@ -619,19 +566,6 @@ export const BJTS: BjtPart[] = [
     model: {
       type: 'NPN',
       source: 'model',
-      modelLine: [
-        '.MODEL Qbd139 npn',
-        '+IS=1e-09 BF=222.664 NF=0.85 VAF=36.4079',
-        '+IKF=0.166126 ISE=5.03418e-09 NE=1.45313 BR=1.35467',
-        '+NR=1.33751 VAR=142.931 IKR=1.66126 ISC=5.02557e-09',
-        '+NC=3.10227 RB=26.9143 IRB=0.1 RBM=0.1',
-        '+RE=0.000472454 RC=1.04109 XTB=0.727762 XTI=1.04311',
-        '+EG=1.05 CJE=1e-11 VJE=0.75 MJE=0.33',
-        '+TF=1e-09 XTF=1 VTF=10 ITF=0.01',
-        '+CJC=1e-11 VJC=0.75 MJC=0.33 XCJC=0.9',
-        '+FC=0.5 CJS=0 VJS=0.75 MJS=0.5',
-        '+TR=1e-07 PTF=0 KF=0 AF=1',
-      ].join('\n'),
       params: {
         Is: 1e-9, Bf: 222.664, Nf: 0.85, Vaf: 36.4079, Ikf: 0.166126, Ise: 5.03418e-9,
         Ne: 1.45313, Br: 1.35467, Nr: 1.33751, Var: 142.931, Ikr: 1.66126, Isc: 5.02557e-9,
