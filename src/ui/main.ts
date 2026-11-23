@@ -11,7 +11,7 @@ import {
   type Segment,
 } from './renderer';
 import { drawChart, type WaveformData } from './chartRenderer';
-import { showScopeOverlay, hideScopeOverlay } from './scopeOverlay';
+import { showScopeOverlay, hideScopeOverlay, redrawScopeIfVisible } from './scopeOverlay';
 import { Circuit } from '../core/Circuit';
 import { Component } from '../core/Component';
 import { Resistor } from '../components/Resistor';
@@ -31,6 +31,10 @@ import { TransientSession } from '../analysis/TransientSession';
 import { initCodeEditor, type CodeEditorAPI } from './codeEditor';
 import { initProjectManager, type ProjectBridge } from './projectManager';
 import { autoSave, loadAutoSave, clearAutoSave } from './projectStore';
+import { COLORS, applyRendererTheme } from './renderer';
+import { voltageColor, voltageGradientCSS, niceVoltageScale, setVoltageZeroColor } from './voltageColor';
+import './app.css';
+import { t } from './i18n';
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -106,6 +110,17 @@ let pathsCache: Point[][] = [];
 type WireContribution = { componentId: string; sign: 1 | -1 };
 type WireFlowSpec = { contribs: WireContribution[]; divisor: number };
 let wireFlowSpecs = new Map<string, WireFlowSpec>();
+/** pin key → electrical-net root (filled by computeWireFlowSpecs) */
+let pinNetRoot = new Map<string, string>();
+/** net root → voltage, derived from component results (ground = 0 V) */
+let netVoltages = new Map<string, number>();
+let voltageScaleEnvelope = 0;
+let lastLegendScale = -1;
+
+// Canvas size in CSS pixels and the device pixel ratio used for the backing store
+let viewW = 0;
+let viewH = 0;
+let dpr = 1;
 
 /** Convert screen coordinates to world coordinates */
 function screenToWorld(sx: number, sy: number): Point {
@@ -161,15 +176,57 @@ circuit.analyze('transient', {
 // Project name
 let projectName = 'Untitled';
 
+// ─── Theme ───────────────────────────────────────────────────────────────────
+
+const THEME_KEY = 'cv-theme';
+function isLightTheme(): boolean {
+  return document.documentElement.getAttribute('data-theme') === 'light';
+}
+function syncTheme(): void {
+  const light = isLightTheme();
+  applyRendererTheme(light);
+  setVoltageZeroColor(light ? '#64748b' : '#8b9bb4');
+  lastLegendScale = -1;
+}
+function setTheme(theme: 'dark' | 'light'): void {
+  document.documentElement.setAttribute('data-theme', theme);
+  try { localStorage.setItem(THEME_KEY, theme); } catch { /* storage unavailable */ }
+  syncTheme();
+  render();
+  renderChart();
+  if (transientResult) {
+    const waveforms: WaveformData[] = transientResult.probes.map(p => ({
+      label: p.label, color: p.color, values: p.values, timePoints: transientResult!.timePoints,
+    }));
+    redrawScopeIfVisible(waveforms);
+  }
+}
+syncTheme();
+document.getElementById('btn-theme')?.addEventListener('click', () => setTheme(isLightTheme() ? 'dark' : 'light'));
+document.getElementById('btn-props')?.addEventListener('click', () => {
+  document.getElementById('sidebar')?.classList.toggle('open');
+});
+
+function fitChartCanvas(): void {
+  const chartContent = document.getElementById('chart-content')!;
+  const r = window.devicePixelRatio || 1;
+  chartCanvas.width = Math.max(1, Math.round(chartContent.clientWidth * r));
+  chartCanvas.height = Math.max(1, Math.round(chartContent.clientHeight * r));
+}
+
 function resize() {
   const canvasArea = canvas.parentElement!;
-  canvas.width = canvasArea.clientWidth;
-  canvas.height = canvasArea.clientHeight - bottomPanel.offsetHeight;
+  dpr = window.devicePixelRatio || 1;
+  viewW = Math.max(1, canvasArea.clientWidth);
+  viewH = Math.max(1, canvasArea.clientHeight - bottomPanel.offsetHeight);
+  canvas.width = Math.round(viewW * dpr);
+  canvas.height = Math.round(viewH * dpr);
+  canvas.style.width = `${viewW}px`;
+  canvas.style.height = `${viewH}px`;
   // Resize chart canvas if chart tab is active
   const chartContent = document.getElementById('chart-content')!;
   if (chartContent.classList.contains('active')) {
-    chartCanvas.width = chartContent.clientWidth;
-    chartCanvas.height = chartContent.clientHeight;
+    fitChartCanvas();
     renderChart();
   }
   render();
@@ -658,25 +715,52 @@ canvas.addEventListener('contextmenu', (e) => {
   }
 });
 
-// Zoom with mouse wheel
+// Smooth zoom with the mouse wheel / trackpad: the wheel sets a target zoom
+// anchored at the cursor and a short animation eases toward it.
+let zoomAnim: { target: number; ax: number; ay: number; wx: number; wy: number } | null = null;
+let zoomRaf = 0;
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 5;
+
+function stepZoom(): void {
+  zoomRaf = 0;
+  if (!zoomAnim) return;
+  const diff = zoomAnim.target - zoom;
+  if (Math.abs(diff) < 0.0008) zoom = zoomAnim.target;
+  else zoom += diff * 0.32;
+  // keep the anchored world point under the cursor
+  panX = zoomAnim.ax - zoomAnim.wx * zoom;
+  panY = zoomAnim.ay - zoomAnim.wy * zoom;
+  zoomLevelEl.textContent = `${Math.round(zoom * 100)}%`;
+  if (zoom === zoomAnim.target) zoomAnim = null;
+  else zoomRaf = requestAnimationFrame(stepZoom);
+  if (!isSimulating()) render();
+}
+
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
   const screenX = e.clientX - rect.left;
   const screenY = e.clientY - rect.top;
 
-  // World point under cursor before zoom
-  const worldBefore = screenToWorld(screenX, screenY);
+  // Ctrl/⌘ + wheel is pinch-zoom on trackpads; plain wheel also zooms (desktop habit)
+  const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+  const base = zoomAnim ? zoomAnim.target : zoom;
+  const target = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, base * Math.exp(-delta * 0.0022)));
+  if (target === base) return;
 
-  const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-  zoom = Math.max(0.2, Math.min(5, zoom * factor));
-
-  // Adjust pan so the world point stays under cursor
-  panX = screenX - worldBefore.x * zoom;
-  panY = screenY - worldBefore.y * zoom;
-
-  zoomLevelEl.textContent = `${Math.round(zoom * 100)}%`;
-  render();
+  const world = screenToWorld(screenX, screenY);
+  zoomAnim = { target, ax: screenX, ay: screenY, wx: world.x, wy: world.y };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    zoom = target;
+    panX = screenX - world.x * zoom;
+    panY = screenY - world.y * zoom;
+    zoomAnim = null;
+    zoomLevelEl.textContent = `${Math.round(zoom * 100)}%`;
+    render();
+    return;
+  }
+  if (!zoomRaf) zoomRaf = requestAnimationFrame(stepZoom);
 }, { passive: false });
 
 // Keyboard shortcuts
@@ -758,7 +842,7 @@ async function placeComponent(type: ComponentType, x: number, y: number) {
 
 function updateProps() {
   if (!selectedId) {
-    propsContent.innerHTML = '<p style="color:#475569; font-size:12px;">Select a component</p>';
+    propsContent.innerHTML = `<p class="empty">${t('Select a component to edit its name, value and rotation.')}</p>`;
     return;
   }
 
@@ -768,18 +852,18 @@ function updateProps() {
   const def = getComponentDef(comp.type);
   let html = `
     <div class="prop-group">
-      <label>Type</label>
+      <label>${t('Type')}</label>
       <input type="text" value="${comp.type}" readonly style="opacity:0.5" />
     </div>
     <div class="prop-group">
-      <label>Name</label>
+      <label>${t('Name')}</label>
       <input type="text" id="prop-label" value="${comp.label}" />
     </div>`;
 
   if (def?.unit) {
     html += `
     <div class="prop-group">
-      <label>Value (${def.unit})</label>
+      <label>${t('Value')} (${def.unit})</label>
       <input type="number" id="prop-value" value="${comp.value}" step="any" />
     </div>`;
   }
@@ -788,28 +872,25 @@ function updateProps() {
   if (comp.type === 'VoltageSource') {
     html += `
     <div class="prop-group">
-      <label>Amplitude AC (V)</label>
+      <label>${t('AC amplitude (V)')}</label>
       <input type="number" id="prop-ac-amp" value="${comp.acAmplitude ?? 0}" step="any" />
     </div>
     <div class="prop-group">
-      <label>Frequency (Hz)</label>
+      <label>${t('Frequency (Hz)')}</label>
       <input type="number" id="prop-freq" value="${comp.frequency ?? 0}" step="any" />
     </div>`;
   }
 
   html += `
     <div class="prop-group">
-      <label>Rotation (degrees)</label>
-      <div style="display:flex;gap:4px;">
+      <label>${t('Rotation (degrees)')}</label>
+      <div style="display:flex;gap:6px;">
         <input type="number" id="prop-rotation" value="${comp.rotation}" step="90" style="flex:1" />
-        <button id="prop-rotate-btn" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:14px">&#8635;</button>
+        <button id="prop-rotate-btn" class="prop-btn" title="Rotate 90°">&#8635;</button>
       </div>
     </div>
-    <div class="prop-group" style="margin-top:12px">
-      <button onclick="document.dispatchEvent(new CustomEvent('delete-selected'))"
-        style="background:#dc2626;border:none;color:white;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px;width:100%">
-        Delete
-      </button>
+    <div class="prop-group" style="margin-top:14px">
+      <button class="prop-danger" onclick="document.dispatchEvent(new CustomEvent('delete-selected'))">${t('Delete component')}</button>
     </div>`;
 
   propsContent.innerHTML = html;
@@ -1014,6 +1095,7 @@ function pinKeyOf(comp: PlacedComponent, pinName: string): string {
 
 function computeWireFlowSpecs(): void {
   wireFlowSpecs = new Map();
+  pinNetRoot = new Map();
   if (wires.length === 0) return;
 
   const compById = new Map<string, PlacedComponent>();
@@ -1059,6 +1141,15 @@ function computeWireFlowSpecs(): void {
     const c = compById.get(g.componentId);
     if (c) ufUnion(pinKeyOf(c, g.pinName), GND_KEY);
   }
+
+  // Remember every pin's net so node voltages can be derived per frame
+  for (const c of components) {
+    for (const p of c.pins) {
+      const k = pinKeyOf(c, p.name);
+      pinNetRoot.set(k, ufFind(k));
+    }
+  }
+  pinNetRoot.set(GND_KEY, ufFind(GND_KEY));
 
   // For each wire, build a *local* adjacency restricted to the wire's node
   // (only wires whose two endpoints are in the same node). DFS in that
@@ -1194,6 +1285,59 @@ function wireCurrentFor(wire: Wire): number {
   return -sum / spec.divisor;
 }
 
+// ─── Node voltages (derived from component results) ─────────────────────────
+// The engine reports V across each two-terminal part (positive pin minus
+// negative pin). Starting from ground = 0 V we propagate across components
+// until every reachable net has a voltage; nets behind an open switch throw
+// stay unknown and are drawn in the neutral wire color.
+
+function computeNetVoltages(): void {
+  netVoltages = new Map();
+  const gndRoot = pinNetRoot.get(GND_KEY);
+  if (gndRoot === undefined) return;
+  netVoltages.set(gndRoot, 0);
+  let changed = true;
+  let guard = 0;
+  while (changed && guard++ < 64) {
+    changed = false;
+    for (const comp of components) {
+      if (comp.voltage === undefined) continue;
+      const pol = getComponentPolarity(comp);
+      if (!pol) continue;
+      const a = pinNetRoot.get(pinKeyOf(comp, pol.pos));
+      const b = pinNetRoot.get(pinKeyOf(comp, pol.neg));
+      if (a === undefined || b === undefined) continue;
+      const va = netVoltages.get(a);
+      const vb = netVoltages.get(b);
+      if (va !== undefined && vb === undefined) { netVoltages.set(b, va - comp.voltage); changed = true; }
+      else if (vb !== undefined && va === undefined) { netVoltages.set(a, vb + comp.voltage); changed = true; }
+    }
+  }
+}
+
+function wireVoltage(wire: Wire): number | undefined {
+  const f = wire.from as { componentId: string; pinName: string };
+  const comp = components.find(c => c.id === f.componentId);
+  if (!comp) return undefined;
+  const root = pinNetRoot.get(pinKeyOf(comp, f.pinName));
+  return root === undefined ? undefined : netVoltages.get(root);
+}
+
+function updateVoltageLegend(show: boolean, scale: number): void {
+  const vLegend = document.getElementById('v-legend');
+  if (!vLegend) return;
+  if (vLegend.hidden === show) vLegend.hidden = !show;
+  if (!show || scale === lastLegendScale) return;
+  lastLegendScale = scale;
+  const txt = formatValue(scale, 'V');
+  const min = vLegend.querySelector<HTMLElement>('.vl-min');
+  const max = vLegend.querySelector<HTMLElement>('.vl-max');
+  const bar = vLegend.querySelector<HTMLElement>('.vl-bar');
+  if (min) min.textContent = `−${txt}`;
+  if (max) max.textContent = `+${txt}`;
+  if (bar) bar.style.background = voltageGradientCSS(true);
+}
+
 // ─── Continuous simulation (Play / Pause) ──────────────────────────────────
 
 const SIM_FIXED_DT = 1e-5;            // 10µs default timestep
@@ -1211,22 +1355,25 @@ function togglePlay() {
 function setPlayButton(playing: boolean): void {
   const icon = document.getElementById('btn-play-icon')!;
   const label = document.getElementById('btn-play-label')!;
+  const btn = document.getElementById('btn-play');
   if (playing) {
     icon.innerHTML = '<rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/>';
-    label.textContent = 'Pause';
+    label.textContent = t('Pause');
+    btn?.classList.add('running');
   } else {
     icon.innerHTML = '<path d="M5 4l14 8-14 8V4z" fill="currentColor"/>';
-    label.textContent = 'Play';
+    label.textContent = t('Play');
+    btn?.classList.remove('running');
   }
 }
 
 function startSimulation(): void {
   if (components.length === 0) {
-    statusText.textContent = 'No components in the circuit';
+    statusText.textContent = t('No components in the circuit');
     return;
   }
   if (!hasAnyGround()) {
-    statusText.textContent = 'Add at least one GND';
+    statusText.textContent = t('Add at least one GND');
     return;
   }
 
@@ -1246,11 +1393,11 @@ function startSimulation(): void {
     simChartLastUpdate = 0;
     showResults = true;
     setPlayButton(true);
-    statusText.textContent = 'Simulating…';
+    statusText.textContent = t('Simulating…');
 
     simulationLoop();
   } catch (error) {
-    statusText.textContent = `Error: ${error instanceof Error ? error.message : String(error)}`;
+    statusText.textContent = `${t('Error')}: ${error instanceof Error ? error.message : String(error)}`;
     simSession = null;
     simSimComponents = null;
   }
@@ -1267,7 +1414,7 @@ function pauseSimulation(): void {
   }
   simSimComponents = null;
   setPlayButton(false);
-  statusText.textContent = 'Paused';
+  statusText.textContent = t('Paused');
   render();
 }
 
@@ -1305,7 +1452,7 @@ function simulationLoop(): void {
   try {
     for (let i = 0; i < nSteps; i++) simSession.step(dt);
   } catch (error) {
-    statusText.textContent = `Simulation error: ${error instanceof Error ? error.message : String(error)}`;
+    statusText.textContent = `${t('Simulation error')}: ${error instanceof Error ? error.message : String(error)}`;
     pauseSimulation();
     return;
   }
@@ -1354,7 +1501,9 @@ function renderChart() {
     values: p.values,
     timePoints: transientResult!.timePoints,
   }));
-  drawChart(chartCtx, chartCanvas.width, chartCanvas.height, waveforms);
+  const r = window.devicePixelRatio || 1;
+  chartCtx.setTransform(r, 0, 0, r, 0, 0);
+  drawChart(chartCtx, chartCanvas.width / r, chartCanvas.height / r, waveforms);
 }
 
 // ─── Tab switching ───────────────────────────────────────────────────────────
@@ -1368,9 +1517,7 @@ function switchTab(tabName: string) {
   });
   if (tabName === 'chart') {
     setTimeout(() => {
-      const chartContent = document.getElementById('chart-content')!;
-      chartCanvas.width = chartContent.clientWidth;
-      chartCanvas.height = chartContent.clientHeight;
+      fitChartCanvas();
       renderChart();
     }, 0);
   }
@@ -1721,13 +1868,13 @@ function executeUserCode(code: string) {
       transientResult = state.transientResult;
       switchTab('chart');
       resize();
-      statusText.textContent = `Code executed: ${tracked.length} components, transient ${state.transientResult.timePoints.length} points`;
+      statusText.textContent = `${t('Code executed')}: ${tracked.length} ${t('components')}, ${t('transient')} ${state.transientResult.timePoints.length} ${t('points')}`;
     } else {
-      statusText.textContent = `Code executed: ${tracked.length} components`;
+      statusText.textContent = `${t('Code executed')}: ${tracked.length} ${t('components')}`;
     }
   } catch (err) {
     customConsole.error(String(err));
-    statusText.textContent = 'Error running code';
+    statusText.textContent = t('Error running code');
   }
 }
 
@@ -2117,7 +2264,7 @@ function loadDemoRLC() {
   (document.getElementById('sim-dt') as HTMLInputElement).value = '1e-6';
   (document.getElementById('sim-duration') as HTMLInputElement).value = '5e-3';
 
-  statusText.textContent = 'RLC demo loaded — click Transient to simulate';
+  statusText.textContent = t('RLC demo loaded — press Play to simulate');
   updateProps();
   resize();
 }
@@ -2127,7 +2274,7 @@ function loadDemoRLC() {
 function updateResults() {
   if (!showResults) { resultsDiv.innerHTML = ''; return; }
 
-  let html = '<h2>Results</h2>';
+  let html = `<h2>${t('Results')}</h2>`;
   for (const comp of components) {
     if (comp.voltage === undefined) continue;
     html += `
@@ -2145,15 +2292,15 @@ function updateResults() {
 function updateStatus() {
   if (wireStart) {
     const comp = components.find(c => c.id === wireStart!.componentId)!;
-    statusText.textContent = `${comp.label}.${wireStart.pinName} → click another pin`;
+    statusText.textContent = `${comp.label}.${wireStart.pinName} → ${t('click another pin')}`;
   } else if (currentTool === 'select') {
-    statusText.textContent = 'Drag to move | Pin→pin to connect | R or right-click to rotate';
+    statusText.textContent = t('Drag to move · pin→pin to connect · R or right-click to rotate');
   } else if (currentTool === 'wire') {
-    statusText.textContent = 'Click a pin to start a wire';
+    statusText.textContent = t('Click a pin to start a wire');
   } else if (currentTool === 'probe') {
-    statusText.textContent = 'Click a pin to add/remove a probe';
+    statusText.textContent = t('Click a pin to add/remove a probe');
   } else {
-    statusText.textContent = `Click the canvas to place ${currentTool}`;
+    statusText.textContent = `${t('Click the canvas to place')} ${currentTool}`;
   }
 }
 
@@ -2176,12 +2323,13 @@ function getConnectedPins(): Set<string> {
 // ─── Render ──────────────────────────────────────────────────────────────────
 
 function render() {
-  const w = canvas.width;
-  const h = canvas.height;
+  const w = viewW;
+  const h = viewH;
   const connectedPins = getConnectedPins();
 
-  // Background (screen space)
-  ctx.fillStyle = '#0a0e17';
+  // Background (screen space, CSS pixels — the DPR lives in the base transform)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, w, h);
 
   // Draw grid in screen space, aligned to world grid
@@ -2265,6 +2413,21 @@ function render() {
   // to manual changes, slow enough to avoid jitter on rough transients.
   const smoothAlpha = sim ? 1 - Math.exp(-frameDt / 0.06) : 1;
 
+  // Node voltages → wire colors (while results are shown, live or frozen)
+  const liveColors = showResults;
+  let vScale = 1;
+  if (liveColors) {
+    computeNetVoltages();
+    let maxAbs = 0;
+    for (const v of netVoltages.values()) if (Number.isFinite(v)) maxAbs = Math.max(maxAbs, Math.abs(v));
+    if (maxAbs >= voltageScaleEnvelope) voltageScaleEnvelope = maxAbs;
+    else voltageScaleEnvelope += (maxAbs - voltageScaleEnvelope) * (1 - Math.exp(-frameDt / 2));
+    vScale = niceVoltageScale(voltageScaleEnvelope);
+  } else {
+    voltageScaleEnvelope = 0;
+  }
+  updateVoltageLegend(liveColors && netVoltages.size > 1, vScale);
+
   const REF_SPEED = 70;          // px/s for the wire with peak current
   const MIN_SPEED = 18;          // px/s floor for non-trivial currents
   const FREEZE_THRESHOLD = 1e-7; // 100 nA — below this, no animation
@@ -2334,7 +2497,9 @@ function render() {
       flowOffset = speed > 0 ? phase : 0;
     }
 
-    drawWirePath(ctx, path, flowOffset, wire.id === selectedWireId);
+    const vw = liveColors ? wireVoltage(wire) : undefined;
+    const wireColor = vw === undefined || !Number.isFinite(vw) ? undefined : voltageColor(vw, vScale);
+    drawWirePath(ctx, path, flowOffset, wire.id === selectedWireId, wireColor);
   }
 
   // Wire preview (live A*, not cached, since it depends on the moving cursor)
@@ -2358,7 +2523,7 @@ function render() {
 
   // Layer 3: Components on top
   for (const comp of components) {
-    drawComponent(ctx, comp, comp.id === selectedId, showResults, connectedPins);
+    drawComponent(ctx, comp, comp.id === selectedId, showResults, connectedPins, showResults);
   }
 
   // Layer 4: Ground symbols
@@ -2400,15 +2565,36 @@ function drawGridPanZoom(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const endX = Math.ceil(bottomRight.x / step) * step;
   const endY = Math.ceil(bottomRight.y / step) * step;
 
-  ctx.fillStyle = '#1e293b';
-  for (let wx = startX; wx <= endX; wx += step) {
-    for (let wy = startY; wy <= endY; wy += step) {
+  // Minor dots every grid step, slightly stronger dots every 5 steps; skip
+  // the minor ones when zoomed far out so the grid never turns into noise.
+  const major = step * 5;
+  const showMinor = zoom >= 0.5;
+  ctx.fillStyle = COLORS.gridDot;
+  if (showMinor) {
+    ctx.beginPath();
+    for (let wx = startX; wx <= endX; wx += step) {
+      for (let wy = startY; wy <= endY; wy += step) {
+        if (wx % major === 0 && wy % major === 0) continue;
+        const s = worldToScreen(wx, wy);
+        ctx.moveTo(s.x + dotRadius, s.y);
+        ctx.arc(s.x, s.y, dotRadius, 0, Math.PI * 2);
+      }
+    }
+    ctx.fill();
+  }
+  ctx.fillStyle = COLORS.gridDotMajor;
+  ctx.beginPath();
+  const mStartX = Math.floor(topLeft.x / major) * major;
+  const mStartY = Math.floor(topLeft.y / major) * major;
+  const r2 = Math.max(0.7, 1.1 * zoom);
+  for (let wx = mStartX; wx <= endX; wx += major) {
+    for (let wy = mStartY; wy <= endY; wy += major) {
       const s = worldToScreen(wx, wy);
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, dotRadius, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(s.x + r2, s.y);
+      ctx.arc(s.x, s.y, r2, 0, Math.PI * 2);
     }
   }
+  ctx.fill();
 }
 
 // ─── Debug API ───────────────────────────────────────────────────────────────
@@ -2575,7 +2761,7 @@ if (saved && saved.files && saved.files.length > 0) {
   }
   // Update title
   const h1 = document.querySelector('header h1')!;
-  h1.textContent = projectName !== 'Untitled' ? `Circuit Forge — ${projectName}` : 'Circuit Forge';
+  h1.textContent = projectName !== 'Untitled' ? `CircuitsVibe — ${projectName}` : 'CircuitsVibe';
 } else {
   // Set default content
   editorAPI.setFiles([{ name: 'main.js', content: DEFAULT_CODE }]);

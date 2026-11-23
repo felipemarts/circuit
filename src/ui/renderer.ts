@@ -1,31 +1,80 @@
 import { type PlacedComponent, type Point, getComponentDef, formatValue, getPinWorldPos, GRID_SIZE } from './types';
 
-const PIN_RADIUS = 4;
+const PIN_RADIUS = 3.6;
 const PIN_HIT_RADIUS = 12;
 
-const COLORS = {
-  bg: '#0a0e17',
-  gridDot: '#1e293b',
-  wire: '#cbd5e1',
-  wireShadow: 'rgba(203,213,225,0.18)',
-  wireFlow: '#22c55e',
-  component: '#e2e8f0',
+/**
+ * Renderer palette. Mutable so the theme can be switched at runtime
+ * (`applyRendererTheme`); every draw call reads from this object.
+ */
+export const COLORS = {
+  bg: '#070b14',
+  gridDot: 'rgba(148,163,184,0.16)',
+  gridDotMajor: 'rgba(148,163,184,0.28)',
+  wire: '#b9c4d6',
+  wireGlow: 'rgba(185,196,214,0.16)',
+  dot: '#fef3c7',
+  dotHalo: 'rgba(251,191,36,0.30)',
+  component: '#e8eef8',
   componentSelected: '#22d3ee',
   componentGlow: 'rgba(34,211,238,0.35)',
-  pin: '#94a3b8',
-  pinConnected: '#cbd5e1',
+  activeGlow: 'rgba(34,211,238,0.22)',
+  pin: '#7f8da6',
+  pinConnected: '#c7d0df',
   pinHover: '#f472b6',
   pinHoverGlow: 'rgba(244,114,182,0.4)',
-  ground: '#94a3b8',
-  text: '#94a3b8',
-  textLabel: '#cbd5e1',
+  ground: '#8b9bb4',
+  text: '#9aa8bf',
+  textLabel: '#d5dce8',
   textValue: '#fbbf24',
-  resultBg: 'rgba(10,14,23,0.88)',
   resultV: '#22d3ee',
   resultI: '#34d399',
-  wirePreview: 'rgba(34,211,238,0.4)',
-  compBg: '#0a0e17',
+  resultHalo: 'rgba(7,11,20,0.95)',
+  wirePreview: 'rgba(34,211,238,0.5)',
+  compBg: '#070b14',
+  ledOn: '#fbbf24',
+  ledHalo: '251,191,36',
+  sourceFill: 'rgba(34,211,238,0.06)',
 };
+
+const DARK = { ...COLORS };
+const LIGHT: typeof COLORS = {
+  bg: '#f3f5fa',
+  gridDot: 'rgba(15,23,42,0.12)',
+  gridDotMajor: 'rgba(15,23,42,0.22)',
+  wire: '#475569',
+  wireGlow: 'rgba(71,85,105,0.14)',
+  dot: '#b45309',
+  dotHalo: 'rgba(217,119,6,0.22)',
+  component: '#0f172a',
+  componentSelected: '#0891b2',
+  componentGlow: 'rgba(8,145,178,0.3)',
+  activeGlow: 'rgba(8,145,178,0.18)',
+  pin: '#94a3b8',
+  pinConnected: '#334155',
+  pinHover: '#db2777',
+  pinHoverGlow: 'rgba(219,39,119,0.3)',
+  ground: '#64748b',
+  text: '#475569',
+  textLabel: '#1e293b',
+  textValue: '#b45309',
+  resultV: '#0e7490',
+  resultI: '#047857',
+  resultHalo: 'rgba(243,245,250,0.95)',
+  wirePreview: 'rgba(8,145,178,0.6)',
+  compBg: '#f3f5fa',
+  ledOn: '#f59e0b',
+  ledHalo: '245,158,11',
+  sourceFill: 'rgba(8,145,178,0.06)',
+};
+
+export function applyRendererTheme(light: boolean): void {
+  Object.assign(COLORS, light ? LIGHT : DARK);
+}
+
+const FONT_LABEL = "600 11px 'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+const FONT_VALUE = "500 10px 'JetBrains Mono', 'SF Mono', ui-monospace, monospace";
+const FONT_RESULT = "500 9.5px 'JetBrains Mono', 'SF Mono', ui-monospace, monospace";
 
 // ─── Grid ────────────────────────────────────────────────────────────────────
 
@@ -67,16 +116,50 @@ export function drawComponentMask(ctx: CanvasRenderingContext2D, comp: PlacedCom
 
 // ─── Components ──────────────────────────────────────────────────────────────
 
-export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedComponent, selected: boolean, showResults: boolean, connectedPins: Set<string>) {
+/** Brightness 0..1.2 of an LED from its forward current (full at ~10 mA). */
+function ledBrightness(comp: PlacedComponent): number {
+  const i = comp.current ?? 0;
+  if (!(i > 2e-5)) return 0;
+  return Math.min(1.2, Math.sqrt(i / 0.01));
+}
+
+export function drawComponent(
+  ctx: CanvasRenderingContext2D,
+  comp: PlacedComponent,
+  selected: boolean,
+  showResults: boolean,
+  connectedPins: Set<string>,
+  live = false,
+) {
   const color = selected ? COLORS.componentSelected : COLORS.component;
+  const isLED = comp.type === 'LED';
+  const bright = live && isLED ? ledBrightness(comp) : 0;
+
+  // LED halo (world space, behind the symbol)
+  if (bright > 0) {
+    const r = 26 + 16 * bright;
+    const g = ctx.createRadialGradient(comp.x, comp.y, 1, comp.x, comp.y, r);
+    g.addColorStop(0, `rgba(${COLORS.ledHalo},${(0.55 * bright).toFixed(3)})`);
+    g.addColorStop(0.5, `rgba(${COLORS.ledHalo},${(0.18 * bright).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${COLORS.ledHalo},0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(comp.x, comp.y, r, 0, Math.PI * 2); ctx.fill();
+  }
 
   ctx.save();
   ctx.translate(comp.x, comp.y);
   ctx.rotate((comp.rotation * Math.PI) / 180);
 
+  // Soft glow on active parts while simulating / selection ring
+  const active = live && Math.abs(comp.current ?? 0) > 1e-6 && comp.type !== 'Ground' && comp.type !== 'Junction';
+  if (selected || active) {
+    ctx.shadowColor = selected ? COLORS.componentGlow : COLORS.activeGlow;
+    ctx.shadowBlur = selected ? 12 : 8;
+  }
+
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  ctx.lineWidth = selected ? 3 : 2.5;
+  ctx.lineWidth = selected ? 2.8 : 2.2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -86,8 +169,8 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
     case 'CurrentSource': drawCurrentSource(ctx, color); break;
     case 'Capacitor': drawCapacitor(ctx); break;
     case 'Inductor': drawInductor(ctx); break;
-    case 'Diode': drawDiode(ctx, color); break;
-    case 'LED': drawLED(ctx, color); break;
+    case 'Diode': drawDiode(ctx, color, 0); break;
+    case 'LED': drawLED(ctx, color, bright); break;
     case 'Ground': drawGround(ctx, selected); break;
     case 'Junction': drawJunction(ctx, selected); break;
     case 'Switch': drawSwitch(ctx, !!comp.closed); break;
@@ -118,7 +201,7 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
 
   // Component label — placed beyond the body so it never overlaps
   if (comp.label) {
-    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.font = FONT_LABEL;
     ctx.fillStyle = selected ? COLORS.componentSelected : COLORS.textLabel;
     if (landscape) {
       ctx.fillText(comp.label, comp.x, comp.y - 26);
@@ -131,7 +214,7 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
 
   // Value
   if (def?.unit && comp.value) {
-    ctx.font = '10px "SF Mono", "Fira Code", monospace';
+    ctx.font = FONT_VALUE;
     ctx.fillStyle = COLORS.textValue;
     if (landscape) {
       ctx.fillText(formatValue(comp.value, def.unit), comp.x, comp.y + 26);
@@ -142,23 +225,19 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
     }
   }
 
-  // Draw results as floating badge
+  // Live readings: text only (no opaque background) placed away from leads
   if (showResults && comp.voltage !== undefined) {
-    // Live readings: text only (no opaque background) placed away from leads
-    // so the wire and pin remain visible.
     const badgeX = comp.x + (landscape ? 0 : 56);
     const badgeY = comp.y + (landscape ? 46 : 22);
 
-    ctx.font = '9px "SF Mono", "Fira Code", monospace';
+    ctx.font = FONT_RESULT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
-    // Subtle dark halo behind text to keep readability over wires
-    ctx.shadowColor = 'rgba(10,14,23,0.95)';
+    ctx.shadowColor = COLORS.resultHalo;
     ctx.shadowBlur = 4;
 
     ctx.fillStyle = COLORS.resultV;
-    ctx.fillText(`${comp.voltage.toFixed(2)}V`, badgeX, badgeY);
+    ctx.fillText(`${comp.voltage.toFixed(2)} V`, badgeX, badgeY);
     ctx.fillStyle = COLORS.resultI;
     ctx.fillText(`${formatValue(comp.current ?? 0, 'A')}`, badgeX, badgeY + 11);
 
@@ -172,24 +251,39 @@ export function drawComponent(ctx: CanvasRenderingContext2D, comp: PlacedCompone
     const isConnected = connectedPins.has(key);
 
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, PIN_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = isConnected ? COLORS.pinConnected : COLORS.pin;
-    ctx.fill();
+    ctx.arc(pos.x, pos.y, isConnected ? PIN_RADIUS : PIN_RADIUS + 0.6, 0, Math.PI * 2);
+    if (isConnected) {
+      ctx.fillStyle = COLORS.pinConnected;
+      ctx.fill();
+    } else {
+      // Open pin: hollow ring so dangling pins are easy to spot
+      ctx.fillStyle = COLORS.compBg;
+      ctx.fill();
+      ctx.strokeStyle = COLORS.pin;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
   }
 }
 
 function drawResistor(ctx: CanvasRenderingContext2D) {
   // Leads
   ctx.beginPath();
-  ctx.moveTo(-40, 0); ctx.lineTo(-20, 0);
-  ctx.moveTo(20, 0); ctx.lineTo(40, 0);
+  ctx.moveTo(-40, 0); ctx.lineTo(-22, 0);
+  ctx.moveTo(22, 0); ctx.lineTo(40, 0);
   ctx.stroke();
 
-  // Rectangular body (European style for cleaner look)
-  ctx.strokeRect(-20, -8, 40, 16);
+  // Zig-zag body (ANSI style), 6 peaks across 44 px
+  ctx.beginPath();
+  ctx.moveTo(-22, 0);
+  const amp = 7;
+  const pts = [[-18.3, -1], [-11, 1], [-3.7, -1], [3.7, 1], [11, -1], [18.3, 1]];
+  for (const [x, s] of pts) ctx.lineTo(x, s * amp);
+  ctx.lineTo(22, 0);
+  ctx.stroke();
 }
 
-function drawVoltageSource(ctx: CanvasRenderingContext2D, color: string) {
+function drawVoltageSource(ctx: CanvasRenderingContext2D, _color: string) {
   // Leads
   ctx.beginPath();
   ctx.moveTo(0, -35); ctx.lineTo(0, -20);
@@ -199,9 +293,12 @@ function drawVoltageSource(ctx: CanvasRenderingContext2D, color: string) {
   // Circle
   ctx.beginPath();
   ctx.arc(0, 0, 20, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.sourceFill;
+  ctx.fill();
   ctx.stroke();
 
   // Plus
+  const lw = ctx.lineWidth;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(-5, -9); ctx.lineTo(5, -9);
@@ -212,10 +309,10 @@ function drawVoltageSource(ctx: CanvasRenderingContext2D, color: string) {
   ctx.beginPath();
   ctx.moveTo(-5, 9); ctx.lineTo(5, 9);
   ctx.stroke();
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = lw;
 }
 
-function drawCurrentSource(ctx: CanvasRenderingContext2D, color: string) {
+function drawCurrentSource(ctx: CanvasRenderingContext2D, _color: string) {
   // Leads
   ctx.beginPath();
   ctx.moveTo(0, -35); ctx.lineTo(0, -20);
@@ -225,9 +322,12 @@ function drawCurrentSource(ctx: CanvasRenderingContext2D, color: string) {
   // Circle
   ctx.beginPath();
   ctx.arc(0, 0, 20, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.sourceFill;
+  ctx.fill();
   ctx.stroke();
 
   // Arrow (pointing up = into +)
+  const lw = ctx.lineWidth;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(0, 12); ctx.lineTo(0, -12);
@@ -236,23 +336,24 @@ function drawCurrentSource(ctx: CanvasRenderingContext2D, color: string) {
   ctx.moveTo(0, -12); ctx.lineTo(-5, -5);
   ctx.moveTo(0, -12); ctx.lineTo(5, -5);
   ctx.stroke();
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = lw;
 }
 
 function drawCapacitor(ctx: CanvasRenderingContext2D) {
   // Leads
   ctx.beginPath();
-  ctx.moveTo(-30, 0); ctx.lineTo(-7, 0);
-  ctx.moveTo(7, 0); ctx.lineTo(30, 0);
+  ctx.moveTo(-30, 0); ctx.lineTo(-6, 0);
+  ctx.moveTo(6, 0); ctx.lineTo(30, 0);
   ctx.stroke();
 
   // Plates
+  const lw = ctx.lineWidth;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(-7, -14); ctx.lineTo(-7, 14);
-  ctx.moveTo(7, -14); ctx.lineTo(7, 14);
+  ctx.moveTo(-6, -14); ctx.lineTo(-6, 14);
+  ctx.moveTo(6, -14); ctx.lineTo(6, 14);
   ctx.stroke();
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = lw;
 }
 
 function drawInductor(ctx: CanvasRenderingContext2D) {
@@ -263,58 +364,68 @@ function drawInductor(ctx: CanvasRenderingContext2D) {
   ctx.stroke();
 
   // 4 arcs (coil)
+  ctx.beginPath();
   for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
     ctx.arc(-19.5 + i * 13, 0, 6.5, Math.PI, 0);
-    ctx.stroke();
   }
+  ctx.stroke();
 }
 
-function drawDiode(ctx: CanvasRenderingContext2D, color: string) {
+function drawDiode(ctx: CanvasRenderingContext2D, color: string, bright: number) {
   // Leads
   ctx.beginPath();
   ctx.moveTo(-30, 0); ctx.lineTo(-12, 0);
   ctx.moveTo(12, 0); ctx.lineTo(30, 0);
   ctx.stroke();
 
-  // Triangle (filled)
+  // Triangle (filled); LEDs fill with their emission color when lit
   ctx.beginPath();
   ctx.moveTo(-12, -10);
   ctx.lineTo(-12, 10);
   ctx.lineTo(12, 0);
   ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.15;
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  if (bright > 0) {
+    ctx.fillStyle = `rgba(${COLORS.ledHalo},${(0.25 + 0.6 * Math.min(1, bright)).toFixed(3)})`;
+    ctx.fill();
+  } else {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.15;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   ctx.stroke();
 
   // Bar
+  const lw = ctx.lineWidth;
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(12, -10); ctx.lineTo(12, 10);
   ctx.stroke();
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = lw;
 }
 
-function drawLED(ctx: CanvasRenderingContext2D, color: string) {
-  drawDiode(ctx, color);
+function drawLED(ctx: CanvasRenderingContext2D, color: string, bright: number) {
+  drawDiode(ctx, color, bright);
 
-  // Light emission arrows
+  // Light emission arrows — tinted and brighter as the current rises
+  const lw = ctx.lineWidth;
   ctx.lineWidth = 1.5;
-  // Arrow 1
+  const prev = ctx.strokeStyle;
+  if (bright > 0) {
+    ctx.strokeStyle = COLORS.ledOn;
+    ctx.globalAlpha = 0.5 + 0.5 * Math.min(1, bright);
+  }
   ctx.beginPath();
   ctx.moveTo(3, -14); ctx.lineTo(9, -22);
   ctx.moveTo(9, -22); ctx.lineTo(5, -19);
   ctx.moveTo(9, -22); ctx.lineTo(9, -17);
-  ctx.stroke();
-  // Arrow 2
-  ctx.beginPath();
   ctx.moveTo(9, -10); ctx.lineTo(15, -18);
   ctx.moveTo(15, -18); ctx.lineTo(11, -15);
   ctx.moveTo(15, -18); ctx.lineTo(15, -13);
   ctx.stroke();
-  ctx.lineWidth = 2.5;
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = prev;
+  ctx.lineWidth = lw;
 }
 
 function drawGround(ctx: CanvasRenderingContext2D, selected: boolean) {
@@ -324,28 +435,21 @@ function drawGround(ctx: CanvasRenderingContext2D, selected: boolean) {
   ctx.strokeStyle = stroke;
   ctx.lineCap = 'round';
 
-  // Stem from pin to first bar
   ctx.beginPath();
   ctx.moveTo(0, -25);
   ctx.lineTo(0, -2);
   ctx.stroke();
 
-  // Three horizontal bars decreasing in width
-  const bars: Array<[number, number]> = [
-    [12, -2],
-    [8, 4],
-    [4, 10],
-  ];
+  const bars: Array<[number, number]> = [[12, -2], [8, 4], [4, 10]];
+  ctx.beginPath();
   for (const [w, y] of bars) {
-    ctx.beginPath();
     ctx.moveTo(-w, y);
     ctx.lineTo(w, y);
-    ctx.stroke();
   }
+  ctx.stroke();
 }
 
 function drawJunction(ctx: CanvasRenderingContext2D, selected: boolean) {
-  // Small filled dot at the center; pin is at (0, 0).
   const fill = selected ? COLORS.componentSelected : COLORS.wire;
   ctx.fillStyle = fill;
   ctx.beginPath();
@@ -361,14 +465,12 @@ function dot(ctx: CanvasRenderingContext2D, x: number, y: number, r = 2.5) {
 
 function drawSwitch(ctx: CanvasRenderingContext2D, closed: boolean) {
   // SPDT layout. Pins (relative): com=(-30,0), a=(30,-10), b=(30,10).
-  // Leads
   ctx.beginPath();
   ctx.moveTo(-30, 0);  ctx.lineTo(-14, 0);     // com
   ctx.moveTo(14, -10); ctx.lineTo(30, -10);    // a
   ctx.moveTo(14, 10);  ctx.lineTo(30, 10);     // b
   ctx.stroke();
 
-  // Terminal contacts (each on its own path so fill doesn't connect them)
   dot(ctx, -14, 0);
   dot(ctx, 14, -10);
   dot(ctx, 14, 10);
@@ -381,13 +483,11 @@ function drawSwitch(ctx: CanvasRenderingContext2D, closed: boolean) {
 }
 
 function drawButton(ctx: CanvasRenderingContext2D, pressed: boolean) {
-  // Leads
   ctx.beginPath();
   ctx.moveTo(-30, 0); ctx.lineTo(-12, 0);
   ctx.moveTo(12, 0); ctx.lineTo(30, 0);
   ctx.stroke();
 
-  // Internal contacts
   dot(ctx, -12, 0);
   dot(ctx, 12, 0);
 
@@ -397,7 +497,6 @@ function drawButton(ctx: CanvasRenderingContext2D, pressed: boolean) {
   ctx.moveTo(-14, plateY); ctx.lineTo(14, plateY);
   ctx.stroke();
 
-  // Push stem from plate up to a small "button cap"
   ctx.beginPath();
   ctx.moveTo(0, plateY); ctx.lineTo(0, plateY - 5);
   ctx.stroke();
@@ -407,17 +506,23 @@ function drawButton(ctx: CanvasRenderingContext2D, pressed: boolean) {
 }
 
 function drawGenericBox(ctx: CanvasRenderingContext2D, label: string, color: string) {
-  // Generic rectangle with label for custom components
-  ctx.strokeRect(-25, -18, 50, 36);
+  // Rounded body for custom components
+  const x = -25, y = -18, w = 50, h = 36, r = 5;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+  ctx.fillStyle = COLORS.sourceFill;
+  ctx.fill();
+  ctx.stroke();
 
-  // Draw component name inside
-  ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.font = FONT_LABEL;
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(label, 0, 0);
 
-  // Draw pin leads at the edges
   ctx.beginPath();
   ctx.moveTo(-40, 0); ctx.lineTo(-25, 0);
   ctx.moveTo(25, 0); ctx.lineTo(40, 0);
@@ -429,23 +534,30 @@ function drawGenericBox(ctx: CanvasRenderingContext2D, label: string, color: str
 export interface Rect { minX: number; minY: number; maxX: number; maxY: number }
 export interface Segment { p1: Point; p2: Point }
 
+/**
+ * Draw a routed wire. `wireColor` (node-voltage color) overrides the neutral
+ * wire color; `flowOffset` ≠ 0 animates the current dots along the path.
+ */
 export function drawWirePath(
   ctx: CanvasRenderingContext2D,
   path: Point[],
   flowOffset = 0,
   selected = false,
+  wireColor?: string,
 ) {
-  // Glow
-  ctx.strokeStyle = selected ? COLORS.componentGlow : COLORS.wireShadow;
-  ctx.lineWidth = selected ? 8 : 6;
+  const body = selected ? COLORS.componentSelected : (wireColor ?? COLORS.wire);
+
+  // Glow underlay
+  ctx.strokeStyle = selected ? COLORS.componentGlow : (wireColor ? withAlpha(wireColor, 0.22) : COLORS.wireGlow);
+  ctx.lineWidth = selected ? 9 : 7;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.setLineDash([]);
   drawPath(ctx, path);
 
   // Wire body
-  ctx.strokeStyle = selected ? COLORS.componentSelected : COLORS.wire;
-  ctx.lineWidth = selected ? 3 : 2.5;
+  ctx.strokeStyle = body;
+  ctx.lineWidth = selected ? 2.8 : 2.3;
   drawPath(ctx, path);
 
   if (flowOffset !== 0) {
@@ -453,34 +565,41 @@ export function drawWirePath(
   }
 }
 
-/** Draw small green squares moving along the wire to indicate current flow. */
+function withAlpha(color: string, alpha: number): string {
+  const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(color);
+  if (m) return `rgba(${m[1]},${m[2]},${m[3]},${alpha})`;
+  const h = /^#([0-9a-f]{6})$/i.exec(color);
+  if (h) {
+    const n = parseInt(h[1], 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+  }
+  return color;
+}
+
+/** Glowing round dots moving along the wire (EveryCircuit-style current). */
 function drawWireFlowMarkers(
   ctx: CanvasRenderingContext2D,
   path: Point[],
   flowOffset: number,
 ) {
-  const SPACING = 28;
-  const SIZE = 6;
-  const HALF = SIZE / 2;
+  const SPACING = 24;
+  const R = 2.7;
+  const HALO = 6.5;
 
-  // Cumulative segment lengths for arc-length parameterisation
   let total = 0;
   const lens: number[] = [0];
   for (let i = 1; i < path.length; i++) {
     total += Math.abs(path[i].x - path[i - 1].x) + Math.abs(path[i].y - path[i - 1].y);
     lens.push(total);
   }
-  if (total < SIZE) return;
+  if (total < SPACING * 0.5) return;
 
-  // Phase ∈ [0, SPACING)
   const phase = ((flowOffset % SPACING) + SPACING) % SPACING;
 
-  ctx.fillStyle = COLORS.wireFlow;
-  ctx.shadowColor = COLORS.wireFlow;
-  ctx.shadowBlur = 6;
-
-  for (let s = phase; s <= total - HALF; s += SPACING) {
-    if (s < HALF) continue;
+  // Halo pass then core pass (two fills instead of per-dot shadowBlur: cheap)
+  const pts: Point[] = [];
+  for (let s = phase; s <= total; s += SPACING) {
+    if (s < R || s > total - R) continue;
     let seg = 0;
     while (seg < lens.length - 2 && lens[seg + 1] < s) seg++;
     const a = path[seg];
@@ -488,11 +607,19 @@ function drawWireFlowMarkers(
     const segLen = lens[seg + 1] - lens[seg];
     if (segLen <= 0) continue;
     const t = (s - lens[seg]) / segLen;
-    const x = a.x + (b.x - a.x) * t;
-    const y = a.y + (b.y - a.y) * t;
-    ctx.fillRect(Math.round(x - HALF), Math.round(y - HALF), SIZE, SIZE);
+    pts.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
   }
-  ctx.shadowBlur = 0;
+  if (pts.length === 0) return;
+
+  ctx.fillStyle = COLORS.dotHalo;
+  ctx.beginPath();
+  for (const p of pts) { ctx.moveTo(p.x + HALO, p.y); ctx.arc(p.x, p.y, HALO, 0, Math.PI * 2); }
+  ctx.fill();
+
+  ctx.fillStyle = COLORS.dot;
+  ctx.beginPath();
+  for (const p of pts) { ctx.moveTo(p.x + R, p.y); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); }
+  ctx.fill();
 }
 
 export function drawWirePreviewPath(ctx: CanvasRenderingContext2D, path: Point[]) {
@@ -883,7 +1010,7 @@ function drawPath(ctx: CanvasRenderingContext2D, path: Point[]) {
 
 export function drawGroundSymbol(ctx: CanvasRenderingContext2D, pos: Point) {
   ctx.strokeStyle = COLORS.ground;
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 2.2;
   ctx.lineCap = 'round';
 
   ctx.beginPath();
