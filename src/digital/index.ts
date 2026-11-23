@@ -28,8 +28,13 @@ export {
   Const,
   Pull,
   Stimulus,
+  Behavioral,
 } from './circuit';
 export type { DigitalCircuitOptions } from './circuit';
+
+export { registerBehavior, hasBehavior } from './behavior';
+export type { BehaviorFactory } from './behavior';
+export type { Host, Model, ModelCtx } from './model';
 
 export { DigitalSim } from './sim';
 export type { DigitalSimOptions, DigitalChange, NetTrace, DigitalRecording, DigitalStats } from './sim';
@@ -84,6 +89,8 @@ export type {
   ShiftRegisterOptions,
   ClockOptions,
   StimulusOptions,
+  BehavioralOptions,
+  JsonValue,
 } from './parts';
 
 export { DIGITAL_NETLIST_SCHEMA } from './netlist';

@@ -299,7 +299,10 @@ class Kernel implements Host {
     return this.netVal[net] as Code;
   }
 
-  out(drv: number, drive: number): void {
+  out(drv: number, drive: number, delay?: number): void {
+    if (delay !== undefined && !(Number.isSafeInteger(delay) && delay >= 0)) {
+      throw new Error(`${this.drvLabel[drv]}: output delay must be a non-negative integer number of ticks (ps), got ${delay}`);
+    }
     if (this.initializing) {
       if (this.drvVal[drv] !== drive) {
         this.drvVal[drv] = drive;
@@ -308,7 +311,14 @@ class Kernel implements Host {
       return;
     }
     const v = drive & 3;
-    const d = v === 1 ? this.drvRise[drv] : v === 0 ? this.drvFall[drv] : Math.min(this.drvRise[drv], this.drvFall[drv]);
+    const d =
+      delay !== undefined
+        ? delay
+        : v === 1
+          ? this.drvRise[drv]
+          : v === 0
+            ? this.drvFall[drv]
+            : Math.min(this.drvRise[drv], this.drvFall[drv]);
     const tick = this.tick + d;
     const delta = d === 0 ? this.curDelta + 1 : 0;
     if (this.drvInertial[drv]) {

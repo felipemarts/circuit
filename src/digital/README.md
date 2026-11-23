@@ -15,6 +15,7 @@ model.ts        model ↔ kernel contract, setup/hold checker, edge classificati
 netlist.ts      canonical plain-JSON netlist + validation
 sim.ts          event kernel + DigitalSim (co-simulation API, recording, listeners)
 circuit.ts      DigitalCircuit builder + part classes
+behavior.ts     registerBehavior: generic behavioral-component hook (Behavioral part)
 lint.ts         lintDigital (F130–F134)
 measure.ts      pure measurements over recorded traces
 vcd.ts          VCD export
@@ -74,11 +75,32 @@ Common timing options: `delay` (seconds or `'5n'`, or `{ rise, fall }`; default 
 | `Pull` | → `y` (weak) | `new Pull(1)` pull-up, `new Pull(0)` pull-down |
 | `Stimulus` | → `y` | `initial`, `changes: [[t, v], …]`, or `pattern: '0110', step, from` |
 
+| `Behavioral` | user-named `inputs` → `outputs` | `behavior` (registered factory), `combPaths`, `config` (plain JSON) — see below |
+
 Shift direction: `q0 ← si`, `q(i) ← q(i-1)`, `so = q(N-1)`. PISO with `load = 1` at the
 edge loads `p0..p(N-1)`; otherwise it shifts (in `si`, or 0). Counters wrap modulo 2^N.
 
 `PART_DEFS` holds the catalog metadata (`summary`, `pins(params)`, `driver`, `delay`,
 `combPaths`) for a future `circuitsvibe catalog`.
+
+### Behavioral components (extension hook)
+
+`new Behavioral({ behavior, inputs, outputs, combPaths?, config? })` is a component whose
+model is built by a factory registered with `registerBehavior(name, (config, ctx) => Model)`
+(behavior.ts). Params stay plain JSON, so netlists with behavioral parts serialize and
+rebuild exactly — as long as the factory is registered before `build()` / `new DigitalSim`
+(an unregistered name throws an actionable error). The model talks to the kernel only
+through `Host` (`read`, `out`, `outAt`, `wakeAt`, `report`; exported as types with `Model`
+and `ModelCtx`): `ctx.inputs[pin]` is a net index, `ctx.outputs[pin]` a driver index.
+
+- Pin names: any characters except `.` and whitespace (e.g. `q[3]`), inputs ∩ outputs = ∅.
+- Every output has a **0 delay, inertial** driver; `h.out(driver, drive, delayTicks)` gives
+  one transaction an explicit delay (integer ps ≥ 0; still inertial). During the power-on
+  settle every `out` is applied immediately, whatever the delay.
+- Lint: outputs count as **tri-state** drivers (several behavioral drivers on one net are not
+  F131; runtime contention is still D501). `combPaths: [[input, output, delay], …]` declares
+  the combinational paths F133 follows; undeclared pins have none.
+- Used by the VHDL front end (src/vhdl) — one `Behavioral` per VHDL process.
 
 ## Values, strength and resolution
 

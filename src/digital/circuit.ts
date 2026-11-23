@@ -21,6 +21,7 @@ import { lintDigital } from './lint';
 import type { DigitalInputPort, DigitalNetlist } from './netlist';
 import { ID_RE, NET_RE, resolveNetlist, toNetlist } from './netlist';
 import type {
+  BehavioralOptions,
   ClockOptions,
   CounterOptions,
   FlipFlopOptions,
@@ -192,6 +193,13 @@ export class Pull extends DigitalPart {
 export class Stimulus extends DigitalPart {
   constructor(opts: StimulusOptions) {
     super('Stimulus', opts);
+  }
+}
+
+/** A behavioral component whose model comes from a factory registered with `registerBehavior` (see behavior.ts). */
+export class Behavioral extends DigitalPart {
+  constructor(opts: BehavioralOptions) {
+    super('Behavioral', opts);
   }
 }
 
