@@ -12,6 +12,8 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `S2xx` | nonlinear solver | Newton-Raphson |
 | `A3xx` | assertions | spec not met |
 | `T0xx` | tooling | bench authoring error |
+| `F14x` | firmware lint (pre-simulation) | MCU firmware source mistakes (F140–F149) |
+| `M6xx` | MCU runtime | firmware execution on a simulated microcontroller (M601–M649) |
 
 ## Active codes
 
@@ -37,6 +39,50 @@ Semantic notes:
 - `hint.passingRange` covers only the **longest contiguous run** of passing samples
   (each sample passes lint AND all op assertions); the exact simulated values
   are in `passingSamples`.
+
+## MCU codes (firmware runtime and firmware lint)
+
+Emitted by the microcontroller runtime (`src/mcu/`). Payloads are plain data: `code`, `slug`,
+`severity`, `stage` (`mcu` | `lint`), `message`, `subject` (`mcu`, `pins`, `api`), `time`
+(simulation seconds, runtime codes), `at` (**firmware** `file:line`), `note`, `evidence`
+(`occurrences` when a site repeats) and `fixes[]` with the usual confidence contract.
+
+| Code | Slug | Severity | When it fires |
+|--------|------|-----------|----------------|
+| `M601` | firmware-exception | error | firmware (setup/loop/ISR/timer callback) threw — `at` is the throwing firmware line, `time` the sim time; MCU halts |
+| `M602` | busy-loop | error | more than `maxOpsPerYield` API calls / loop iterations without yielding (synchronous polling loop); MCU halts |
+| `M603` | zero-time-loop | error | more than `maxEventsPerInstant` events at one instant (`await delay(0)` loop, edge storm); MCU halts |
+| `M604` | idle-loop | warning | `loop()` returned without awaiting a delay; each pass is charged `idleLoopUs` |
+| `M605` | delay-not-awaited | error | `delay()`/`delayMicroseconds()` left pending without `await`; MCU halts |
+| `M606` | foreign-await | error | firmware suspended on a promise that is not a simulator timer; MCU halts |
+| `M607` | delay-in-interrupt | error | `delay()` inside an interrupt/timer callback (ignored) |
+| `M608` | firmware-load-error | error | firmware file missing, failed to compile, imported a host module, or threw at load |
+| `M609` | missing-entry-points | error | firmware exports neither `setup()` nor `loop()` |
+| `M610` | unknown-pin | error | pin number/name does not exist on the profile (call ignored) |
+| `M611` | pin-not-output-capable | error | output use of an input-only pin |
+| `M612` | no-pwm-on-pin | error | `analogWrite()` on a pin without PWM (core fallback: digitalWrite at ≥ 128) |
+| `M613` | no-adc-on-pin | error | `analogRead()` on a pin without an ADC channel (returns 0) |
+| `M614` | not-an-interrupt | error | `attachInterrupt()` with an invalid interrupt number (pin number passed?) |
+| `M615` | write-to-non-output | warning | `digitalWrite()` on a pin not set to OUTPUT (AVR: toggles the pull-up) |
+| `M616` | adc-input-clamped | warning | ADC input outside 0..Vref; reading saturated |
+| `M617` | serial-not-begun | warning | Serial output before `Serial.begin()` |
+| `M618` | unsupported-api | error | API or mode not available on this part / in the simulator |
+| `M619` | invalid-argument | error | argument out of domain (negative delay, unknown mode, non-function handler…) |
+| `M620` | value-clamped | warning | value clamped/truncated (`analogWrite` outside 0..255, fractional `delay`) |
+| `M621` | timer-pwm-conflict | warning | Timer1 API used together with PWM on its pins (Uno D9/D10) |
+| `F140` | delay-not-awaited | error | `delay()` call not awaited (static) |
+| `F141` | missing-entry-points | error / warning | `setup()`/`loop()` not exported (error if neither) |
+| `F142` | sync-busy-wait | error | `while` polling an input/millis without any `await` |
+| `F143` | no-pwm-on-pin | error | `analogWrite()` on a literal non-PWM pin |
+| `F144` | pin-capability | error | literal pin missing on the part, without ADC, or input-only used as output |
+| `F145` | not-an-interrupt | error | `attachInterrupt(<pin number>, …)` instead of `digitalPinToInterrupt(pin)` |
+| `F146` | unsupported-api | error | Arduino API the simulator does not provide (pulseIn, Wire, SPI, EEPROM…) |
+| `F147` | host-api | error | wall-clock/host APIs in firmware (Date, setTimeout, Math.random…) |
+| `F148` | serial-not-begun | warning | Serial output but no `Serial.begin()` anywhere |
+| `F149` | write-without-pinmode | warning | `digitalWrite()` to a pin never set to OUTPUT |
+
+Codes M622–M649 are reserved for the MCU runtime. Pin current ratings (R41x) belong to the
+integration and use the limits exposed in the MCU profiles.
 
 ## Fix confidence contract
 
