@@ -12,6 +12,8 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `S2xx` | nonlinear solver | Newton-Raphson |
 | `A3xx` | assertions | spec not met |
 | `T0xx` | tooling | bench authoring error |
+| `F130`–`F139` | digital lint (pre-simulation) | digital netlist structure (src/digital) |
+| `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (src/digital) |
 
 ## Active codes
 
@@ -28,6 +30,18 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `A301` | assertion-failed | fail | assertion failed — carries measured, expected, margin, and a verified hint when `tb.param` is present |
 | `T001` | bench-error | error | the bench itself threw an exception during elaboration |
 | `T002` | stage-crash | error | a stage (op/tran) crashed after elaboration — platform bug; the RunRecord is still emitted (exit 3) |
+| `F130` | floating-input | error | digital input pin on a net with no driver (no output, Const/Pull, or declared input) — simulates as X |
+| `F131` | multiple-drivers | error | push-pull digital output shares its net with another non-weak driver (output, tri-state, external input) |
+| `F132` | output-short | error | two outputs of the same digital part on one net (e.g. q tied to qn) |
+| `F133` | zero-delay-loop | error | combinational feedback loop whose elements all have zero delay — carries the loop path |
+| `F134` | unconnected-clock | error | clock pin of an edge-triggered element on an undriven net |
+| `D501` | drive-contention | error | strong 0 and strong 1 on one net at runtime — net is X; carries the drivers on each side and the time |
+| `D502` | setup-violation | error | data changed less than the setup time before the active edge — carries element, pin, time, measured and margin; outputs X (configurable) |
+| `D503` | hold-violation | error | data changed less than the hold time after the active edge — same evidence as D502 |
+| `D504` | delta-cycle-limit | error | zero-delay activity did not settle within maxDeltaCycles at one time point; that time point's remaining events are dropped |
+| `D505` | drive-in-past | error | external drive() scheduled before the current time — applied at the current time instead |
+| `D506` | unknown-control | warning | clock edge through X/Z or unknown async set/reset/latch enable that would change state — outputs X |
+| `D507` | weak-contention | warning | pull-up and pull-down are the only drivers of a net — net is X |
 
 Semantic notes:
 - Lint **always runs** (even with `--stage op`): solving a circuit that lint would reject

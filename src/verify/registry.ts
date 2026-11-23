@@ -146,6 +146,161 @@ id, invalid unit string, ...). This is an authoring error in the bench file,
 not an electrical result. The message pinpoints what to fix; correct the
 bench code and re-run.`,
   },
+
+  // ── digital engine (src/digital): F13x digital lint, D5xx digital runtime/timing ──
+  {
+    code: 'F130',
+    slug: 'floating-input',
+    title: 'digital input pin on a net with no driver',
+    explanation: `A logic input whose net is driven by nothing — no output, no Const/Pull,
+no declared external input. A floating CMOS input picks up noise and sits
+mid-rail; the simulator reads it as Z, which every gate treats as X, so
+everything downstream becomes unknown.
+
+Fixes: connect it to the output that should drive it; tie it to a level with
+a Const (or a Pull for a default level); or, if it is driven from outside
+(testbench or an analog bridge), declare it with c.input(net).`,
+  },
+  {
+    code: 'F131',
+    slug: 'multiple-drivers',
+    title: 'push-pull output shares a net with other drivers',
+    explanation: `A push-pull output (gate, flip-flop, Const, Clock, Stimulus) always drives a
+hard 0 or 1. Any other non-weak driver on the same net — another output, a
+tri-state, or an external input — fights it whenever their values differ:
+the level is undefined (X) and real parts conduct a large shoot-through
+current.
+
+Fixes: shared buses need TriBuf outputs with mutually exclusive enables
+(plus a Pull for the idle level); otherwise merge the signals with a gate
+or a Mux instead of wiring outputs together.`,
+  },
+  {
+    code: 'F132',
+    slug: 'output-short',
+    title: 'outputs of the same part shorted together',
+    explanation: `Two outputs of one part are on the same net — typically q tied to qn, or
+two bits of a counter. They normally carry different values, so the net is
+in contention most of the time.
+
+Fix: keep only one of the outputs on the net.`,
+  },
+  {
+    code: 'F133',
+    slug: 'zero-delay-loop',
+    title: 'combinational loop with zero total delay',
+    explanation: `A feedback loop through combinational elements (gates, buffers, muxes,
+transparent latches, async set/reset paths) whose delays are all zero. The
+whole loop is evaluated in delta cycles at a single instant: an inverting
+loop oscillates forever (the runtime stops it with D504), a non-inverting
+one latches to an arbitrary value. Edge-triggered flip-flops break loops
+and are not reported.
+
+Fixes: give an element of the loop a real propagation delay (an intended
+ring oscillator or SR latch then simulates physically), or break the loop
+with a flip-flop if the feedback is meant to be synchronous.`,
+  },
+  {
+    code: 'F134',
+    slug: 'unconnected-clock',
+    title: 'clock input not driven',
+    explanation: `The clock pin of an edge-triggered element (DFF, JKFF, Counter,
+ShiftRegister) is on a net nothing drives. The element can never see an
+edge, so it holds its power-on state forever — almost certainly a missing
+wire.
+
+Fix: drive it from a Clock or from the design's clock net.`,
+  },
+  {
+    code: 'D501',
+    slug: 'drive-contention',
+    title: 'strong 0 and strong 1 drive the same net',
+    explanation: `During simulation two strong drivers put opposite values on one net at the
+same time (two push-pull outputs, or two tri-states enabled together). The
+net resolves to X and the diagnostic names who drove 0 and who drove 1, and
+when. Real hardware would short the supply through both output stages.
+
+Fixes: make tri-state enables mutually exclusive (check the timing of the
+enable logic — overlap of even one gate delay is contention), or replace the
+wired connection with a gate or Mux.`,
+  },
+  {
+    code: 'D502',
+    slug: 'setup-violation',
+    title: 'setup time violated at a clock edge',
+    explanation: `A data input of a sequential element (flip-flop, latch closing edge,
+counter/shift-register control) changed less than the configured setup time
+before the active edge. Real flip-flops may go metastable; the simulator
+drives X on the outputs (onViolation: 'x', the default) or captures
+normally and only reports (onViolation: 'keep').
+
+The diagnostic carries the element, pin, edge time, measured interval and
+margin (measured - required, negative).
+
+Fixes: make the data arrive earlier (shorter logic path, lower clock
+frequency, shifted stimulus), or move the clock edge.`,
+  },
+  {
+    code: 'D503',
+    slug: 'hold-violation',
+    title: 'hold time violated after a clock edge',
+    explanation: `A data input changed less than the configured hold time after the active
+edge, corrupting the value being captured. Common in shift chains whose
+clock-to-q delay is shorter than the hold time, or with clock skew.
+
+Fixes: add delay on the data path (or reduce skew) so the data stays stable
+for the hold time after the edge.`,
+  },
+  {
+    code: 'D504',
+    slug: 'delta-cycle-limit',
+    title: 'zero-delay activity did not settle',
+    explanation: `At one time point the zero-delay elements kept re-triggering each other for
+more delta cycles than allowed (maxDeltaCycles, default 1000) — the runtime
+form of a zero-delay loop (see F133), e.g. an inverting loop enabled at that
+instant. The remaining events of that time point are dropped so the
+simulation can continue; the diagnostic names the elements still switching.
+
+Fix: give an element of the loop a non-zero delay, or break it with a
+flip-flop.`,
+  },
+  {
+    code: 'D505',
+    slug: 'drive-in-past',
+    title: 'external drive scheduled before the current time',
+    explanation: `drive(net, value, t) was called with t earlier than the simulator's
+current time. An event kernel cannot change the past (those changes were
+already processed and reported), so the value is applied at the current
+time instead. In a co-simulation loop this means the analog side advanced
+the digital engine past a threshold crossing before reporting it.
+
+Fix: call drive() before advanceTo() moves past that time — shorten the
+analog step to the crossing first, then advance the digital side.`,
+  },
+  {
+    code: 'D506',
+    slug: 'unknown-control',
+    title: 'clock or asynchronous control is X/Z',
+    explanation: `A clock pin made a transition through X/Z (0 -> X, X -> 1, ...) or an
+asynchronous set/reset or latch enable is X/Z, and acting on it would
+change the stored state. Since it is unknown whether the edge or control
+happened, the outputs go to X. Usually caused by an undriven or contended
+control net, or a stimulus that starts at X.
+
+Fix: make the control net a defined 0/1 (initialize it, add a Pull, or fix
+the contention upstream).`,
+  },
+  {
+    code: 'D507',
+    slug: 'weak-contention',
+    title: 'pull-up and pull-down on the same net',
+    explanation: `Two weak drivers of opposite value (a pull-up and a pull-down) are the only
+active drivers of a net, so it sits at the divider midpoint — neither 0 nor
+1 — and resolves to X. A strong driver on the net would override both.
+This is a warning.
+
+Fix: keep a single Pull per net.`,
+  },
 ];
 
 export function findDiagnosticDoc(code: string): DiagnosticDoc | undefined {
