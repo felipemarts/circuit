@@ -1,8 +1,11 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 
+// The website (landing, docs, simulator) builds into dist-site/; dist/ is
+// reserved for the npm package (see scripts/build.mjs).
 export default defineConfig({
   build: {
+    outDir: 'dist-site',
     rollupOptions: {
       input: {
         landing: resolve(__dirname, 'index.html'),

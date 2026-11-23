@@ -1,22 +1,73 @@
 {
-  "name": "circuit-forge",
+  "name": "circuitsvibe",
   "version": "0.1.0",
-  "type": "module",
-  "bin": {
-    "forge": "bin/forge.mjs"
+  "description": "Circuits as code, verified by simulation — an agent-first circuit simulator with a CLI that lints, solves and asserts TypeScript benches and returns structured, simulation-verified diagnostics.",
+  "keywords": [
+    "circuit",
+    "simulator",
+    "spice",
+    "electronics",
+    "mna",
+    "analog",
+    "eda",
+    "llm",
+    "ai-agents",
+    "testing",
+    "typescript",
+    "cli"
+  ],
+  "homepage": "https://circuitsvibe.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/felipemarts/circuit.git"
   },
+  "bugs": {
+    "url": "https://github.com/felipemarts/circuit/issues"
+  },
+  "license": "MIT",
+  "author": "Felipe Martins",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/types/forge.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/forge.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "circuitsvibe": "dist/circuitsvibe-standalone.mjs",
+    "cvibe": "dist/circuitsvibe-standalone.mjs"
+  },
+  "files": [
+    "dist",
+    "AGENTS.md",
+    "skills",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:lib && npm run build:site",
+    "build:lib": "node scripts/build.mjs",
+    "build:site": "vite build && node scripts/site-extras.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "forge": "node bin/forge.mjs"
-  },
-  "dependencies": {
-    "esbuild": "^0.25.0"
+    "benches": "node scripts/check-benches.mjs",
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "cli": "node bin/dev.mjs",
+    "prepack": "npm run build:lib"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
+    "esbuild": "^0.25.12",
+    "sucrase": "^3.35.1",
     "typescript": "^5.4.0",
     "vite": "^6.0.0",
     "vitest": "^2.0.0"
