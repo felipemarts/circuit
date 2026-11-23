@@ -9,5 +9,5 @@
     "noEmit": false
   },
   "include": ["src"],
-  "exclude": ["src/ui", "src/cli", "node_modules"]
+  "exclude": ["src/ui", "src/site", "src/cli", "node_modules"]
 }

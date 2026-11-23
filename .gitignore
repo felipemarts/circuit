@@ -5,3 +5,4 @@ dist-site/
 .DS_Store
 .circuitsvibe/
 .forge/
+.playwright-mcp/
