@@ -1,7 +1,7 @@
 # Diagnostics — code taxonomy and RunRecord format
 
 Codes are **permanent**: parsers and agents can depend on them; they are never renumbered.
-`forge explain <code>` gives the long explanation of each one.
+`circuitsvibe explain <code>` gives the long explanation of each one.
 
 ## Ranges
 
@@ -59,14 +59,14 @@ does not exist; never emit an unsimulated number without a `suggested` label.
 | `2` | invalid/unsolvable circuit (F/S with error severity) | fix the structure first |
 | `3` | tooling error (misuse, bench threw) | fix the bench/invocation |
 
-## RunRecord (`forge verify --json`)
+## RunRecord (`circuitsvibe verify --json`)
 
 ```jsonc
 {
   "runId": "cb4f1e998fc8-001",        // present when recorded in the ledger
-  "schema": "forge-run/0.1",
+  "schema": "circuitsvibe-run/0.1",
   "bench": "led-overcurrent",
-  "engine": "circuit-forge@0.1.0",
+  "engine": "circuitsvibe@0.1.0",
   "netlist": {
     "hash": "cb4f1e998fc8…",          // FNV-1a 64 of the canonical netlist (identity)
     "components": [

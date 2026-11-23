@@ -1,57 +1,27 @@
-# Circuit Forge
+# CircuitsVibe
 
-Forge electronic circuits with code — a visual editor and simulator in the browser.
+**Circuits as code, verified by simulation — built for AI agents.**
+[circuitsvibe.com](https://circuitsvibe.com) · [npm](https://www.npmjs.com/package/circuitsvibe) · MIT
 
-## Overview
+CircuitsVibe is "vitest for circuits". You describe a circuit and its spec in a TypeScript
+*bench*; the CLI lints the topology, solves it (DC operating point, transient), checks the
+assertions and returns a verdict an LLM agent can branch on: an exit code, diagnostics with a
+stable code, a source location and a fix, and **simulation-verified** sizing hints. Pure
+TypeScript, zero runtime dependencies, runs in Node and in the browser.
 
-Circuit Forge is a **code-based** circuit simulator: you program your components and circuits through a simple TypeScript API (`defineComponent`) — ideal for generating circuits with AI assistance — and view the result in a schematic editor with a canvas, probes, and an oscilloscope. The numerical engine uses Modified Nodal Analysis + Newton-Raphson and runs 100% in the browser, with no backend.
+```bash
+npx circuitsvibe init led-driver           # led-driver.bench.ts + AGENTS.md
+npx circuitsvibe verify led-driver.bench.ts
+```
 
-## Features
-
-**Visual editor**
-- Canvas with pan, zoom, grid, and drag-and-drop
-- Component rotation (0°, 90°, 180°, 270°)
-- Automatic wire routing with A* (routes around obstacles)
-- Ground placed as an explicit symbol connected by wires
-
-**Built-in components**
-- Resistor, Capacitor, Inductor
-- VoltageSource (DC and AC), CurrentSource
-- Diode, LED (nonlinear models)
-
-**Simulation**
-- DC analysis: Modified Nodal Analysis with an LU solver
-- Transient analysis: time-stepping with implicit Euler
-- Newton-Raphson for nonlinear components (diode, LED)
-- Voltage/current probes with configurable colors
-- Oscilloscope overlay with statistics (max, min, RMS, frequency)
-- Waveform plots of the transient result
-
-**Custom components**
-- Multi-file code editor with syntax highlighting and line numbering
-- `defineComponent({ pins, params, stamp, onStep, ... })` API for defining components in code
-- Support for internal state (capacitance, inductance, etc.) and a `nonlinear` flag
-
-**Project management**
-- Save / open / rename / delete projects in `localStorage`
-- Auto-save on changes
-- Export and import circuits as JSON
-
-## `forge` — the verification loop for agents (and humans)
-
-circuit-forge is evolving into **the platform where code becomes a circuit and an LLM
-agent iterates until it works** — compile → simulate → assert → structured diagnostics, like
-the loop of a modern compiler. The full vision is in [docs/VISION.md](docs/VISION.md);
-the error taxonomy is in [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
-
-A *bench* (`.bench.ts`) describes a circuit + spec:
+## A bench
 
 ```ts
-import { bench, VoltageSource, Resistor, LED } from 'circuit-forge';
+import { bench, VoltageSource, Resistor, LED } from 'circuitsvibe';
 
 export default bench('led-driver', (tb) => {
   const v1 = tb.add('V1', new VoltageSource(5));
-  const r1 = tb.add('R1', new Resistor('330'));
+  const r1 = tb.add('R1', new Resistor('100'));
   const d1 = tb.add('D1', new LED());
   v1.pin('+').connect(r1.pin('1'));
   r1.pin('2').connect(d1.pin('anode'));
@@ -63,84 +33,90 @@ export default bench('led-driver', (tb) => {
 });
 ```
 
-```bash
-npm run forge -- verify bench/led-driver.bench.ts          # human
-npm run forge -- verify bench/led-driver.bench.ts --json   # agent (full RunRecord)
-npm run forge -- explain F101                              # physics + fix for each error
-npm run forge -- catalog                                   # component "datasheet"
-npm run forge -- log list                                  # run history (.forge/)
+```
+$ npx circuitsvibe verify led-driver.bench.ts
+bench led-driver  netlist cb4f1e998fc8  (circuitsvibe@0.1.0)
+
+  ✓ lint  pass
+  ✗ op    fail
+        A301 a1: D1.i within [8m, 12m] — measured 28.039m (outside by 16.039m, 2.34x)
+          at led-driver.bench.ts:13
+          hint (verified): R1 in [261.016, 316.228] passes all op assertions — try R1 = 261.016
+
+FAIL · 1 problem · first failure: a1 · exit 1
+
+$ npx circuitsvibe verify led-driver.bench.ts --set R1=261.016
+...
+PASS · exit 0
 ```
 
-- **Errors with a stable code, source-code location, and a fix** — `F105 D1 is
-  forward-clamped directly across V1 … at bench/led.bench.ts:10`, detected by graph lint
-  **before** the solver runs.
-- **Simulation-verified hints** — on an assertion failure with `tb.param`, the platform
-  sweeps the range and returns `hint (verified): R1 in [261, 316]`; apply it with `--set R1=280`.
-- **Exit codes with semantics** — `0` passed · `1` spec not met (adjust values) ·
-  `2` invalid circuit (fix the topology) · `3` bench error.
-- Examples in [bench/](bench/) — including intentionally broken ones in
-  [bench/broken/](bench/broken/) to see each diagnostic in action.
+- **Stable codes, locations and fixes** — `F105 D1 is forward-clamped at 5 V by ideal source(s)
+  with no series resistance … at led.bench.ts:10`, found by graph lint **before** the solver
+  runs. Every code is documented: `npx circuitsvibe explain F105`.
+- **Verified hints** — with `tb.param`, a failed op assertion triggers a sweep of the range;
+  the hint lists only values that were simulated and pass.
+- **Exit codes with meaning** — `0` pass · `1` spec not met (adjust values) · `2` invalid circuit
+  (fix the structure) · `3` bench/tooling error.
+- **Deterministic** — no timestamps; two runs of the same bench produce byte-identical JSON.
+- **History outside the context window** — every run is appended to `.circuitsvibe/runs.jsonl`;
+  `circuitsvibe log list` shows what was already tried.
 
-## Stack
+## For AI agents
 
-- TypeScript 5.4 (strict mode)
-- Vite 6 (dev server and build)
-- Vitest 2 (tests)
-- Canvas 2D API (no UI framework, no runtime dependencies)
-- No backend — persistence via `localStorage`
+- [AGENTS.md](AGENTS.md) — the exact loop to follow, API cheat sheet, codes and pitfalls.
+  Also printed by `npx circuitsvibe agents` and written by `init`.
+- [skills/circuitsvibe/SKILL.md](skills/circuitsvibe/SKILL.md) — the same as a Claude skill.
+- [circuitsvibe.com/llms.txt](https://circuitsvibe.com/llms.txt) — entry point for crawlers.
+- **Offline sandboxes**: `dist/circuitsvibe-standalone.mjs` (also at
+  `https://circuitsvibe.com/circuitsvibe-standalone.mjs`) is the whole CLI in one file with no
+  dependencies: `node circuitsvibe-standalone.mjs verify x.bench.ts --json`.
 
-## Running it
+## CLI
 
-Prerequisite: Node.js LTS.
-
-```bash
-npm install
-npm run dev          # http://localhost:5173
-npm run build        # production bundle in dist/
-npm test             # run the tests once (Vitest)
-npm run test:watch   # watch mode
-```
-
-## Project structure
+The command is `circuitsvibe` (short alias: `cvibe`).
 
 ```
-src/
-├── core/         # Abstractions: Circuit, Component, Pin, Node, CustomComponent
-├── components/   # Built-in components (Resistor, Capacitor, Inductor,
-│                 #   VoltageSource, CurrentSource, Diode, LED)
-├── analysis/     # DCAnalysis and TransientAnalysis
-├── solver/       # MNAMatrix, LUSolver, NewtonRaphson
-├── ui/           # main, renderer, codeEditor, projectManager,
-│                 #   projectStore, chartRenderer, scopeOverlay, examples
-└── index.ts      # library entry point
-
-tests/
-├── core/         # unit tests for Pin and Node
-├── solver/       # MNA matrix and LU tests
-└── integration/  # end-to-end circuits:
-                  #   voltage-divider, diode, led, custom-component
+circuitsvibe init [name] [--force]        scaffold <name>.bench.ts + AGENTS.md
+circuitsvibe verify <bench.ts> [options]  lint → op → tran
+    --json                full RunRecord on stdout
+    --set R1=330,V1=5     override component values without editing the file
+    --stage op,tran       run a subset (lint always runs)
+    --no-hints            skip verified sizing hints
+    --no-ledger           don't append to .circuitsvibe/runs.jsonl
+circuitsvibe log list [--json] | log show <runId>
+circuitsvibe explain <code>
+circuitsvibe catalog [type] [--json]
+circuitsvibe agents
+circuitsvibe version
 ```
 
-Reference files:
-- [src/core/Circuit.ts](src/core/Circuit.ts) — analysis orchestration
-- [src/analysis/DCAnalysis.ts](src/analysis/DCAnalysis.ts) — DC operating point
-- [src/analysis/TransientAnalysis.ts](src/analysis/TransientAnalysis.ts) — time-domain analysis
-- [src/solver/MNAMatrix.ts](src/solver/MNAMatrix.ts) — assembly of the `Ax = b` matrix
-- [src/solver/NewtonRaphson.ts](src/solver/NewtonRaphson.ts) — iterative solver for nonlinear elements
-- [src/core/CustomComponent.ts](src/core/CustomComponent.ts) — extensibility API
-- [src/ui/main.ts](src/ui/main.ts) — application state and event loop
-- [src/ui/renderer.ts](src/ui/renderer.ts) — canvas drawing and A* routing
+Bench files are TypeScript and need nothing installed: the CLI transpiles them itself (pure
+JS) and resolves `'circuitsvibe'` to its own engine. Relative imports of other `.ts`/`.js`/`.json`
+files work. Bench files are loaded as CommonJS, so top-level `await` and `import.meta` are not
+supported. For editor types, `npm i -D circuitsvibe`.
 
-## How the simulation works
+The RunRecord format and the code taxonomy are in [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md);
+the design rationale is in [docs/VISION.md](docs/VISION.md).
 
-`MNAMatrix` assembles the linear system `Ax = b` from each component's contributions (`stamp`). For linear circuits, `LUSolver` solves the system directly. For nonlinear components (diode, LED), `NewtonRaphson` rebuilds and solves the system iteratively until it converges. Transient analysis starts from the DC operating point and advances in time in steps of `dt`, updating the state of capacitors and inductors on each iteration.
-
-## Custom components
-
-Components are defined by the `ComponentDef` interface in [src/core/CustomComponent.ts](src/core/CustomComponent.ts):
+## Library
 
 ```ts
-import { defineComponent } from './core/CustomComponent';
+import { bench, runLadder, renderHuman, Resistor, VoltageSource } from 'circuitsvibe';
+
+const record = runLadder(myBench, { stages: ['lint', 'op'], overrides: { R1: 280 } });
+console.log(record.exitCode, renderHuman(record));
+```
+
+The package is ESM with type declarations. The library entry is browser-safe (no Node APIs).
+
+## Components
+
+Resistor, Capacitor, Inductor, VoltageSource (DC, optional sine in transient), CurrentSource,
+Diode (Shockley), LED, Switch (SPDT), Button, plus custom components through
+`defineComponent`:
+
+```ts
+import { defineComponent } from 'circuitsvibe';
 
 const MyResistor = defineComponent({
   name: 'MyResistor',
@@ -152,22 +128,62 @@ const MyResistor = defineComponent({
 });
 ```
 
-The context (`StampContext`) exposes helpers for conductances, voltage/current sources, reading voltages, and direct matrix access for advanced cases. Nonlinear components set `nonlinear: true` and use `voltage(pin)` inside `stamp` to linearize the operating point.
+`npx circuitsvibe catalog` prints pins, value semantics and DC behavior for each type.
 
-## Tests
+## Visual simulator
 
-Configuration in [vitest.config.ts](vitest.config.ts). The suite covers:
-- Core: pins and nodes ([tests/core/](tests/core/))
-- Solver: MNA matrix and LU decomposition ([tests/solver/](tests/solver/))
-- Integration: voltage divider, diode, LED, and custom component ([tests/integration/](tests/integration/))
+[circuitsvibe.com/app.html](https://circuitsvibe.com/app.html) is a browser editor on the same
+engine: a canvas with A* wire routing, probes, an oscilloscope, animated current flow, a
+multi-file code editor for custom components, and projects saved in `localStorage`.
+
+## Status and limitations (v0.1)
+
+| Area | Status |
+|------|--------|
+| DC operating point (MNA + Newton-Raphson) | ✅ |
+| Transient | ✅ Backward Euler, **fixed step** (`dt` you choose) |
+| Sources | ✅ DC voltage/current, sine voltage · ❌ PULSE, PWL, PWM |
+| Semiconductors | ✅ Diode, LED · ❌ BJT, MOSFET, JFET |
+| Op-amps, comparators | ❌ |
+| Digital logic, mixed-signal | ❌ |
+| Microcontrollers | ❌ |
+| AC small-signal, DC sweep | ❌ |
+| Convergence aids (gmin/source stepping) | ❌ — non-convergence is reported (S201/S202) with the culprit |
+| Real-part catalog with datasheet ratings | ❌ |
+| SPICE netlist import/export | ❌ |
+| Determinism | same bench source ⇒ same numbers; ordering of matrix unknowns by ref is not yet implemented |
+
+## Development
+
+Requires Node ≥ 20.
 
 ```bash
-npm test
+npm install
+npm run dev           # web app at http://localhost:5173
+npm test              # vitest
+npm run typecheck
+npm run cli -- verify bench/led-driver.bench.ts   # CLI from source (no build step)
+npm run benches       # every bench in bench/ against its declared expectation
+npm run build:lib     # dist/: index.js, types/, circuitsvibe-standalone.mjs
+npm run smoke:pack    # npm pack → install in temp dirs → npx init/verify
+npm run build:site    # website into dist-site/
 ```
 
-## Status and limitations
+Seeded-broken benches in [bench/broken/](bench/broken/) show each diagnostic family; their
+header comment states the expected code and exit code, which `npm run benches` enforces.
 
-- DC and transient analyses only — no AC / frequency domain, no parametric sweep
-- No SPICE netlist import or export
-- Custom components are created via code only (no visual library yet)
-- Optimized for desktop; no dedicated mobile version
+```
+src/
+├── elab/       bench DSL, units, canonical netlist + hash, source locations
+├── verify/     lint, op, tran stages, measurements, diagnostic registry
+├── schema/     RunRecord types, version identity
+├── report/     human renderer
+├── cli/        CLI commands, bench loader, init
+├── ledger/     .circuitsvibe/runs.jsonl
+├── core/ components/ analysis/ solver/   the MNA engine
+└── ui/         the visual simulator
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

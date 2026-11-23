@@ -1,0 +1,19 @@
+# CircuitsVibe
+
+> Circuits as code, verified by simulation. An agent-first circuit simulator: write a TypeScript bench (circuit + free parameters + assertions), run `npx circuitsvibe verify x.bench.ts --json`, branch on the exit code (0 pass, 1 spec failed, 2 invalid circuit, 3 tooling error), read structured diagnostics with stable codes and file:line locations, and apply simulation-verified sizing hints with `--set`. Pure TypeScript, zero native dependencies, runs in Node (≥ 20) and the browser. MIT.
+
+## Agent docs
+
+- [AGENTS.md](https://circuitsvibe.com/AGENTS.md): the exact verification loop, bench API cheat sheet, components, probes, assertions, units, diagnostic codes and pitfalls. Also printed by `npx circuitsvibe agents`.
+- [Documentation](https://circuitsvibe.com/docs.html): full human docs.
+
+## Tools
+
+- [npm package](https://www.npmjs.com/package/circuitsvibe): `npx circuitsvibe init <name>` scaffolds a passing bench + AGENTS.md; `verify`, `log list`, `explain <code>`, `catalog`.
+- [circuitsvibe-standalone.mjs](https://circuitsvibe.com/circuitsvibe-standalone.mjs): the whole CLI as one zero-dependency file for offline sandboxes — `node circuitsvibe-standalone.mjs verify x.bench.ts --json`.
+
+## Optional
+
+- [Source code](https://github.com/felipemarts/circuit)
+- [Diagnostics reference](https://github.com/felipemarts/circuit/blob/main/docs/DIAGNOSTICS.md): code taxonomy and RunRecord JSON format.
+- [Vision](https://github.com/felipemarts/circuit/blob/main/docs/VISION.md)

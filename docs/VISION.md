@@ -30,7 +30,7 @@ compile → simulate → assert → structured diagnostics, local-first, no clou
 
 ## The platform's five contracts
 
-Everything in circuit-forge derives from five contracts, designed so that an LLM agent
+Everything in circuitsvibe derives from five contracts, designed so that an LLM agent
 converges on a working circuit in ≤5 iterations:
 
 ### 1. TypeScript is the source of truth
@@ -81,13 +81,13 @@ bench/led-driver.bench.ts
   L3 tran    transient + measurements    A301    │ next ones skip
              (settle/ripple/overshoot)         ──┘
         ▼
-  RunRecord (JSON) ── human renderer ── ledger (.forge/runs.jsonl)
+  RunRecord (JSON) ── human renderer ── ledger (.circuitsvibe/runs.jsonl)
 ```
 
 A bench is the complete artifact: circuit + free parameters + assertions.
 
 ```ts
-import { bench, VoltageSource, Resistor, LED } from 'circuit-forge';
+import { bench, VoltageSource, Resistor, LED } from 'circuitsvibe';
 
 export default bench('led-driver', (tb) => {
   const v1 = tb.add('V1', new VoltageSource(5));
@@ -107,18 +107,18 @@ export default bench('led-driver', (tb) => {
 ```
 
 ```
-$ forge verify bench/led-driver.bench.ts        # human
-$ forge verify bench/led-driver.bench.ts --json # agent (full RunRecord)
-$ forge verify ... --set R1=280                 # applies the hint without editing code
-$ forge log list                                # what has already been tried (anti context-attrition)
-$ forge explain F101                            # physics + fix for each code
-$ forge catalog                                 # component datasheet for the agent
+$ circuitsvibe verify bench/led-driver.bench.ts        # human
+$ circuitsvibe verify bench/led-driver.bench.ts --json # agent (full RunRecord)
+$ circuitsvibe verify ... --set R1=280                 # applies the hint without editing code
+$ circuitsvibe log list                                # what has already been tried (anti context-attrition)
+$ circuitsvibe explain F101                            # physics + fix for each code
+$ circuitsvibe catalog                                 # component datasheet for the agent
 ```
 
 ## Current state (v0.1 — the loop exists)
 
 - ✅ Correct MNA engine (DC + Backward-Euler transient, Newton-Raphson) — validated against
-  analytical solutions; 91 tests.
+  analytical solutions.
 - ✅ `bench()` DSL with units (`'4.7k'`), named pins, canonical netlist with hash,
   per-component/per-assertion source location ("circuit sourcemaps").
 - ✅ Structural lint F101/F103/F104/F105/F106 before the solver.
@@ -126,22 +126,25 @@ $ forge catalog                                 # component datasheet for the ag
   hints, and non-convergence telemetry (offending component + oscillation).
 - ✅ Transient stage with a measurement kernel (settle, neverExceed, stayAbove/Below,
   ripple, final value) + a waveform excerpt at the first violation.
-- ✅ `forge` CLI (verify/log/explain/catalog), exit codes 0/1/2/3, `--json`, `--set`,
-  JSONL ledger.
+- ✅ `circuitsvibe` CLI (init/verify/log/explain/catalog/agents), exit codes 0/1/2/3,
+  `--json`, `--set`, JSONL ledger.
+- ✅ Publishable: prebuilt `dist/` (ESM + .d.ts), zero runtime dependencies,
+  `npx circuitsvibe` works in an empty folder, and a single-file
+  `circuitsvibe-standalone.mjs` for offline agents. AGENTS.md, a Claude skill and llms.txt.
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap
 
 | Phase | Deliverable | Why |
 |------|---------|-----|
-| v0.2 | L2 stage (sweep/transfer curves), `forge sweep`, `forge probe` over the ledger | completes the AnalogCoder ladder |
+| v0.2 | L2 stage (sweep/transfer curves), `circuitsvibe sweep`, `circuitsvibe probe` over the ledger | completes the AnalogCoder ladder |
 | v0.3 | Token-budget report (failures-only + drill-down pointers), `--watch` with a hard solve timeout | sub-second iteration; never block the agent's tool call |
-| v0.4 | **MCP server** (`forge mcp`): verify/sweep/probe/history/catalog/explain with the SAME schema as the CLI | the agent uses it as a native tool |
-| v0.5 | `forge optimize` (Nelder-Mead over the ladder as an objective function), gmin/source stepping in NR | the agent never picks a resistor by hand again |
+| v0.4 | **MCP server** (`circuitsvibe mcp`): verify/sweep/probe/history/catalog/explain with the SAME schema as the CLI | the agent uses it as a native tool |
+| v0.5 | `circuitsvibe optimize` (Nelder-Mead over the ladder as an objective function), gmin/source stepping in NR | the agent never picks a resistor by hand again |
 | v0.6 | UI = RunRecord viewer: assertion chips on the schematic, bands on the oscilloscope, ledger timeline | human and agent see the same artifact |
 | v0.7 | Strong determinism (ordering by ref in the matrix), SPICE export + ngspice cross-check in CI with a tolerance table | public numerical credibility |
 | v0.8 | Level-1 MOSFET, Ebers-Moll BJT, behavioral sources; op-amp macro-model | unlocks real specs |
-| v1.0 | **CircuitBench**: public eval of "iterations-to-green" per model, tasks with hidden assertions; freeze of the `forge-run/1.0` schema | the standard wins because agents provably converge on it |
+| v1.0 | **CircuitBench**: public eval of "iterations-to-green" per model, tasks with hidden assertions; freeze of the `circuitsvibe-run/1.0` schema | the standard wins because agents provably converge on it |
 
 Sequencing rules (from the architecture-panel judges): the terminal loop stands on its own
 **before** MCP and UI; the spec is extracted from the working tool, never published before it;
@@ -157,4 +160,14 @@ no benchmark claim beyond what the component library covers.
   scoped honestly.
 - **The batch path is the agent's contract** — the UI's "live" path stretches `dt` under load
   (machine-dependent) and must never feed assertions.
-- **`.forge/` in `.gitignore`** — the ledger is a local artifact, not source.
+- **`.circuitsvibe/` in `.gitignore`** — the ledger is a local artifact, not source.
+- **Name: `circuitsvibe`, CLI `circuitsvibe` (alias `cvibe`)** — the old `forge` bin collides
+  with the npm package `forge` and with Foundry's widely installed `forge`. The RunRecord schema
+  and ledger directory follow the package name (`circuitsvibe-run/0.1`, `.circuitsvibe/`).
+- **Bench files load without a native toolchain** — the CLI transpiles them with sucrase
+  (pure JS, bundled into the CLI; line numbers preserved) and evaluates them as CommonJS under
+  their real filename, so `at` locations point at the source. Consequence: no top-level
+  `await` or `import.meta` in bench files. `import ... from 'circuitsvibe'` resolves to the
+  running CLI, so a bench needs no local install.
+- **Locations are cwd-relative with forward slashes** — RunRecords are identical across
+  machines and operating systems.
