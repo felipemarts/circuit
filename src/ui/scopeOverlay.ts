@@ -67,13 +67,19 @@ export function showScopeOverlay(
 
   overlay.hidden = false;
 
-  // Resize canvas to match its container (CSS pixels)
+  // Resize the backing store to the container (CSS px × device pixel ratio)
   const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.floor(rect.width);
-  canvas.height = Math.floor(rect.height);
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.floor(rect.width));
+  const h = Math.max(1, Math.floor(rect.height));
+  if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+  }
 
   const ctx = canvas.getContext('2d')!;
-  drawChart(ctx, canvas.width, canvas.height, waveforms);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawChart(ctx, w, h, waveforms);
 
   // Stats computed from the first waveform (primary probe)
   const primary = waveforms[0];
