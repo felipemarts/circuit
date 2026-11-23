@@ -19,20 +19,22 @@ jobs:
 
     - name: 📦 Install App Dependencies
       run: |
-        npm i
+        npm ci
 
+    # Builds the npm package (dist/) and the website (dist-site/); the site
+    # also serves llms.txt, AGENTS.md and circuitsvibe-standalone.mjs.
     - name: 🎮 Build Web App
       run: |
         npm run build
 
     - name:  🔑 Create .htaccess file
       run: |
-        cp ./htaccess.txt ./dist/.htaccess
+        cp ./htaccess.txt ./dist-site/.htaccess
 
     - name: 📂 Sync files
       uses: SamKirkland/FTP-Deploy-Action@4.3.3
       with:
-        local-dir: ./dist/
+        local-dir: ./dist-site/
         server-dir: /home/felipemarts_circuit/
         protocol: ftps
         server: ${{secrets.HOST}}
