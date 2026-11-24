@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import {
   runLadder,
+  runLadderAsync,
   toCircuitDoc,
   benchFromDoc,
   canonicalJson,
@@ -15,7 +16,8 @@ import { findBenches, load, definitionsOf, withoutAt } from './helpers';
 // The core guarantee of the circuit document: for EVERY bench in bench/,
 // verifying the bench and verifying the bench rebuilt from its document give
 // byte-identical RunRecords (locations are carried by the exported document;
-// share links drop them, so there the records match after removing `at`).
+// share links drop the bench's `at` lines, so there the records match after removing
+// `at`; firmware / VHDL locations point into the embedded sources and survive).
 
 const benches = findBenches();
 const sizes: { bench: string; components: number; assertions: number; jsonBytes: number; urlBytes: number }[] = [];
@@ -51,12 +53,12 @@ describe('bench ⇄ circuit document round trip (every bench file)', () => {
       }
       const opts = { definitions: defs };
 
-      const original = runLadder(desc);
+      const original = await runLadderAsync(desc);
       const doc = toCircuitDoc(desc, {}, opts);
       // Through JSON text, as a file or another language would hand it over.
       const reread = JSON.parse(canonicalJson(doc, 2));
       const rebuilt = benchFromDoc(reread, opts);
-      const replayed = runLadder(rebuilt);
+      const replayed = await runLadderAsync(rebuilt);
       expect(JSON.stringify(replayed)).toBe(JSON.stringify(original));
 
       // Idempotent: the rebuilt bench exports the very same document.
@@ -68,8 +70,9 @@ describe('bench ⇄ circuit document round trip (every bench file)', () => {
       const link = await createShareLink(doc, opts);
       const decoded = await decodeShareUrl(link.url, opts);
       expect(canonicalJson(decoded)).toBe(canonicalJson(stripLocations(doc)));
-      const fromLink = runLadder(benchFromDoc(decoded, opts));
-      expect(JSON.stringify(fromLink)).toBe(JSON.stringify(withoutAt(original)));
+      const fromLink = await runLadderAsync(benchFromDoc(decoded, opts));
+      // Bench `at` lines are dropped; firmware / VHDL locations (paths of embedded sources) remain.
+      expect(JSON.stringify(withoutAt(fromLink))).toBe(JSON.stringify(withoutAt(original)));
       sizes.push({ bench: rel, components: doc.components.length, assertions: doc.assertions.length, jsonBytes: link.jsonBytes, urlBytes: link.bytes });
     }, 60000);
   }

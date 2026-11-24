@@ -51,7 +51,7 @@ describe('unified Part()', () => {
     expect((Part('2N3904') as { kind?: string }).kind).toBe('NPN');
     expect((Part('IRLZ44N') as { kind?: string }).kind).toBe('NMOS');
     expect((Part('LED-RED-5MM') as { kind?: string }).kind).toBe('LED');
-    expect(PART_RESOLVERS.map(r => r.family)).toEqual(['logic ICs / timers', 'semiconductors']);
+    expect(PART_RESOLVERS.map(r => r.family)).toEqual(['logic ICs / timers', 'semiconductors', 'microcontroller boards']);
   });
 
   it('lists every family in the unknown-part error and refuses IC options on semiconductors', () => {
