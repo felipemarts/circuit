@@ -24,8 +24,12 @@ export interface Host {
   /**
    * Schedule a new drive code on one of the model's drivers, using the
    * driver's configured propagation delay and mode (inertial/transport).
+   * `delay` (integer ticks >= 0) overrides the configured delay for this one
+   * transaction (behavioral models with per-assignment delays, e.g. VHDL
+   * `after`); the driver's mode still applies. During the power-on settle the
+   * value is applied immediately whatever the delay.
    */
-  out(driver: number, drive: number): void;
+  out(driver: number, drive: number, delay?: number): void;
   /** Schedule a drive code at an absolute tick (sources: clock, stimulus). Never cancels other events. */
   outAt(driver: number, drive: number, tick: number): void;
   /** Ask the kernel to call `model.wake(tag)` at an absolute tick. */

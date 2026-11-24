@@ -24,6 +24,7 @@ import {
   TriBufModel,
 } from './models';
 import type { GateOp } from './models';
+import { behaviorFactory, BEHAVIOR_NAME_RE } from './behavior';
 import { parseFrequency, parseNumber, parseTime, toTicks } from './units';
 import type { ValueLike } from './units';
 
@@ -161,6 +162,19 @@ export interface StimulusOptions {
   pattern?: string;
   step?: ValueLike;
   from?: ValueLike;
+}
+
+export interface BehavioralOptions {
+  /** Name of a factory registered with `registerBehavior`. */
+  behavior: string;
+  /** Input pin names (any characters except '.' and whitespace), unique. */
+  inputs?: string[];
+  /** Output pin names, unique and distinct from the inputs. */
+  outputs: string[];
+  /** Combinational paths for lint F133: [input, output, minimum delay]. Default none. */
+  combPaths?: [string, string, ValueLike][];
+  /** Plain-JSON configuration handed to the factory. Default null. */
+  config?: JsonValue;
 }
 
 // ── normalization helpers ──
@@ -310,6 +324,54 @@ function flipFlopDef(type: string, dataPins: string[], summary: string, make: (p
 }
 
 type SeqP = { setup: number; hold: number; onViolation: 'x' | 'keep'; init: Logic };
+
+const PIN_NAME_RE = /^[^.\s]+$/;
+
+function pinList(name: string, v: unknown, required: boolean): string[] {
+  if (v === undefined && !required) return [];
+  if (!Array.isArray(v)) throw new Error(`Behavioral: '${name}' must be an array of pin names`);
+  const seen = new Set<string>();
+  for (const p of v) {
+    if (typeof p !== 'string' || !PIN_NAME_RE.test(p)) {
+      throw new Error(`Behavioral: invalid pin name ${JSON.stringify(p)} in '${name}' (non-empty, no '.' or whitespace)`);
+    }
+    if (seen.has(p)) throw new Error(`Behavioral: pin '${p}' listed twice in '${name}'`);
+    seen.add(p);
+  }
+  return [...(v as string[])];
+}
+
+const BEHAVIORAL_DEF: PartDef = {
+  type: 'Behavioral',
+  summary: 'behavioral component: pins and model supplied by a factory registered with registerBehavior (e.g. a compiled VHDL process)',
+  normalize(o) {
+    checkKeys('Behavioral', o, ['behavior', 'inputs', 'outputs', 'combPaths', 'config']);
+    if (typeof o.behavior !== 'string' || !BEHAVIOR_NAME_RE.test(o.behavior)) {
+      throw new Error(`Behavioral: 'behavior' must be the name of a registered behavior, got ${JSON.stringify(o.behavior)}`);
+    }
+    const inputs = pinList('inputs', o.inputs, false);
+    const outputs = pinList('outputs', o.outputs, true);
+    if (outputs.length === 0 && inputs.length === 0) throw new Error(`Behavioral: needs at least one pin`);
+    for (const p of outputs) if (inputs.includes(p)) throw new Error(`Behavioral: pin '${p}' is both an input and an output`);
+    const combPaths: JsonValue[] = [];
+    if (o.combPaths !== undefined) {
+      if (!Array.isArray(o.combPaths)) throw new Error(`Behavioral: 'combPaths' must be an array of [input, output, delay]`);
+      for (const cp of o.combPaths) {
+        if (!Array.isArray(cp) || cp.length !== 3 || !inputs.includes(cp[0]) || !outputs.includes(cp[1])) {
+          throw new Error(`Behavioral: each comb path must be [input, output, delay] naming declared pins, got ${JSON.stringify(cp)}`);
+        }
+        combPaths.push([cp[0], cp[1], time('Behavioral', 'combPaths delay', cp[2], 0)]);
+      }
+    }
+    const config = o.config === undefined ? null : (o.config as JsonValue);
+    return { behavior: o.behavior, inputs, outputs, combPaths, config };
+  },
+  pins: p => ({ inputs: p.inputs as string[], outputs: p.outputs as string[], clocks: [] }),
+  driver: 'tristate',
+  delay: () => ({ rise: 0, fall: 0, mode: 'inertial' }),
+  combPaths: p => (p.combPaths as [string, string, number][]).map(([from, to, delay]) => ({ from, to, delay })),
+  create: (p, ctx) => behaviorFactory(p.behavior as string)(p.config, ctx),
+};
 
 const DEFS: PartDef[] = [
   gateDef('Buf', 'buf', false, 1),
@@ -511,6 +573,7 @@ const DEFS: PartDef[] = [
     combPaths: () => [],
     create: (p, ctx) => new StimulusModel(ctx, p.initial as Logic, p.changes as unknown as [number, Logic][]),
   },
+  BEHAVIORAL_DEF,
 ];
 
 export const PART_DEFS: Record<string, PartDef> = Object.fromEntries(DEFS.map(d => [d.type, d]));

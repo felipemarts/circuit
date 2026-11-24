@@ -21,6 +21,7 @@ import { lintDigital } from './lint';
 import type { DigitalInputPort, DigitalNetlist } from './netlist';
 import { ID_RE, NET_RE, resolveNetlist, toNetlist } from './netlist';
 import type {
+  BehavioralOptions,
   ClockOptions,
   CounterOptions,
   FlipFlopOptions,
@@ -195,6 +196,13 @@ export class Stimulus extends DigitalPart {
   }
 }
 
+/** A behavioral component whose model comes from a factory registered with `registerBehavior` (see behavior.ts). */
+export class Behavioral extends DigitalPart {
+  constructor(opts: BehavioralOptions) {
+    super('Behavioral', opts);
+  }
+}
+
 /** Rebuild a part from its serialized `{ type, params }`. */
 export function partFromJSON(type: string, params: PartParams): DigitalPart {
   return new DigitalPart(type, params);
@@ -219,8 +227,11 @@ export class DigitalCircuit {
    * Register a part under a stable id ('U1', 'FF1', …) and optionally wire it:
    * `{ a: 'A', b: 'B', y: 'Y' }` maps pins to net names (or to other pins).
    * Returns the part, so `c.add('U1', new And()).pin('y')` works.
+   * `opts.at` sets the source location lint reports for this part (generated
+   * parts, e.g. from VHDL, point at their own source line); otherwise the
+   * circuit's `locate` hook is used.
    */
-  add<T extends DigitalPart>(id: string, part: T, wiring: Record<string, string | DigitalPin> = {}): T {
+  add<T extends DigitalPart>(id: string, part: T, wiring: Record<string, string | DigitalPin> = {}, opts: { at?: string } = {}): T {
     if (!ID_RE.test(id)) {
       throw new Error(`invalid component id '${id}': use letters/digits/underscore starting with a letter, e.g. c.add('U1', new And())`);
     }
@@ -230,7 +241,7 @@ export class DigitalCircuit {
     part._id = id;
     part._circuit = this;
     this.parts.set(id, part);
-    this.locs.set(id, this.opts.locate?.());
+    this.locs.set(id, opts.at ?? this.opts.locate?.());
     for (const [pin, target] of Object.entries(wiring)) this.connect(part.pin(pin), target);
     return part;
   }
@@ -319,7 +330,7 @@ export class DigitalCircuit {
     const r = resolveNetlist(n);
     const c = new DigitalCircuit();
     for (const i of r.inputs) c.input(i.net, { initial: i.initial, strength: i.strength });
-    for (const comp of r.components) c.add(comp.id, partFromJSON(comp.type, comp.params));
+    for (const comp of r.components) c.add(comp.id, partFromJSON(comp.type, comp.params), {}, comp.at !== undefined ? { at: comp.at } : {});
     for (const comp of r.components) {
       for (const [pin, net] of Object.entries(comp.pins)) {
         // Auto nets are named after one of their pins ('U1.y'): connect to that pin.

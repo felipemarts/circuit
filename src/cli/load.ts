@@ -76,6 +76,14 @@ function loadModule(abs: string, cache: Map<string, LoadedModule>): Record<strin
     return module.exports;
   }
 
+  // VHDL sources: `import counter from './counter.vhd'` yields a VhdlSource
+  // { kind: 'vhdl-source', text, path } (path relative to the cwd, for
+  // diagnostics) — pass it straight to compileVhdl / instantiateVhdl.
+  if (/\.vhdl?$/i.test(abs)) {
+    module.exports = Object.freeze({ kind: 'vhdl-source', text: source, path: displayPath(abs) });
+    return module.exports;
+  }
+
   const rel = displayPath(abs);
   let code: string;
   try {

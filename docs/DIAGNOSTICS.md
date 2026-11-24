@@ -16,6 +16,8 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (src/digital) |
 | `F14x` | firmware lint (pre-simulation) | MCU firmware source mistakes (F140–F149) |
 | `M6xx` | MCU runtime | firmware execution on a simulated microcontroller (M601–M649) |
+| `V701`–`V749` | VHDL compile / elaboration (pre-simulation) | syntax, unsupported constructs, types, hierarchy (src/vhdl) |
+| `V750`–`V799` | VHDL runtime | errors raised by compiled VHDL processes while simulating (src/vhdl) |
 
 ## Active codes
 
@@ -48,6 +50,35 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `D505` | drive-in-past | error | external drive() scheduled before the current time — applied at the current time instead |
 | `D506` | unknown-control | warning | clock edge through X/Z or unknown async set/reset/latch enable that would change state — outputs X |
 | `D507` | weak-contention | warning | pull-up and pull-down are the only drivers of a net — net is X |
+| `V701` | vhdl-syntax-error | error | VHDL text does not follow the grammar — exact line:col, what was expected and found; first error per design unit |
+| `V702` | vhdl-lexical-error | error | invalid character, unterminated string, number glued to its unit (`10ns`), bad based literal or identifier |
+| `V703` | vhdl-unsupported | error | valid VHDL outside the supported subset (`wait for`, file I/O, records, functions, packages, while loops, …) — names the construct and lists what is supported |
+| `V704` | vhdl-undeclared | error | name not declared (with a did-you-mean suggestion) |
+| `V705` | vhdl-type-mismatch | error | wrong type (std_logic_vector vs unsigned, integer vs vector, std_logic vs boolean, arithmetic on std_logic_vector) — fix gives the conversion |
+| `V706` | vhdl-length-mismatch | error | vector lengths differ in an assignment/operator (warning for an always-false comparison); evidence has both lengths |
+| `V707` | vhdl-missing-use | error | std_logic / unsigned … used without `library ieee; use ieee.std_logic_1164.all;` / `use ieee.numeric_std.all;` |
+| `V708` | vhdl-unsupported-library | error | library/package outside ieee.std_logic_1164, ieee.numeric_std, std.standard (e.g. std_logic_arith, textio, work packages) |
+| `V709` | vhdl-unknown-entity | error | entity (or architecture) not in the compiled sources |
+| `V710` | vhdl-port-map | error | bad port association: unknown/duplicate formal, unconnected input, type/length mismatch, output driving an input port |
+| `V711` | vhdl-generic | error | generic without value, wrong type, out of range, or unknown in a generic map |
+| `V712` | vhdl-illegal-target | error | assignment to an input port, constant, generic or loop parameter, or `<=`/`:=` used on the wrong kind of object |
+| `V713` | vhdl-not-static | error | width, bound, generic, initial value or case choice depends on a signal/variable |
+| `V714` | vhdl-unresolved-drivers | error | integer/boolean/enum/std_ulogic signal assigned by more than one process |
+| `V715` | vhdl-duplicate | error | name (case-insensitive), entity or architecture declared twice |
+| `V716` | vhdl-no-sensitivity | error | process with neither a sensitivity list nor a wait (would hang at time 0) |
+| `V717` | vhdl-incomplete-sensitivity | warning | process reads a signal outside a clock edge that is missing from its sensitivity list (simulation/synthesis mismatch) |
+| `V718` | vhdl-case-choices | error | case/select not covering every value (std_logic/vector selectors need `others`), duplicate or misplaced choices, incomplete aggregate |
+| `V719` | vhdl-static-range | error | static index/slice/value outside its range, wrong slice direction, failing static expression |
+| `V720` | vhdl-invalid-literal | error | literal that is not a std_logic value (e.g. lowercase `'x'`) |
+| `V721` | vhdl-instance | error | invalid `instantiateVhdl()` arguments (unknown entity/port/generic, wrong net count, bad id) |
+| `V722` | vhdl-recursive-instance | error | entity instantiates itself |
+| `V723` | vhdl-no-architecture | error | entity without architecture |
+| `V750` | vhdl-index-out-of-range | error | runtime index outside a vector's range — read gives X, write skipped; carries process, index, time |
+| `V751` | vhdl-range-violation | error | runtime value outside an integer subtype (assignment skipped); warning when to_unsigned/to_signed truncate |
+| `V752` | vhdl-assertion | error | VHDL assert/report fired (severity note/warning → warning, error/failure → error) |
+| `V753` | vhdl-metavalue | warning | numeric_std arithmetic/comparison/to_integer on X/U/Z/W/- bits (result X / false / 0); suppressed at power-on |
+| `V754` | vhdl-division-by-zero | error | runtime `/`, `mod` or `rem` by zero |
+| `V755` | vhdl-encoded-unknown | warning | integer/enum/boolean signal read X/Z bits from its nets (e.g. undriven integer input port) |
 
 Semantic notes:
 - Lint **always runs** (even with `--stage op`): solving a circuit that lint would reject
