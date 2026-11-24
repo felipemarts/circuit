@@ -9,5 +9,5 @@
     "noEmit": false
   },
   "include": ["src"],
-  "exclude": ["src/ui", "src/site", "src/cli", "node_modules"]
+  "exclude": ["src/ui", "src/site", "src/cli", "src/view/viewer.ts", "src/view/schematic.ts", "src/view/plots.ts", "src/view/worker.ts", "src/view/run.ts", "src/view/i18n.ts", "node_modules"]
 }
