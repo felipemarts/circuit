@@ -260,6 +260,8 @@
     (function () {
       var overlay = document.getElementById('welcome-overlay');
       if (!overlay) return;
+      // A share link (#c=…) opens the viewer, which replaces this markup.
+      if (/(^#|&)c=/.test(window.location.hash)) return;
       var hasExample = new URLSearchParams(window.location.search).has('example');
       var hasAutosave = false;
       try {
@@ -284,6 +286,6 @@
       if (canvas) canvas.addEventListener('pointerdown', dismiss);
     })();
   </script>
-  <script type="module" src="/src/ui/main.ts"></script>
+  <script type="module" src="/src/ui/boot.ts"></script>
 </body>
 </html>
