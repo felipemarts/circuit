@@ -222,7 +222,11 @@ function levenshtein(a: string, b: string): number {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++)
-    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      // adjacent transposition counts as one edit ('cuont' → 'count')
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
   return d[a.length][b.length];
 }
 
@@ -605,7 +609,7 @@ export class Elaborator {
       .names()
       .filter(n => !['ieee', 'std', 'work'].includes(n))
       .map(n => [n, levenshtein(n, name)] as const)
-      .filter(([n, d]) => d <= Math.max(1, Math.floor(name.length / 3)) && n !== name)
+      .filter(([n, d]) => d <= (name.length <= 3 ? 1 : 2) && d < name.length && n !== name)
       .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1));
     this.err('V704', loc, `${what} '${name}' is not declared${cands.length ? ` — did you mean '${cands[0][0]}'?` : ''}`, {
       note: 'VHDL names must be declared before use (signals and constants in the architecture, variables in the process, ports in the entity); names are case-insensitive',
@@ -2745,7 +2749,7 @@ export class Elaborator {
         }
         const key = v.v instanceof Uint8Array ? vecToString(v.v) : String(v.v);
         if (key in map || (t.k === 'int' && seenInt.has(v.v as number))) {
-          this.err('V718', c.loc, `choice ${t.k === 'vec' ? `"${key}"` : t.k === 'enum' ? t.lits[v.v as number] : key} appears twice`);
+          this.err('V718', c.loc, `choice ${t.k === 'vec' ? `"${key}"` : t.k === 'enum' ? t.lits[v.v as number] : t.k === 'logic' ? `'${LOGIC_CHARS[v.v as number]}'` : t.k === 'bool' ? (v.v ? 'true' : 'false') : key} appears twice`);
           continue;
         }
         if (t.k === 'int' && ((v.v as number) < t.lo || (v.v as number) > t.hi)) this.err('V718', c.loc, `choice ${key} is outside the selector range (${typeName(t)})`, { severity: 'warning' });

@@ -5,7 +5,7 @@
  *
  *   compileVhdl('entity e is end; architecture a of e is begin end;')
  *   compileVhdl({ text, path: 'rtl/counter.vhd' })
- *   import counter from './counter.vhd';   // in a bench: the loader yields { kind: 'vhdl-source', text, path }
+ *   // in a bench, a default import of a relative .vhd/.vhdl file yields { kind: 'vhdl-source', text, path }
  *   compileVhdl([counter, fullAdder]);     // several sources form one compilation unit
  *
  * Locations in diagnostics:
