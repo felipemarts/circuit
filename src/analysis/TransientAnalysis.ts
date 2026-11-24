@@ -31,6 +31,8 @@ export interface ProbeSpec {
   /** Net probe: voltage of this node (takes precedence over `component`). */
   node?: Node;
   type: 'voltage' | 'current';
+  /** Device quantity ('ic', 'vgs', 'p'…) of a semiconductor component (takes precedence over type). */
+  quantity?: string;
 }
 
 export interface TransientResult {
@@ -57,6 +59,10 @@ export function validateTransientConfig(config: TransientConfig): void {
 export function readProbe(spec: ProbeSpec, x: ArrayLike<number>, matrix: MNAMatrix): number {
   if (spec.node) return spec.node.index > 0 ? x[spec.node.index - 1] : 0;
   if (!spec.component) return 0;
+  if (spec.quantity) {
+    const dev = spec.component as unknown as { readQuantity?: (q: string, x: ArrayLike<number>, m: MNAMatrix) => number | undefined };
+    if (typeof dev.readQuantity === 'function') return dev.readQuantity(spec.quantity, x, matrix) ?? NaN;
+  }
   const result = spec.component.readResults(x, matrix);
   if (spec.type === 'voltage') {
     if (result) return result.voltage;

@@ -8,6 +8,10 @@ import { Diode } from '../components/Diode';
 import { LED } from '../components/LED';
 import { Switch } from '../components/Switch';
 import { Button } from '../components/Button';
+import { NPN, PNP } from '../components/BJT';
+import { NMOS, PMOS, type MosfetParams } from '../components/MOSFET';
+import { Part } from '../components/Part';
+import type { DiodeParams } from '../components/Diode';
 import { CustomComponent, type ComponentDef } from '../core/CustomComponent';
 import type { SourceOptions } from '../components/source';
 import type { ParamValue } from '../schema/types';
@@ -29,13 +33,17 @@ export function kindOf(comp: Component): string {
 /** Canonical type name + electrical params, for the netlist document. */
 export function describeComponent(comp: Component): ComponentInfo {
   switch (kindOf(comp)) {
-    case 'LED': {
-      const d = comp as Diode;
-      return { type: 'LED', params: { Is: d.Is, n: d.n, Vt: d.Vt } };
-    }
-    case 'Diode': {
-      const d = comp as Diode;
-      return { type: 'Diode', params: { Is: d.Is, n: d.n, Vt: d.Vt } };
+    case 'LED':
+    case 'Diode':
+    case 'NPN':
+    case 'PNP':
+    case 'NMOS':
+    case 'PMOS': {
+      // Semiconductors: Diode/LED always carry Is, n, Vt; every other model
+      // parameter appears when it differs from its SPICE default; catalog
+      // parts carry part: '<id>' (rebuilt from the catalog).
+      const d = comp as unknown as { describeParams(): Record<string, ParamValue> };
+      return { type: kindOf(comp), params: d.describeParams() };
     }
     case 'Resistor':
       return { type: 'Resistor', params: { r: (comp as Resistor).resistance } };
@@ -159,9 +167,35 @@ export function buildComponent(
         : new CurrentSource(options as SourceOptions);
     }
     case 'Diode':
-      return new Diode({ Is: n('Is'), n: n('n'), Vt: n('Vt') });
     case 'LED':
-      return new LED();
+    case 'NPN':
+    case 'PNP':
+    case 'NMOS':
+    case 'PMOS': {
+      if (typeof params.part === 'string') {
+        const dev = Part(params.part);
+        if ((dev as { kind: string }).kind !== type) {
+          throw new Error(`cannot rebuild ${type}: part '${params.part}' is a ${(dev as { kind: string }).kind}`);
+        }
+        return dev;
+      }
+      const p: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(params)) if (k !== 'model' && k !== 'part') p[k] = v;
+      const dev =
+        type === 'Diode'
+          ? new Diode(p as DiodeParams)
+          : type === 'LED'
+            ? new LED(p as DiodeParams)
+            : type === 'NPN'
+              ? new NPN(p as Record<string, number>)
+              : type === 'PNP'
+                ? new PNP(p as Record<string, number>)
+                : type === 'NMOS'
+                  ? new NMOS(p as MosfetParams)
+                  : new PMOS(p as MosfetParams);
+      if (typeof params.model === 'string') (dev as { modelName?: string }).modelName = params.model;
+      return dev;
+    }
     case 'Switch':
       return new Switch(params.closed === true);
     case 'Button':

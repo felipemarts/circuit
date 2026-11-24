@@ -24,7 +24,7 @@ export interface SweepRecord {
   exitCode: 0 | 2 | 3;
 }
 
-const COMPONENT_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
+import { COMPONENT_PROBE_RE, probeQuantitiesOf } from '../elab/quantity';
 
 /**
  * `circuitsvibe sweep`: lint, then a DC sweep of one source (or component
@@ -69,9 +69,8 @@ export function sweepBench(
     const m = p.match(COMPONENT_PROBE_RE);
     if (m) {
       const c = elab.components.get(m[1]);
-      const quantity = m[2] === 'i' ? 'current' : 'voltage';
-      if (!c || typeof (c as unknown as Record<string, unknown>)[quantity] !== 'number') {
-        throw new Error(`probe '${p}': no component '${m[1]}' exposing ${quantity}`);
+      if (!c || !probeQuantitiesOf(c).includes(m[2])) {
+        throw new Error(`probe '${p}': no component '${m[1]}' exposing '${m[2]}'${c ? ` (available: ${probeQuantitiesOf(c).join(', ')})` : ''}`);
       }
     } else if (!named.includes(p)) {
       throw new Error(`unknown probe '${p}': use '<id>.i' / '<id>.v' or a named net (${named.join(', ') || 'none'})`);
