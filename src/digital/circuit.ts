@@ -227,8 +227,11 @@ export class DigitalCircuit {
    * Register a part under a stable id ('U1', 'FF1', …) and optionally wire it:
    * `{ a: 'A', b: 'B', y: 'Y' }` maps pins to net names (or to other pins).
    * Returns the part, so `c.add('U1', new And()).pin('y')` works.
+   * `opts.at` sets the source location lint reports for this part (generated
+   * parts, e.g. from VHDL, point at their own source line); otherwise the
+   * circuit's `locate` hook is used.
    */
-  add<T extends DigitalPart>(id: string, part: T, wiring: Record<string, string | DigitalPin> = {}): T {
+  add<T extends DigitalPart>(id: string, part: T, wiring: Record<string, string | DigitalPin> = {}, opts: { at?: string } = {}): T {
     if (!ID_RE.test(id)) {
       throw new Error(`invalid component id '${id}': use letters/digits/underscore starting with a letter, e.g. c.add('U1', new And())`);
     }
@@ -238,7 +241,7 @@ export class DigitalCircuit {
     part._id = id;
     part._circuit = this;
     this.parts.set(id, part);
-    this.locs.set(id, this.opts.locate?.());
+    this.locs.set(id, opts.at ?? this.opts.locate?.());
     for (const [pin, target] of Object.entries(wiring)) this.connect(part.pin(pin), target);
     return part;
   }
