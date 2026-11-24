@@ -13,6 +13,13 @@ import {
   waveformValue,
   describeComponent,
   buildComponent,
+  Part,
+  Nand,
+  DFF,
+  Clock,
+  Stimulus,
+  Const,
+  Counter,
 } from '../../src/forge';
 import type { WaveformSpec } from '../../src/forge';
 
@@ -70,6 +77,18 @@ describe('independent sources — API', () => {
       new LED(),
       new Switch(true),
       new Button(false),
+      // Mixed-signal devices: real ICs (catalog id as type) and generic logic primitives.
+      Part('74HC00'),
+      Part('74HC14', { corner: 'worst' }),
+      Part('74HC595', { clamp: false }),
+      Part('CD4017'),
+      Part('NE555'),
+      new Nand({ inputs: 3, delay: '5n', family: 'HCT' }),
+      new DFF({ delay: { rise: '2n', fall: '3n' }, setup: '1n', reset: true, vcc: 3.3 }),
+      new Clock({ freq: '1M', duty: 0.25 }),
+      new Stimulus({ pattern: '0110', step: '1u' }),
+      new Const(1),
+      new Counter({ bits: 3, enable: true }),
     ];
     for (const c of comps) {
       const info = describeComponent(c);
