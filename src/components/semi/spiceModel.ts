@@ -49,16 +49,17 @@ export interface ParsedModel {
 export function parseSpiceNumber(token: string): number | undefined {
   const m = token.trim().match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)([a-zA-Zµ]*)$/);
   if (!m) return undefined;
-  const base = Number(m[1]);
   const suffix = m[2].toLowerCase();
-  let scale = 1;
-  if (suffix.startsWith('meg')) scale = 1e6;
-  else if (suffix.startsWith('mil')) scale = 25.4e-6;
-  else if (suffix.length > 0) {
-    const s: Record<string, number> = { t: 1e12, g: 1e9, k: 1e3, m: 1e-3, u: 1e-6, 'µ': 1e-6, n: 1e-9, p: 1e-12, f: 1e-15, a: 1e-18 };
-    scale = s[suffix[0]] ?? 1; // anything else is a unit name (V, A, ohm…) and ignored
+  let v: number;
+  if (suffix.startsWith('mil')) {
+    v = Number(m[1]) * 25.4e-6;
+  } else {
+    const exps: Record<string, number> = { t: 12, g: 9, k: 3, m: -3, u: -6, 'µ': -6, n: -9, p: -12, f: -15, a: -18 };
+    // anything else after the number is a unit name (V, A, ohm…) and ignored
+    const exp = suffix.startsWith('meg') ? 6 : suffix.length > 0 ? exps[suffix[0]] ?? 0 : 0;
+    // Scale in decimal ('2.52n' → 2.52e-9 exactly, not 2.52 × 1e-9).
+    v = exp === 0 ? Number(m[1]) : /[eE]/.test(m[1]) ? Number(m[1]) * Math.pow(10, exp) : Number(`${m[1]}e${exp}`);
   }
-  const v = base * scale;
   return Number.isFinite(v) ? v : undefined;
 }
 

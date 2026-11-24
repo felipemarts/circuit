@@ -13,6 +13,11 @@ import {
   waveformValue,
   describeComponent,
   buildComponent,
+  NPN,
+  PNP,
+  NMOS,
+  PMOS,
+  Part,
 } from '../../src/forge';
 import type { WaveformSpec } from '../../src/forge';
 
@@ -68,6 +73,17 @@ describe('independent sources — API', () => {
       new CurrentSource({ pwm: { low: 0, high: '1m', freq: '10k', duty: 0.3, rise: '10n', fall: '10n' } }),
       new Diode({ Is: 1e-12, n: 1.8 }),
       new LED(),
+      new Diode({ Is: '2.5n', n: 1.75, Rs: 0.5, Cjo: '4p', Vj: 0.7, M: 0.4, Tt: '20n', BV: 100, IBV: '100u' }),
+      new LED({ Rs: 2.75 }),
+      Diode.fromModel('.model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p M=0.4 TT=20n BV=100 IBV=100u)'),
+      new NPN({ bf: 150, vaf: 80, ikf: '50m', rb: 10, cje: '5p', tf: '400p' }),
+      new PNP({ bf: 90 }),
+      new NMOS({ vto: 1.8, kp: 0.14, lambda: 0.01, rd: 0.35, cgso: '16p' }),
+      new PMOS({ vto: -2, kp: '50m', bulkPin: true, bodyDiode: { Is: 1e-12, n: 1.2, Rs: 0.1 } }),
+      Part('2N3904'),
+      Part('IRLZ44N'),
+      Part('1N4733A'),
+      Part('LED-RED-5MM'),
       new Switch(true),
       new Button(false),
     ];
