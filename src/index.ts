@@ -15,6 +15,9 @@ export { Diode } from './components/Diode';
 export { LED } from './components/LED';
 export { Switch } from './components/Switch';
 export { Button } from './components/Button';
+export { IdealOpAmp, OpAmp, Comparator, OPAMP_DEFAULTS, COMPARATOR_DEFAULTS, opampPart, opampPartParams, comparatorPartParams } from './opamps';
+export type { IdealOpAmpParams, OpAmpParams, ComparatorParams } from './opamps';
+export { Part } from './parts/factory';
 export type { SourceOptions, AcStimulus } from './components/source';
 export type {
   WaveformSpec,

@@ -3,12 +3,18 @@
  * value semantics and DC behavior, plus the probe and assertion grammars.
  */
 
+import { AMPLIFIER_CATALOG } from '../opamps/catalog';
+
 export interface CatalogEntry {
   type: string;
   example: string;
   pins: string;
   value: string;
   dc: string;
+  /** Real parts: model parameters, how they were derived, and the datasheet. */
+  params?: Record<string, number | string | boolean>;
+  notes?: string[];
+  source?: string;
 }
 
 export const COMPONENT_CATALOG: CatalogEntry[] = [
@@ -75,6 +81,8 @@ export const COMPONENT_CATALOG: CatalogEntry[] = [
     value: 'momentary: conducts while .pressed === true',
     dc: 'conducts (1 mΩ pressed / 1 TΩ released)',
   },
+  // Op-amps and comparators (IdealOpAmp, OpAmp, Comparator) and the real parts behind Part('LM358')…
+  ...AMPLIFIER_CATALOG,
 ];
 
 export const GRAMMAR_NOTES = `PROBES (every stage)

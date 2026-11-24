@@ -469,6 +469,15 @@ function catalog(flags: Flags): number {
     return 0;
   }
   for (const e of entries) {
+    const extra = [
+      ...(e.params ? [`  model:   ${JSON.stringify(e.params)}`] : []),
+      ...(e.notes ?? []).map(n => `  note:    ${n}`),
+      ...(e.source ? [`  source:  ${e.source}`] : []),
+    ];
+    if (extra.length > 0) {
+      console.log(`${e.type}\n  example: ${e.example}\n  pins:    ${e.pins}\n  value:   ${e.value}\n  dc:      ${e.dc}\n${extra.join('\n')}\n`);
+      continue;
+    }
     console.log(`${e.type}\n  example: ${e.example}\n  pins:    ${e.pins}\n  value:   ${e.value}\n  dc:      ${e.dc}\n`);
   }
   if (!type) console.log(GRAMMAR_NOTES);
