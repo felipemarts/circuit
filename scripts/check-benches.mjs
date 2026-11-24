@@ -5,13 +5,17 @@
 //   - seeded-broken benches declare `Expected: <CODE> ... exit <N>` and must
 //     exit N and report CODE (as a diagnostic or a failed assertion code).
 // Each bench runs twice and the two --json RunRecords must be byte-identical
-// (the determinism contract).
+// (the determinism contract). Each bench is also exported to a circuit
+// document and verified from it: the RunRecord must be byte-identical (a bench
+// with defineComponent parts must instead refuse export with T013), and the
+// share-link length is reported.
 //
 //   node scripts/check-benches.mjs          # via the dev launcher (src/)
 //   node scripts/check-benches.mjs --dist   # via dist/circuitsvibe-standalone.mjs
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,13 +46,17 @@ function expectation(file) {
   return { exit: Number(exit), code };
 }
 
-function verify(rel) {
-  const r = spawnSync(process.execPath, [cli, 'verify', rel, '--json', '--no-ledger'], {
-    cwd: root,
-    encoding: 'utf8',
-  });
+function cv(args) {
+  const r = spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: 'utf8' });
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
+
+function verify(rel) {
+  return cv(['verify', rel, '--json', '--no-ledger']);
+}
+
+const docDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'circuitsvibe-docs-'));
+const sizes = [];
 
 let failures = 0;
 for (const file of findBenches(path.join(root, 'bench'))) {
@@ -74,8 +82,31 @@ for (const file of findBenches(path.join(root, 'bench'))) {
   }
   if (first.stdout !== second.stdout) problems.push('two identical runs produced different RunRecords');
 
+  // Circuit document round trip + share-link size.
+  const docFile = path.join(docDir, `${path.basename(rel, '.bench.ts')}.circuit.json`);
+  const exported = cv(['export', rel, '-o', docFile]);
+  const custom = /\bdefineComponent\b/.test(fs.readFileSync(file, 'utf8'));
+  if (custom) {
+    if (exported.status !== 3 || !exported.stderr.includes('T013')) problems.push(`export of a custom-component bench should exit 3 with T013 (exit ${exported.status})`);
+  } else if (exported.status !== 0) {
+    problems.push(`export failed (exit ${exported.status}): ${exported.stderr.trim()}`);
+  } else {
+    const fromDoc = verify(docFile);
+    if (fromDoc.status !== first.status) problems.push(`verify of the exported document exited ${fromDoc.status}, bench exited ${first.status}`);
+    if (fromDoc.stdout !== first.stdout) problems.push('verify of the exported document produced a different RunRecord');
+    const shared = cv(['share', rel, '--json']);
+    if (shared.status !== 0) problems.push(`share failed (exit ${shared.status})`);
+    else sizes.push([rel, JSON.parse(shared.stdout).bytes]);
+  }
+
   if (problems.length > 0) failures++;
   console.log(`${problems.length ? 'FAIL' : 'ok  '}  exit ${first.status}  ${rel}${problems.length ? `\n      ${problems.join('\n      ')}` : ''}`);
+}
+
+fs.rmSync(docDir, { recursive: true, force: true });
+if (sizes.length) {
+  console.log('\nshare link length (default base URL):');
+  for (const [rel, bytes] of sizes) console.log(`  ${String(bytes).padStart(6)} B  ${rel}`);
 }
 
 console.log(failures ? `\n${failures} bench(es) failed` : `\nall benches match their expectations (${useDist ? 'dist' : 'src'})`);
