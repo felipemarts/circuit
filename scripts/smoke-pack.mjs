@@ -5,7 +5,9 @@
 //      (what `npx circuitsvibe …` does once published) — also the `cvibe` alias;
 //   3. a project that installs the tarball: import the library, run the
 //      ladder, and typecheck against the shipped .d.ts;
-//   4. the standalone file alone in a folder with no node_modules.
+//   4. the standalone file alone in a folder with no node_modules;
+//   5. share links: share → open round trip, export → verify <doc.json>,
+//      verify --share (from the tarball and from the standalone file).
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -49,6 +51,7 @@ try {
       'dist/index.js',
       'dist/types/forge.d.ts',
       'dist/circuitsvibe-standalone.mjs',
+      'schema/circuit.schema.json',
     ];
     for (const f of required) if (!files.includes(f)) throw new Error(`tarball is missing ${f}`);
     const leaked = files.filter((f) => /^(src|tests|bench|bin|scripts)\//.test(f));
@@ -80,6 +83,22 @@ try {
     });
     const hint = JSON.parse(out).stages.op.assertions.find((a) => a.verdict === 'fail').hint;
     if (hint?.kind !== 'verified-param-range') throw new Error('missing verified hint');
+  });
+
+  step('share → open, export → verify <doc.json>, verify --share (npx)', () => {
+    const npx = (...args) => ['--yes', `--package=${tarball}`, 'circuitsvibe', ...args];
+    const url = sh('npx', npx('share', 'demo.bench.ts', '--title', 'smoke'), empty).trim();
+    if (!/^https:\/\/circuitsvibe\.com\/app\.html#c=1\.[A-Za-z0-9_-]+$/.test(url)) throw new Error(`unexpected share URL: ${url}`);
+    const doc = JSON.parse(sh('npx', npx('open', url), empty));
+    if (doc.schema !== 'circuitsvibe-circuit/1' || doc.name !== 'demo' || doc.meta?.title !== 'smoke') throw new Error('open did not return the shared document');
+    sh('npx', npx('export', 'demo.bench.ts', '-o', 'demo.circuit.json'), empty);
+    const fromDoc = sh('npx', npx('verify', 'demo.circuit.json', '--json', '--no-ledger'), empty);
+    const fromBench = sh('npx', npx('verify', 'demo.bench.ts', '--json', '--no-ledger'), empty);
+    if (fromDoc !== fromBench) throw new Error('verify of the exported document differs from the bench');
+    const record = JSON.parse(sh('npx', npx('verify', 'demo.bench.ts', '--json', '--no-ledger', '--share'), empty));
+    if (record.verdict !== 'pass' || !record.share?.url?.startsWith('https://circuitsvibe.com/app.html#c=1.')) {
+      throw new Error('verify --share has no share.url');
+    }
   });
 
   const project = path.join(work, 'project');
@@ -138,6 +157,10 @@ export default bench('typed', (tb: TB) => {
     sh(process.execPath, ['circuitsvibe-standalone.mjs', 'init', 'solo'], offline);
     sh(process.execPath, ['circuitsvibe-standalone.mjs', 'verify', 'solo.bench.ts', '--no-ledger'], offline);
     sh(process.execPath, ['circuitsvibe-standalone.mjs', 'explain', 'F105'], offline);
+    const url = sh(process.execPath, ['circuitsvibe-standalone.mjs', 'share', 'solo.bench.ts'], offline).trim();
+    const doc = JSON.parse(sh(process.execPath, ['circuitsvibe-standalone.mjs', 'open', url], offline));
+    if (doc.name !== 'solo') throw new Error('standalone open did not return the shared document');
+    sh(process.execPath, ['circuitsvibe-standalone.mjs', 'open', '#c=1.garbage'], offline, { expect: 3 });
   });
 
   console.log(`\nsmoke test passed (node ${process.version})`);

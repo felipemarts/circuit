@@ -148,6 +148,11 @@ $ circuitsvibe catalog                                 # component datasheet for
 - ✅ Publishable: prebuilt `dist/` (ESM + .d.ts), zero runtime dependencies,
   `npx circuitsvibe` works in an empty folder, and a single-file
   `circuitsvibe-standalone.mjs` for offline agents. AGENTS.md, a Claude skill and llms.txt.
+- ✅ Circuit document `circuitsvibe-circuit/1` (docs/CIRCUIT-FORMAT.md + JSON Schema): the
+  language-neutral form of a bench; every bench round-trips to an identical RunRecord.
+  `export`, `verify x.circuit.json`, and share links that carry the whole circuit in the URL
+  fragment (`share`, `verify --share`, `open`) — no backend. Opening links in the web app is
+  the viewer phase (in progress).
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap
@@ -197,5 +202,11 @@ no benchmark claim beyond what the component library covers.
   their real filename, so `at` locations point at the source. Consequence: no top-level
   `await` or `import.meta` in bench files. `import ... from 'circuitsvibe'` resolves to the
   running CLI, so a bench needs no local install.
+- **The circuit document is the contract, TypeScript is one front-end** — documents are plain
+  SI-unit JSON mirroring the RunRecord netlist, so a Python library (or any language) can
+  produce them; readers reject unknown fields instead of ignoring them; custom
+  `defineComponent` parts are code and are refused (T013) rather than half-serialized.
+- **Share links live in the URL fragment** (`#c=1.` + base64url of deflate-raw canonical JSON),
+  like excalidraw: no server sees or stores a circuit. Warn above 8 KiB, refuse above 2 MiB.
 - **Locations are cwd-relative with forward slashes** — RunRecords are identical across
   machines and operating systems.

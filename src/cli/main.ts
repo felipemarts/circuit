@@ -10,12 +10,26 @@ import { init } from './init';
 import AGENTS_MD from '../../AGENTS.md';
 import { STAGE_ORDER, type StageName } from '../schema/types';
 import { sweepBench, renderSweepTable } from './sweep';
+import { loadCircuit, docErrorRecord, benchNameFromFile, type LoadedCircuit } from './circuit';
+import { toCircuitDoc } from '../doc/convert';
+import { canonicalJson } from '../doc/canonical';
+import { createShareLink, decodeShareUrl, type ShareLink } from '../doc/share';
+import { isCircuitDocError } from '../doc/errors';
+import type { CircuitMeta } from '../doc/types';
+import type { Diagnostic, RunRecord } from '../schema/types';
+import * as fs from 'node:fs';
 
 const USAGE = `${CLI} — circuits as code; simulation is the feedback loop (${ENGINE})
 
 USAGE
   ${CLI} init [name] [--force]        scaffold <name>.bench.ts + AGENTS.md here
   ${CLI} verify <bench.ts> [options]  run the ladder: lint → op → dc → ac → tran
+                                    (also verify <file.circuit.json>: same RunRecord, same exit codes)
+  ${CLI} export <bench.ts> [-o file.circuit.json] [--set R1=330]
+                                    write the circuit document (circuitsvibe-circuit/1), stdout by default
+  ${CLI} share <bench.ts | file.circuit.json> [--base-url URL] [--json]
+                                    print a share link: the whole circuit lives in the URL (#c=1.…)
+  ${CLI} open <url | #c=…> [-o file]  decode a share link back to the circuit document
   ${CLI} sweep <bench.ts> --source V1 --from 0 --to 5 [--points 51 | --step 0.1] [--probe out,R1.i] [--json]
                                     DC sweep table/JSON (or --param R1 to sweep a component value)
   ${CLI} log list [--json]            list past runs from the ledger (${LEDGER_DIR}/runs.jsonl)
@@ -31,6 +45,13 @@ VERIFY OPTIONS
   --json                 emit the full RunRecord as JSON on stdout
   --no-hints             skip verified sizing hints (faster)
   --no-ledger            do not append this run to ${LEDGER_DIR}/runs.jsonl
+  --share                add a share link (JSON: "share": { "url", "bytes", "warnings" })
+
+SHARE / EXPORT OPTIONS
+  --base-url URL         page that opens links (default https://circuitsvibe.com/app.html)
+  --title, --description, --author TEXT   document metadata (kept in share links)
+  -o, --out FILE         write to FILE instead of stdout (export, open)
+  --json                 share: print { url, bytes, warnings }
 
 EXIT CODES
   0  all requested stages pass
@@ -41,11 +62,12 @@ EXIT CODES
 EXAMPLE
   ${CLI} init led-driver && ${CLI} verify led-driver.bench.ts --json`;
 
-const VALUE_OPTIONS = ['--source', '--param', '--from', '--to', '--points', '--step', '--probe'];
+const VALUE_OPTIONS = ['--source', '--param', '--from', '--to', '--points', '--step', '--probe', '--base-url', '--title', '--description', '--author', '--out'];
 
 interface Flags {
   json: boolean;
   force: boolean;
+  share: boolean;
   hints: boolean;
   ledger: boolean;
   stages?: StageName[];
@@ -56,11 +78,17 @@ interface Flags {
 }
 
 function parseFlags(args: string[]): Flags {
-  const flags: Flags = { json: false, force: false, hints: true, ledger: true, overrides: {}, options: {}, positional: [] };
+  const flags: Flags = { json: false, force: false, share: false, hints: true, ledger: true, overrides: {}, options: {}, positional: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--json') flags.json = true;
     else if (arg === '--force') flags.force = true;
+    else if (arg === '--share') flags.share = true;
+    else if (arg === '-o') {
+      const value = args[++i];
+      if (value === undefined || value.startsWith('-')) throw new Error('-o needs a file name');
+      flags.options.out = value;
+    }
     else if (arg === '--no-hints') flags.hints = false;
     else if (arg === '--no-ledger') flags.ledger = false;
     else if (arg === '--stage') {
@@ -121,6 +149,12 @@ export async function main(argv: string[]): Promise<number> {
         return await verify(flags);
       case 'sweep':
         return await sweep(flags);
+      case 'export':
+        return await exportDoc(flags);
+      case 'share':
+        return await share(flags);
+      case 'open':
+        return await open(flags);
       case 'log':
         return log(flags);
       case 'explain':
@@ -149,17 +183,24 @@ async function verify(flags: Flags): Promise<number> {
     return 3;
   }
 
-  let desc;
+  let loaded: LoadedCircuit;
   try {
-    desc = await loadBench(file);
+    loaded = await loadCircuit(file);
   } catch (err) {
-    console.error(`error: ${err instanceof Error ? err.message : err}`);
+    if (!isCircuitDocError(err)) {
+      console.error(`error: ${err instanceof Error ? err.message : err}`);
+      return 3;
+    }
+    // An invalid circuit document still yields a RunRecord (T010–T014, exit 3).
+    const failed = docErrorRecord(benchNameFromFile(file), err.diagnostics);
+    console.log(flags.json ? JSON.stringify(failed, null, 2) : renderHuman(failed));
     return 3;
   }
 
-  const record = runLadder(desc, {
+  const overrides = { ...loaded.overrides, ...flags.overrides };
+  const record: RunRecord = runLadder(loaded.desc, {
     stages: flags.stages,
-    overrides: flags.overrides,
+    overrides,
     hints: flags.hints,
   });
 
@@ -172,13 +213,127 @@ async function verify(flags: Flags): Promise<number> {
     }
   }
 
+  const shared = flags.share ? await shareOf(loaded, overrides, flags) : undefined;
+
   if (flags.json) {
-    console.log(JSON.stringify(runId ? { runId, ...record } : record, null, 2));
+    const out = { ...(runId ? { runId } : {}), ...record, ...(shared ? { share: shared } : {}) };
+    console.log(JSON.stringify(out, null, 2));
   } else {
     console.log(renderHuman(record));
     if (runId) console.log(`run ${runId} → ${LEDGER_DIR}/runs.jsonl (${CLI} log show ${runId})`);
+    if (shared) printShareHuman(shared);
   }
   return record.exitCode;
+}
+
+type ShareResult =
+  | { url: string; bytes: number; warnings: Diagnostic[] }
+  | { error: { code: string; message: string } };
+
+function metaFlags(flags: Flags): CircuitMeta {
+  const meta: CircuitMeta = {};
+  for (const k of ['title', 'description', 'author'] as const) if (flags.options[k]) meta[k] = flags.options[k];
+  return meta;
+}
+
+/** verify --share: never changes the verify verdict; a failure to share is reported in place. */
+async function shareOf(loaded: LoadedCircuit, overrides: Record<string, number>, flags: Flags): Promise<ShareResult> {
+  try {
+    const doc = toCircuitDoc(loaded.desc, overrides, { meta: metaFlags(flags) });
+    const link = await createShareLink(doc, { baseUrl: flags.options['base-url'] });
+    return { url: link.url, bytes: link.bytes, warnings: link.warnings };
+  } catch (err) {
+    if (isCircuitDocError(err)) return { error: { code: err.code, message: err.diagnostics[0].message } };
+    return { error: { code: 'T002', message: err instanceof Error ? err.message : String(err) } };
+  }
+}
+
+function printShareHuman(shared: ShareResult): void {
+  if ('error' in shared) {
+    console.log(`share: not available — ${shared.error.code} ${shared.error.message}`);
+    return;
+  }
+  console.log(`share: ${shared.url}`);
+  for (const w of shared.warnings) console.log(`  warning ${w.code}: ${w.message}`);
+}
+
+function reportDocError(err: unknown, json: boolean): number {
+  if (isCircuitDocError(err)) {
+    if (json) {
+      console.log(JSON.stringify({ diagnostics: err.diagnostics, exitCode: 3 }, null, 2));
+    } else {
+      for (const d of err.diagnostics) console.error(`error: ${d.code} ${d.slug}: ${d.message}`);
+      const fix = err.diagnostics[0].fixes[0];
+      if (fix) console.error(`  fix: ${fix.detail}`);
+      console.error(`  (${CLI} explain ${err.code})`);
+    }
+    return 3;
+  }
+  console.error(`error: ${err instanceof Error ? err.message : err}`);
+  return 3;
+}
+
+function writeOut(text: string, flags: Flags): void {
+  const out = flags.options.out;
+  if (out) fs.writeFileSync(out, text);
+  else process.stdout.write(text);
+}
+
+async function exportDoc(flags: Flags): Promise<number> {
+  const file = flags.positional[0];
+  if (!file) {
+    console.error(`error: export needs a bench file\n\nEXAMPLE\n  ${CLI} export led-driver.bench.ts -o led-driver.circuit.json`);
+    return 3;
+  }
+  try {
+    const loaded = await loadCircuit(file);
+    const doc = toCircuitDoc(loaded.desc, { ...loaded.overrides, ...flags.overrides }, { meta: metaFlags(flags) });
+    writeOut(`${canonicalJson(doc, 2)}\n`, flags);
+    if (flags.options.out) {
+      console.error(`wrote ${flags.options.out} (${doc.components.length} components, ${doc.assertions.length} assertions)`);
+    }
+    return 0;
+  } catch (err) {
+    return reportDocError(err, false);
+  }
+}
+
+async function share(flags: Flags): Promise<number> {
+  const file = flags.positional[0];
+  if (!file) {
+    console.error(`error: share needs a bench file or a circuit document\n\nEXAMPLE\n  ${CLI} share led-driver.bench.ts`);
+    return 3;
+  }
+  let link: ShareLink;
+  try {
+    const loaded = await loadCircuit(file);
+    const doc = toCircuitDoc(loaded.desc, { ...loaded.overrides, ...flags.overrides }, { meta: metaFlags(flags) });
+    link = await createShareLink(doc, { baseUrl: flags.options['base-url'] });
+  } catch (err) {
+    return reportDocError(err, flags.json);
+  }
+  if (flags.json) {
+    console.log(JSON.stringify({ url: link.url, bytes: link.bytes, warnings: link.warnings }, null, 2));
+  } else {
+    console.log(link.url);
+    for (const w of link.warnings) console.error(`warning ${w.code}: ${w.message}`);
+  }
+  return 0;
+}
+
+async function open(flags: Flags): Promise<number> {
+  const input = flags.positional[0];
+  if (!input) {
+    console.error(`error: open needs a share link\n\nEXAMPLE\n  ${CLI} open "https://circuitsvibe.com/app.html#c=1.…" -o circuit.circuit.json`);
+    return 3;
+  }
+  try {
+    const doc = await decodeShareUrl(input);
+    writeOut(`${canonicalJson(doc, 2)}\n`, flags);
+    return 0;
+  } catch (err) {
+    return reportDocError(err, flags.json);
+  }
 }
 
 async function sweep(flags: Flags): Promise<number> {

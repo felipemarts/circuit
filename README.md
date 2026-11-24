@@ -85,8 +85,13 @@ circuitsvibe verify <bench.ts> [options]  lint → op → dc → ac → tran (fa
     --stage op,dc,ac,tran run a subset (lint always runs)
     --no-hints            skip verified sizing hints
     --no-ledger           don't append to .circuitsvibe/runs.jsonl
+    --share               add a share link to the result
+circuitsvibe verify <x.circuit.json>      same, for a circuit document
 circuitsvibe sweep <bench.ts> --source V1 --from 0 --to 5 [--points 51 | --step 0.1]
     [--probe out,R1.i] [--param R1] [--json]   DC transfer table / JSON
+circuitsvibe export <bench.ts> [-o x.circuit.json] [--set …]   circuit document (JSON)
+circuitsvibe share <bench.ts | x.circuit.json> [--base-url URL] [--json]   share link
+circuitsvibe open <link> [-o x.circuit.json]                      link → circuit document
 circuitsvibe log list [--json] | log show <runId>
 circuitsvibe explain <code>
 circuitsvibe catalog [type] [--json]
@@ -102,13 +107,39 @@ supported. For editor types, `npm i -D circuitsvibe`.
 The RunRecord format and the code taxonomy are in [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md);
 the design rationale is in [docs/VISION.md](docs/VISION.md).
 
+## Circuit documents and share links
+
+A bench can be turned into a **circuit document**: plain JSON (`circuitsvibe-circuit/1`) with
+the components, wiring, free parameters and assertions — the language-neutral contract that
+other front-ends (a Python library is planned) produce too. Spec, JSON Schema and versioning:
+[docs/CIRCUIT-FORMAT.md](docs/CIRCUIT-FORMAT.md), [schema/circuit.schema.json](schema/circuit.schema.json).
+
+```bash
+npx circuitsvibe export led-driver.bench.ts -o led-driver.circuit.json
+npx circuitsvibe verify led-driver.circuit.json --json   # same RunRecord and exit code as the bench
+npx circuitsvibe share led-driver.bench.ts               # https://circuitsvibe.com/app.html#c=1.dZDNTs…
+npx circuitsvibe verify led-driver.bench.ts --json --share   # RunRecord + "share": { "url", … }
+npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…"   # link → document
+```
+
+A share link carries the whole compressed document in the URL fragment —
+`#c=1.<base64url(deflate-raw(canonical JSON))>` — so there is no backend and nothing is
+uploaded. The benches in `bench/` give links of about 340–560 characters. **Opening links in
+the web app is in progress** (the viewer phase); until then `circuitsvibe open` decodes them.
+`defineComponent` parts are code and cannot be shared (T013).
+
 ## Library
 
 ```ts
-import { bench, runLadder, renderHuman, Resistor, VoltageSource } from 'circuitsvibe';
+import { bench, runLadder, renderHuman, toCircuitDoc, benchFromDoc, encodeShareUrl, decodeShareUrl } from 'circuitsvibe';
 
 const record = runLadder(myBench, { stages: ['lint', 'op'], overrides: { R1: 280 } });
 console.log(record.exitCode, renderHuman(record));
+
+const doc = toCircuitDoc(myBench);                 // circuit document (plain JSON)
+const url = await encodeShareUrl(doc);             // share link
+const back = await decodeShareUrl(url);           // validated document
+runLadder(benchFromDoc(back));                    // same RunRecord (locations aside)
 ```
 
 The package is ESM with type declarations. The library entry is browser-safe (no Node APIs).
@@ -165,6 +196,7 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | Noise, distortion, pole-zero analysis | ❌ |
 | Real-part catalog with datasheet ratings | ❌ |
 | SPICE netlist import/export | ❌ |
+| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer support in progress |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
 | Linear solver | dense LU (sub-second at ~200 nodes, see `npm run perf`); no sparse LU yet |
 
@@ -191,6 +223,7 @@ header comment states the expected code and exit code, which `npm run benches` e
 ```
 src/
 ├── elab/       bench DSL, units, canonical netlist + hash, source locations
+├── doc/        circuit document (circuitsvibe-circuit/1), validation, share links
 ├── verify/     lint, op, dc, ac, tran stages, measurements, diagnostic registry
 ├── schema/     RunRecord types, version identity
 ├── report/     human renderer

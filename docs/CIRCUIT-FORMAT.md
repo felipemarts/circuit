@@ -1,0 +1,280 @@
+# Circuit document `circuitsvibe-circuit/1` and share links
+
+A **circuit document** is the language-neutral, plain-JSON form of a bench: the components
+and their wiring, the free parameters, the assertions with their analysis configs, and
+optional metadata, embedded source files and viewer layout. It is the contract between
+every producer and consumer of circuits:
+
+- the TypeScript bench DSL writes it (`circuitsvibe export`, `toCircuitDoc`);
+- `circuitsvibe verify file.circuit.json` simulates it exactly like the bench it came from;
+- share links carry it, compressed, in the URL fragment (`circuitsvibe share`);
+- other languages (a Python library is planned) produce the same JSON.
+
+JSON Schema: [`schema/circuit.schema.json`](../schema/circuit.schema.json) (shipped in the npm
+package and exported as `circuitsvibe/circuit.schema.json`). The schema covers the structure;
+the cross-field rules below (unique ids, references, pins matching the component type) are
+checked by `validateCircuitDoc` and reported as T010–T014.
+
+## Example
+
+`circuitsvibe export bench/led-driver.bench.ts --title "LED driver"` (locations omitted):
+
+```json
+{
+  "assertions": [
+    { "check": { "max": 0.015, "min": 0.005, "op": "within" }, "id": "a1", "probe": "D1.i", "stage": "op" },
+    { "check": { "max": 2.6, "min": 1.8, "op": "within" }, "id": "a2", "probe": "led", "stage": "op" }
+  ],
+  "components": [
+    { "id": "D1", "params": { "Is": 1e-20, "Vt": 0.02585, "n": 2 }, "pins": { "anode": "led", "cathode": "gnd" }, "type": "LED" },
+    { "free": { "max": 10000, "min": 100, "scale": "log" }, "id": "R1", "params": { "r": 330 }, "pins": { "1": "n1", "2": "led" }, "type": "Resistor" },
+    { "id": "V1", "params": { "v": 5 }, "pins": { "+": "n1", "-": "gnd" }, "type": "VoltageSource" }
+  ],
+  "meta": { "title": "LED driver" },
+  "name": "led-driver",
+  "nets": ["led"],
+  "schema": "circuitsvibe-circuit/1"
+}
+```
+
+Keys appear sorted because the canonical form sorts them (see below); readers must not
+depend on key order.
+
+## Fields
+
+All quantities are SI numbers: ohm, F, H, V, A, s, Hz; AC gains in dB, phases in degrees.
+No unit strings (`'4.7k'` is a DSL convenience, not part of the document).
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `schema` | yes | the constant `"circuitsvibe-circuit/1"` |
+| `name` | yes | bench name; becomes `RunRecord.bench` |
+| `meta` | no | `{ title?, description?, author? }` — strings, for humans and the viewer; kept in share links |
+| `components` | yes | array of components (canonical order: ascending `id`) |
+| `nets` | no | user-named nets, ascending — the names probes may cite |
+| `assertions` | yes | array of assertions in declaration order (may be empty) |
+| `overrides` | no | `{ id: number }` — `--set` values applied when the document was made |
+| `sources` | no | embedded text files `[{ path, language, text }]`, ascending `path` |
+| `layout` | no | viewer placement hints; never affects simulation |
+
+Unknown fields are **rejected** (T010) everywhere except inside `layout`, so a reader never
+silently drops meaning it does not understand.
+
+### `components[]`
+
+Same shape as `RunRecord.netlist.components[]`:
+
+| Field | Meaning |
+|-------|---------|
+| `id` | `/^[A-Za-z][A-Za-z0-9_]*$/`, unique; the name in every diagnostic, probe and override |
+| `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `Switch`, `Button`) or the name of a custom definition supplied by the reader (T012 otherwise) |
+| `params` | the component configuration, exactly as in the RunRecord netlist (see below) |
+| `pins` | `{ pinName: netName }` with **every** canonical pin of the type, and only those (T014) |
+| `free` | optional `{ min, max, scale: "lin" \| "log" }` — a `tb.param` sweep range (verified hints) |
+| `at` | optional origin `file:line` of the `tb.add` call; informational, dropped from share links |
+
+`params` per type:
+
+| Type | Params | Pins |
+|------|--------|------|
+| `Resistor` | `{ r }` | `1`, `2` |
+| `Capacitor` | `{ c }` | `1`, `2` |
+| `Inductor` | `{ l }` | `1`, `2` |
+| `VoltageSource` | `{ v, sin? \| pulse? \| pwl? \| pwm?, ac?: { mag, phase } }` | `+`, `-` |
+| `CurrentSource` | `{ i, …same waveform/ac keys }` | `+`, `-` |
+| `Diode` | `{ Is, n, Vt }` | `anode`, `cathode` |
+| `LED` | `{ Is, n, Vt }` — fixed model; values other than the defaults are refused (T014) | `anode`, `cathode` |
+| `Switch` | `{ closed }` (boolean) | `com`, `a`, `b` |
+| `Button` | `{ pressed }` (boolean) | `1`, `2` |
+
+Waveforms: `sin: { offset, amplitude, freq, delay, damping, phase }`,
+`pulse: { v1, v2, td, tr, tf, pw, per }`, `pwl: { points: [[t, v], …], repeat }`,
+`pwm: { low, high, freq, duty, rise, fall }` (duty as a fraction). Exported documents
+always contain every key; a producer may omit keys that have defaults, but every value it
+does give must survive the rebuild unchanged — otherwise the component is refused (T014)
+rather than silently changed.
+
+### Nets
+
+A net exists because component pins name it. Three kinds of names:
+
+- `gnd` — the ground net;
+- `n<digits>` — anonymous nets. Readers renumber them canonically (from their sorted pin
+  refs), so any `n…` names a producer picks are fine; they cannot be probed;
+- any other name must be listed in `nets` — a user-named net that probes may cite (same
+  rules as `tb.name`). A declared net no pin uses is an error.
+
+A pin alone on its own `n…` net is unconnected (lint reports F106 as usual).
+
+### `assertions[]`
+
+Exactly `AssertionSpec` from the RunRecord (`docs/DIAGNOSTICS.md`):
+`{ id, stage, probe, check, ref?, tran?, dc?, ac?, at? }`.
+
+- `stage`: `op`, `dc`, `ac` or `tran`; the matching config is required (`dc`, `ac`, `tran`)
+  and the others are forbidden. `ref` only on `ac`.
+- `probe` / `ref`: `'<id>.i'`, `'<id>.v'`, a name listed in `nets`, or `gnd`.
+- `check` by stage — op: `within {min,max}`, `closeTo {value,tol}`, `above {value}`,
+  `below {value}`; dc: `at {x,check}`, `slopeAt {x,check}`, `monotonic {direction}`,
+  `crosses {level, min?, max?}`; ac: `gainAt {f,check}`, `phaseAt {f,check}`,
+  `bandwidth3dB {check}`, `unityGainFrequency {check}`, `phaseMargin {check}` (`check` is a
+  scalar check); tran: `settleWithin {target,tol,by}`, `neverExceed {value}`,
+  `stayAbove {value,from?}`, `stayBelow {value,from?}`, `rippleBelow {amplitude,from?}`,
+  `finalCloseTo {value,tol}`.
+- configs — `tran: { tstop, dt, maxStep?, minStep?, method?: "trap"|"be", ic?: "zero"|"op", reltol? }`,
+  `dc: { source | param, from, to, points }`, `ac: { from, to, pointsPerDecade }`.
+
+Assertions are replayed through the bench DSL when a document is loaded, so the DSL's own
+rules apply (e.g. `settleWithin.by` within `tstop`); a violation is reported like a bench
+error (T001, exit 3). Ids are kept as given (`a1`, `a2`, … from the DSL).
+
+### `overrides`
+
+Component `params` **already contain** the overridden values; `overrides` only records
+which values were set, so `verify file.circuit.json` reports the same `overrides` as
+`verify bench.ts --set …` did. Re-applying them is idempotent. `--set` on a document merges
+over them.
+
+### `sources[]` (reserved slot)
+
+`{ path, language, text }` — embedded text files, for VHDL entities and MCU firmware once
+those are part of benches. `path` is a relative POSIX path (no `.`/`..` segments, no `\`,
+no `:`, no leading `/`), unique; `language` a lowercase tag (`vhdl`, `typescript`, `text`, …).
+In `circuitsvibe-circuit/1` sources are validated and carried verbatim (export, share,
+open) but **not executed**; no component type references them yet.
+
+### `layout` (viewer-only)
+
+```json
+{ "components": { "R1": { "x": 120, "y": 40, "rotation": 90, "flip": false } },
+  "wires": [{ "from": "R1.2", "to": "D1.anode", "points": [[160, 40], [160, 80]] }] }
+```
+
+`x`, `y` and `points` are in the viewer's canvas coordinates; `rotation` is 0/90/180/270
+degrees clockwise; a wire joins two pin refs on the **same** net. Extra viewer-owned fields
+are allowed at every level of `layout`. Benches carry no layout today, so exported
+documents have none; a document that has one keeps it through `benchFromDoc` → `toCircuitDoc`.
+
+## Guarantees
+
+- **Round trip**: for every bench, `runLadder(bench)` and
+  `runLadder(benchFromDoc(toCircuitDoc(bench)))` produce byte-identical RunRecords — the
+  document carries the `at` locations. `npm test` (tests/share) and `npm run benches`
+  enforce it for every file in `bench/`. Through a share link (no locations), records are
+  identical once `at` fields are removed.
+- **Determinism**: the same bench gives a byte-identical document and the same share URL.
+- **Custom components**: `defineComponent` parts are code and cannot be serialized. The CLI
+  refuses with T013 naming the parts; the library accepts a definition registry
+  (`toCircuitDoc(bench, overrides, { definitions })`, `benchFromDoc(doc, { definitions })`) and
+  then writes `type: "<definition name>"` with its numeric params. Every reader needs the
+  same definitions (T012 otherwise).
+
+## Canonical form
+
+Canonical JSON = keys sorted at every level (ascending UTF-16 code units, JavaScript's
+default sort), arrays in order, no whitespace, numbers as ECMAScript `Number#toString`
+writes them (`JSON.stringify`), `components` sorted by `id`, `nets` sorted, `sources`
+sorted by `path`. `assertions` keep their order (it defines the ids and the reporting
+order). `circuitsvibe export` writes the canonical form indented by two spaces.
+
+Equality of circuits is equality of the canonical text. Two producers whose number
+formatting differs (Python writes `1e-05` and `5.0` where JavaScript writes `0.00001` and `5`)
+produce **equal documents** but different text, hence different share URLs; both decode
+and verify identically.
+
+## Producing a document from another language
+
+1. Build the object above with SI numbers and the canonical pin names of each type
+   (`circuitsvibe catalog` / the table above). List every pin; name anonymous nets
+   `n1`, `n2`, …; list every other net name in `nets`.
+2. Write assertions as plain `AssertionSpec` objects, ids `a1`, `a2`, … in order, with the
+   full analysis config for `dc`/`ac`/`tran` assertions.
+3. Serialize. For byte-identical output with the TypeScript writer (optional), sort keys
+   and format numbers like ECMAScript; in Python:
+   `json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False)` comes close;
+   the known difference is number formatting (use integers where the value is integral and avoid
+   exponent forms that differ).
+4. Check it: `npx circuitsvibe verify my.circuit.json --json` (exit 3 + T010–T014 with a
+   JSON-pointer `evidence.path` if anything is off), or validate against
+   `schema/circuit.schema.json`.
+5. Share link (optional): `base64url(deflate_raw(utf8(canonical_json)))`, no padding,
+   prefixed `#c=1.` — in Python `zlib.compressobj(wbits=-15)` and
+   `base64.urlsafe_b64encode(...).rstrip(b"=")`. Or run `npx circuitsvibe share my.circuit.json`.
+
+## Share links
+
+```
+<baseUrl>#c=1.<base64url(deflate-raw(utf8(canonical JSON)))>
+```
+
+- `baseUrl` defaults to `https://circuitsvibe.com/app.html` (`--base-url` to change; any
+  existing fragment is replaced). The document lives in the **fragment**, which browsers
+  never send to a server: there is no backend and nothing is stored anywhere.
+- `1.` versions the payload **encoding** (independent of the document `schema` inside).
+  Readers refuse other versions with T017.
+- Before encoding, the document is validated, canonicalized and stripped of `at`
+  locations; `meta`, `overrides`, `sources` and `layout` are kept.
+- base64url is RFC 4648 §5 without padding (alphabet `A–Z a–z 0–9 - _`). Compression is
+  raw DEFLATE (RFC 1951) through the platform `CompressionStream('deflate-raw')` — browsers
+  and Node (tested on Node 22), no dependencies. Any valid raw DEFLATE stream decodes; byte-identical
+  URLs are only guaranteed for the same compressor.
+- Size: the benches in `bench/` give links of about 340–560 characters (`npm run benches` prints
+  them). Above 8 KiB the link still works but `share` warns (T018: some chat apps truncate
+  long links). Above 2 MiB (2,097,152 characters — Chromium's URL limit) it fails (T015).
+  Decoding refuses payloads that inflate above 16 MiB (T015, deflate-bomb guard).
+- Decoding accepts a full URL, a `#c=…` fragment, `c=…`, or the bare `1.…` payload;
+  surrounding whitespace and `<…>` are ignored, other `&`-separated fragment parameters
+  are skipped. Malformed input is T016.
+
+## Library API (browser-safe)
+
+```ts
+import { toCircuitDoc, benchFromDoc, validateCircuitDoc, encodeShareUrl, decodeShareUrl,
+         createShareLink, canonicalJson, runLadder } from 'circuitsvibe';
+
+const doc = toCircuitDoc(myBench, { R1: 270 }, { meta: { title: 'LED driver' } });
+const url = await encodeShareUrl(doc);                       // string
+const { bytes, warnings } = await createShareLink(doc);      // + size report (T018 warnings)
+const back = await decodeShareUrl(url);                      // validated CircuitDoc
+const record = runLadder(benchFromDoc(back), { overrides: back.overrides });
+const check = validateCircuitDoc(JSON.parse(text));          // { ok, doc } | { ok: false, diagnostics }
+```
+
+Errors are thrown as `CircuitDocError` (`code`, `diagnostics[]` — platform `Diagnostic`
+objects with T0xx codes; `isCircuitDocError(err)` checks structurally).
+
+## CLI
+
+```bash
+npx circuitsvibe export x.bench.ts -o x.circuit.json [--set R1=270] [--title …]
+npx circuitsvibe verify x.circuit.json --json          # same RunRecord and exit code as the bench
+npx circuitsvibe share x.bench.ts                      # prints the link (also accepts x.circuit.json)
+npx circuitsvibe share x.bench.ts --json               # { "url", "bytes", "warnings" }
+npx circuitsvibe verify x.bench.ts --json --share      # RunRecord + "share": { "url", "bytes", "warnings" }
+npx circuitsvibe open "<link>" [-o x.circuit.json]     # link → document
+```
+
+`--title`, `--description`, `--author` set `meta` on `export`, `share` and `verify --share`.
+An invalid document given to `verify` still yields a RunRecord (T010–T014, exit 3). Under
+`verify --share` a document that cannot be shared (T013) gives
+`"share": { "error": { "code", "message" } }` and leaves the verify exit code unchanged.
+
+## Opening a link in the browser
+
+The web app at circuitsvibe.com does **not yet** read `#c=` links — viewer support is
+being built in the next phase. Until then, open links with `circuitsvibe open <link>`.
+A viewer implements it by calling `decodeShareUrl(location.hash)` and rendering the
+returned document (`components`, `pins` → nets, `nets`, `meta`, optional `layout`), and
+`runLadder(benchFromDoc(doc), { overrides: doc.overrides })` to simulate it.
+
+## Versioning policy
+
+- `schema` names the document format version: `circuitsvibe-circuit/<major>`.
+- Within major 1, changes are **additive only**: new optional fields or new component
+  types; existing fields never change meaning or units and are never removed. Because
+  readers reject unknown fields (outside `layout`), an older reader meeting a newer field
+  fails loudly (T010 "a newer circuitsvibe may be needed") instead of misreading it.
+- An incompatible change bumps the major (`circuitsvibe-circuit/2`); readers refuse majors
+  they do not know with T011.
+- The share-link encoding is versioned separately by its prefix (`1.`); a new encoding gets
+  a new prefix and readers refuse unknown prefixes with T017.

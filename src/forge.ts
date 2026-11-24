@@ -22,6 +22,9 @@ export { renderHuman } from './report/human';
 export { DIAGNOSTIC_DOCS, findDiagnosticDoc } from './verify/registry';
 
 export * from './schema/types';
+
+// Circuit document (circuitsvibe-circuit/1) and share-by-URL links.
+export * from './doc';
 export { ENGINE } from './schema/version';
 
 // Engine surface (same exports as the library root).

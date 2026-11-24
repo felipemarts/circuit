@@ -1,0 +1,867 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:circuitsvibe:schema:circuitsvibe-circuit:1",
+  "title": "CircuitsVibe circuit document (circuitsvibe-circuit/1)",
+  "description": "Language-neutral circuit document: components and wiring, free parameters, assertions with their analysis configs, optional metadata, embedded sources and viewer layout. Spec: docs/CIRCUIT-FORMAT.md. All quantities are SI numbers (ohm, F, H, V, A, s, Hz, dB, degrees). Cross-field rules this schema cannot express (unique ids, pins exactly matching the component type, references to components and nets) are checked by validateCircuitDoc and reported as T010-T014.",
+  "type": "object",
+  "required": [
+    "schema",
+    "name",
+    "components",
+    "assertions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "circuitsvibe-circuit/1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "nets": {
+      "description": "User-named nets (probe-able), ascending. gnd and n<digits> are reserved and never listed.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/userNetName"
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assertion"
+      }
+    },
+    "overrides": {
+      "description": "Scalar overrides applied when the document was made; component params already contain them.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "sources": {
+      "description": "Embedded text files (reserved for VHDL / firmware sources). Carried verbatim; not executed by circuitsvibe-circuit/1 readers.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "language",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^(?!\\.\\.?(/|$))[^/\\\\:]+(/(?!\\.\\.?(/|$))[^/\\\\:]+)*$"
+          },
+          "language": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9+#.-]*$"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "layout": {
+      "$ref": "#/$defs/layout"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+    },
+    "netName": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+    },
+    "userNetName": {
+      "type": "string",
+      "pattern": "^(?!gnd$)(?!n[0-9]+$)[A-Za-z][A-Za-z0-9_]*$"
+    },
+    "paramValue": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/paramValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/paramValue"
+          }
+        }
+      ]
+    },
+    "component": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "params",
+        "pins"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/paramValue"
+          }
+        },
+        "pins": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/netName"
+          }
+        },
+        "free": {
+          "type": "object",
+          "required": [
+            "min",
+            "max",
+            "scale"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "scale": {
+              "enum": [
+                "lin",
+                "log"
+              ]
+            }
+          }
+        },
+        "at": {
+          "type": "string"
+        }
+      }
+    },
+    "scalarCheck": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "within"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value",
+            "tol"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "closeTo"
+            },
+            "value": {
+              "type": "number"
+            },
+            "tol": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "above"
+            },
+            "value": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "below"
+            },
+            "value": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
+    "dcCheck": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "x",
+            "check"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "at"
+            },
+            "x": {
+              "type": "number"
+            },
+            "check": {
+              "$ref": "#/$defs/scalarCheck"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "x",
+            "check"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "slopeAt"
+            },
+            "x": {
+              "type": "number"
+            },
+            "check": {
+              "$ref": "#/$defs/scalarCheck"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "direction"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "monotonic"
+            },
+            "direction": {
+              "enum": [
+                "increasing",
+                "decreasing"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "level"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "crosses"
+            },
+            "level": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
+    "acCheck": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "f",
+            "check"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "gainAt"
+            },
+            "f": {
+              "type": "number"
+            },
+            "check": {
+              "$ref": "#/$defs/scalarCheck"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "f",
+            "check"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "phaseAt"
+            },
+            "f": {
+              "type": "number"
+            },
+            "check": {
+              "$ref": "#/$defs/scalarCheck"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "check"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "bandwidth3dB"
+            },
+            "check": {
+              "$ref": "#/$defs/scalarCheck"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "check"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "unityGainFrequency"
+            },
+            "check": {
+              "$ref": "#/$defs/scalarCheck"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "check"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "phaseMargin"
+            },
+            "check": {
+              "$ref": "#/$defs/scalarCheck"
+            }
+          }
+        }
+      ]
+    },
+    "tranCheck": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "target",
+            "tol",
+            "by"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "settleWithin"
+            },
+            "target": {
+              "type": "number"
+            },
+            "tol": {
+              "type": "number"
+            },
+            "by": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "neverExceed"
+            },
+            "value": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "stayAbove"
+            },
+            "value": {
+              "type": "number"
+            },
+            "from": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "stayBelow"
+            },
+            "value": {
+              "type": "number"
+            },
+            "from": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "amplitude"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "rippleBelow"
+            },
+            "amplitude": {
+              "type": "number"
+            },
+            "from": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value",
+            "tol"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "finalCloseTo"
+            },
+            "value": {
+              "type": "number"
+            },
+            "tol": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
+    "tranConfig": {
+      "type": "object",
+      "required": [
+        "tstop",
+        "dt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tstop": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "dt": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxStep": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minStep": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "method": {
+          "enum": [
+            "trap",
+            "be"
+          ]
+        },
+        "ic": {
+          "enum": [
+            "zero",
+            "op"
+          ]
+        },
+        "reltol": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        }
+      }
+    },
+    "dcConfig": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "points"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/id"
+        },
+        "param": {
+          "$ref": "#/$defs/id"
+        },
+        "from": {
+          "type": "number"
+        },
+        "to": {
+          "type": "number"
+        },
+        "points": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10001
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "source"
+          ]
+        },
+        {
+          "required": [
+            "param"
+          ]
+        }
+      ]
+    },
+    "acConfig": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "pointsPerDecade"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "to": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "pointsPerDecade": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "assertionBase": {
+      "type": "object",
+      "required": [
+        "id",
+        "stage",
+        "probe",
+        "check"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "probe": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.(i|v))?$"
+        },
+        "at": {
+          "type": "string"
+        }
+      }
+    },
+    "assertion": {
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/assertionBase"
+            }
+          ],
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": true,
+            "probe": true,
+            "at": true,
+            "stage": {
+              "const": "op"
+            },
+            "check": {
+              "$ref": "#/$defs/scalarCheck"
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/assertionBase"
+            }
+          ],
+          "type": "object",
+          "required": [
+            "dc"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": true,
+            "probe": true,
+            "at": true,
+            "stage": {
+              "const": "dc"
+            },
+            "check": {
+              "$ref": "#/$defs/dcCheck"
+            },
+            "dc": {
+              "$ref": "#/$defs/dcConfig"
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/assertionBase"
+            }
+          ],
+          "type": "object",
+          "required": [
+            "ac"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": true,
+            "probe": true,
+            "at": true,
+            "stage": {
+              "const": "ac"
+            },
+            "check": {
+              "$ref": "#/$defs/acCheck"
+            },
+            "ac": {
+              "$ref": "#/$defs/acConfig"
+            },
+            "ref": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.(i|v))?$"
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/assertionBase"
+            }
+          ],
+          "type": "object",
+          "required": [
+            "tran"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": true,
+            "probe": true,
+            "at": true,
+            "stage": {
+              "const": "tran"
+            },
+            "check": {
+              "$ref": "#/$defs/tranCheck"
+            },
+            "tran": {
+              "$ref": "#/$defs/tranConfig"
+            }
+          }
+        }
+      ]
+    },
+    "point": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number"
+      }
+    },
+    "layout": {
+      "description": "Viewer-only placement hints; never affect simulation. Extra (viewer-owned) fields are allowed.",
+      "type": "object",
+      "properties": {
+        "components": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "rotation": {
+                "enum": [
+                  0,
+                  90,
+                  180,
+                  270
+                ]
+              },
+              "flip": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "wires": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*\\.[^.]+$"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*\\.[^.]+$"
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/point"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

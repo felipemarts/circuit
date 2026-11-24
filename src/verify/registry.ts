@@ -214,6 +214,111 @@ not an electrical result. The message pinpoints what to fix; correct the
 bench code and re-run.`,
   },
 
+  // ── circuit document (circuitsvibe-circuit/1) and share links: T010–T029 ──
+  {
+    code: 'T010',
+    slug: 'invalid-circuit-document',
+    title: 'the circuit document is not valid',
+    explanation: `The .circuit.json file (or the document inside a share link) is not a valid
+circuitsvibe-circuit/1 document: it is not JSON, a required field is missing,
+a field has the wrong type, an unknown field is present, or a reference is
+dangling (a pin on an undeclared named net, a probe naming no component or
+net, an override or layout entry for an unknown id). evidence.path is the
+JSON pointer of the offending value. Unknown fields are refused rather than
+ignored so that no reader silently drops meaning.
+Fix: regenerate the document with \`circuitsvibe export <bench.ts>\`, or correct
+the field (docs/CIRCUIT-FORMAT.md, schema/circuit.schema.json).`,
+  },
+  {
+    code: 'T011',
+    slug: 'unsupported-circuit-schema',
+    title: 'circuit document schema version not supported',
+    explanation: `The document's "schema" is a circuitsvibe-circuit version this circuitsvibe
+does not read (it reads circuitsvibe-circuit/1). A different major version
+means an incompatible format, usually written by a newer release.
+Fix: upgrade circuitsvibe (npx circuitsvibe@latest ...), or re-export the
+document with the version you have.`,
+  },
+  {
+    code: 'T012',
+    slug: 'unknown-component-type',
+    title: 'circuit document uses an unknown component type',
+    explanation: `A component's "type" is neither a built-in type (\`circuitsvibe catalog\`) nor
+the name of a custom definition supplied by the caller. Custom
+(defineComponent) parts are code, so a document can only name them; the
+reader must be given the same definitions (library: benchFromDoc(doc,
+{ definitions })). The CLI has no definition registry.
+Fix: use a built-in type, or load the document through the library with the
+definitions it needs.`,
+  },
+  {
+    code: 'T013',
+    slug: 'custom-component-not-serializable',
+    title: 'bench with custom components cannot be exported or shared',
+    explanation: `export / share / verify --share turn a bench into a circuit document, which
+is plain data in any language. A defineComponent part is TypeScript code
+(its stamp and ac functions), which a document cannot carry, so the command
+refuses and names the parts instead of producing a document that cannot be
+simulated elsewhere. verify itself is unaffected.
+Fix: model the part with built-in components, or export through the library
+with toCircuitDoc(bench, overrides, { definitions }) and give every reader
+the same definitions.`,
+  },
+  {
+    code: 'T014',
+    slug: 'invalid-component',
+    title: 'a document component cannot be built as described',
+    explanation: `The component's params do not build its type (missing or non-numeric
+parameter, invalid waveform), a parameter would be ignored or changed by the
+engine (e.g. an LED with a custom Is: the LED model is fixed), its pins are
+not exactly the type's canonical pins (every pin must be listed; aliases such
+as '1' for a source's '+' are not accepted), or a free parameter is declared
+on a type with no sweepable value.
+Fix: compare with \`circuitsvibe catalog <type>\` and with the params an exported
+document contains for the same part.`,
+  },
+  {
+    code: 'T015',
+    slug: 'share-payload-too-large',
+    title: 'share link too large',
+    explanation: `A share link carries the whole compressed document in the URL. Links above
+2 MiB (2,097,152 characters) are refused: Chromium rejects longer URLs, so
+such a link would not open. When decoding, a payload that inflates above
+16 MiB is refused too (protection against deflate bombs).
+Fix: share the .circuit.json file from \`circuitsvibe export\` instead, or drop
+large embedded sources.`,
+  },
+  {
+    code: 'T016',
+    slug: 'malformed-share-link',
+    title: 'share link is malformed',
+    explanation: `The text is not a circuitsvibe share link, or its payload is damaged: no
+'#c=' fragment, a payload not of the form '<version>.<base64url>', characters
+outside the base64url alphabet, data that is not valid deflate-raw, or
+decompressed bytes that are not UTF-8 JSON. Links are often truncated or
+re-wrapped by chat apps and mail clients.
+Fix: copy the complete link again, or ask for the .circuit.json file.`,
+  },
+  {
+    code: 'T017',
+    slug: 'unsupported-share-encoding',
+    title: 'share link encoding version not supported',
+    explanation: `The payload of a share link starts with an encoding version ('1.' today:
+base64url of deflate-raw of the canonical JSON). A different version was
+written by a newer (or foreign) encoder this circuitsvibe cannot read.
+Fix: upgrade circuitsvibe (npx circuitsvibe@latest open <link>).`,
+  },
+  {
+    code: 'T018',
+    slug: 'long-share-link',
+    title: 'share link is long (warning)',
+    explanation: `The link is longer than 8 KiB (8192 characters). It is valid and opens in
+browsers, but some chat apps, mail clients and terminals truncate or wrap
+long links, which breaks them (T016 on the receiving side).
+Fix: nothing is required; if the link arrives broken, send the .circuit.json
+file from \`circuitsvibe export\` instead.`,
+  },
+
   // ── digital engine (src/digital): F13x digital lint, D5xx digital runtime/timing ──
   {
     code: 'F130',

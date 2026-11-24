@@ -11,7 +11,7 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `S1xx` | linear solver | unsolvable system |
 | `S2xx` | nonlinear solver, transient stepping, AC models | Newton-Raphson, timestep control, small-signal models |
 | `A3xx` | assertions | spec not met |
-| `T0xx` | tooling | bench authoring error |
+| `T0xx` | tooling | bench authoring error (T001–T009), circuit documents and share links (T010–T029) |
 | `F130`–`F139` | digital lint (pre-simulation) | digital netlist structure (src/digital) |
 | `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (src/digital) |
 | `F14x` | firmware lint (pre-simulation) | MCU firmware source mistakes (F140–F149) |
@@ -38,6 +38,15 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `T002` | stage-crash | error | a stage (op/dc/ac/tran) crashed after elaboration — platform bug; the RunRecord is still emitted (exit 3) |
 | `T003` | no-ac-stimulus | error | AC assertions but no source has an `ac` stimulus (exit 3) |
 | `T004` | ambiguous-ac-reference | error | several sources have an `ac` stimulus and an AC probe has no `ref` (exit 3) |
+| `T010` | invalid-circuit-document | error | a circuit document (`.circuit.json` or share-link payload) is not JSON, misses/mistypes a field, has an unknown field, or has a dangling reference — `evidence.path` is the JSON pointer (exit 3) |
+| `T011` | unsupported-circuit-schema | error | the document's `schema` is a `circuitsvibe-circuit` version this release does not read (exit 3) |
+| `T012` | unknown-component-type | error | a document component type is not built-in and no definition was supplied (exit 3) |
+| `T013` | custom-component-not-serializable | error | `export` / `share` / `verify --share` on a bench with `defineComponent` parts (names them; no registry in the CLI) — exit 3, or `share.error` under `verify --share` |
+| `T014` | invalid-component | error | a document component's params do not build its type, a param would be ignored, or its pins are not exactly the type's canonical pins (exit 3) |
+| `T015` | share-payload-too-large | error | share link above 2 MiB (Chromium's URL limit), or a payload inflating above 16 MiB on decode (exit 3) |
+| `T016` | malformed-share-link | error | no `#c=` payload, not `<version>.<base64url>`, bad base64url, not deflate-raw, not UTF-8 JSON (exit 3) |
+| `T017` | unsupported-share-encoding | error | share payload encoding version other than `1` (exit 3) |
+| `T018` | long-share-link | warning | share link longer than 8 KiB — valid, but some chat apps truncate long links (`warnings[]` of `share --json`) |
 | `F130` | floating-input | error | digital input pin on a net with no driver (no output, Const/Pull, or declared input) — simulates as X |
 | `F131` | multiple-drivers | error | push-pull digital output shares its net with another non-weak driver (output, tri-state, external input) |
 | `F132` | output-short | error | two outputs of the same digital part on one net (e.g. q tied to qn) |
@@ -233,6 +242,21 @@ Determinism: the output contains no timestamps (only the ledger adds `at` on wri
 identical runs produce byte-identical records — the diff between agent iterations stays
 trivial. Matrix unknowns are ordered by component id and net name, so the same netlist
 declared in a different order produces the same numbers (only `at` locations differ).
+
+## Share links (`verify --share`, `share --json`)
+
+`circuitsvibe verify … --json --share` adds one field to the RunRecord (the rest is unchanged,
+and the ledger entry never contains it):
+
+```jsonc
+"share": { "url": "https://circuitsvibe.com/app.html#c=1.dZDNTs…", "bytes": 426, "warnings": [] }
+// or, when the bench cannot be shared (exit code unchanged):
+"share": { "error": { "code": "T013", "message": "U1 (Chatter) is a defineComponent part: …" } }
+```
+
+`circuitsvibe share <file> --json` prints `{ "url", "bytes", "warnings" }` (exit 0) or
+`{ "diagnostics": [...], "exitCode": 3 }`. `warnings` holds T018 when the link exceeds 8 KiB.
+Format and encoding: [CIRCUIT-FORMAT.md](CIRCUIT-FORMAT.md).
 
 ## `circuitsvibe sweep --json`
 
