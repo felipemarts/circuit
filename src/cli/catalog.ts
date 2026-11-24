@@ -118,4 +118,12 @@ TRAN ASSERTIONS    tb.expect.tran({tstop:'5m', dt?:'1u', maxStep?, method?:'trap
 SIZING DELEGATION  tb.param('R1', {min:'100', max:'10k', scale:'log'})
                    -> on op-assertion failure the platform sweeps the range and
                      returns a VERIFIED passing range instead of making you guess
-NET NAMES          tb.name('out', r1.pin('2'))  -> probe 'out' in any stage`;
+NET NAMES          tb.name('out', r1.pin('2'))  -> probe 'out' in any stage
+
+OP-AMPS            pins 'inp' (+), 'inn' (-), 'out', 'v+', 'v-' (supply REQUIRED on OpAmp, Comparator, Part())
+                   tb.add('U1', Part('LM358'))  one channel; also LM741 TL072 MCP6002 NE5532
+                   new OpAmp({ aol, gbw, sr, ... })  |  new IdealOpAmp()  (v+/v- optional: both = rail clamp)
+                   probes: U1.v = V(out), U1.i = output current (+ = sourcing)
+COMPARATORS        Part('LM393') | Part('LM311') (wire 'emit') | new Comparator(): open collector,
+                   output low when V(inp) < V(inn); needs a pull-up; hysteresis = external resistors
+RATINGS            Part() amplifiers: R420-R425 at the op point in stages.op.ratings (fail = exit 1)`;

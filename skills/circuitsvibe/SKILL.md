@@ -74,7 +74,13 @@ new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2
   `verify x.circuit.json` simulates it exactly like the bench.
 
 Supported today: Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN,
-PULSE, PWL, PWM, AC stimulus), Diode, LED, Switch (SPDT), Button, custom parts via
-`defineComponent`; DC operating point (with gmin/source stepping), DC sweep, AC
-small-signal, adaptive transient. Not yet: transistors, op-amps, digital logic,
-microcontrollers.
+PULSE, PWL, PWM, AC stimulus), Diode, LED, Switch (SPDT), Button, op-amps (`IdealOpAmp`,
+macro-model `OpAmp`), open-collector `Comparator`, real parts `Part('LM358')`/LM741/TL072/
+MCP6002/NE5532/LM393/LM311, custom parts via `defineComponent`; DC operating point (with
+gmin/source stepping), DC sweep, AC small-signal, adaptive transient. Not yet: transistors,
+digital logic, microcontrollers.
+
+Op-amp pins are `'inp'`, `'inn'`, `'out'`, `'v+'`, `'v-'` (supply REQUIRED except on
+IdealOpAmp); comparators are open collector — add a pull-up. `Part()` amplifiers are
+checked against their datasheet ratings at the operating point (`stages.op.ratings`,
+R420–R425, exit 1).

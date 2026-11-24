@@ -153,6 +153,12 @@ $ circuitsvibe catalog                                 # component datasheet for
   `export`, `verify x.circuit.json`, and share links that carry the whole circuit in the URL
   fragment (`share`, `verify --share`, `open`) — no backend. Opening links in the web app is
   the viewer phase (in progress).
+- ✅ Op-amps and comparators (docs/OPAMPS.md): `IdealOpAmp`, a smooth-limited `OpAmp`
+  macro model (Aol, GBW, optional second pole, slew rate, data output swing, rout,
+  short-circuit current limit, Vos/Ib, quiescent current) and an open-collector
+  `Comparator`, in op/dc/ac/tran; `Part('LM358')` and six more real parts with parameters
+  derived from cited datasheet data; lint F120–F124 and datasheet checks R420–R425 at the
+  operating point.
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap
@@ -165,7 +171,7 @@ $ circuitsvibe catalog                                 # component datasheet for
 | v0.5 | `circuitsvibe optimize` (Nelder-Mead over the ladder as an objective function) — gmin/source stepping already shipped | the agent never picks a resistor by hand again |
 | v0.6 | UI = RunRecord viewer: assertion chips on the schematic, bands on the oscilloscope, ledger timeline | human and agent see the same artifact |
 | v0.7 | SPICE export + ngspice cross-check in CI with a tolerance table (ordering by ref in the matrix already shipped); sparse LU once benches pass ~500 nodes | public numerical credibility |
-| v0.8 | Level-1 MOSFET, Ebers-Moll BJT, behavioral sources; op-amp macro-model | unlocks real specs |
+| v0.8 | Level-1 MOSFET, Ebers-Moll BJT, behavioral sources; ~~op-amp macro-model~~ (done) | unlocks real specs |
 | v1.0 | **CircuitBench**: public eval of "iterations-to-green" per model, tasks with hidden assertions; freeze of the `circuitsvibe-run/1.0` schema | the standard wins because agents provably converge on it |
 
 Sequencing rules (from the architecture-panel judges): the terminal loop stands on its own
@@ -208,5 +214,11 @@ no benchmark claim beyond what the component library covers.
   `defineComponent` parts are code and are refused (T013) rather than half-serialized.
 - **Share links live in the URL fragment** (`#c=1.` + base64url of deflate-raw canonical JSON),
   like excalidraw: no server sees or stores a circuit. Warn above 8 KiB, refuse above 2 MiB.
+- **Op-amp models are smooth, not switched** — every limit (input stage, output window,
+  current limit, comparator switch) is a tanh/logistic/C1 ramp, with SPICE-style Newton
+  limiting on their arguments; the output window is an anti-windup gate on the gain node
+  rather than a stiff clamp, so saturation neither breaks Newton nor forces tiny transient
+  steps. Real parts are single channels built from catalog data; every value without a
+  datasheet number is a stated assumption shown by `catalog`.
 - **Locations are cwd-relative with forward slashes** — RunRecords are identical across
   machines and operating systems.

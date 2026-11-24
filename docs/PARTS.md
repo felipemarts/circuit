@@ -268,7 +268,8 @@ Known limits, which each card's note repeats:
   - **1N4148**: the card is Nexperia's (`.SUBCKT`; the 5.8 GΩ parallel leakage resistor
     is not in `params`), while the datasheet is Vishay's.
 - **No model card**: 2N2222A (onsemi publishes none, and stock LTspice has only 2N2222).
-  Every op-amp, comparator, logic part and timer is behavioural data only.
+  Op-amps and comparators have no SPICE card: `Part('LM358')` etc. build a behavioural
+  macro model from these values (docs/OPAMPS.md). Logic parts and timers are data only.
 - **Scanned datasheets**: IRF9540N (PD-94790A), CD4017B and CD4011B have no text layer.
   Their table values were read from rendered pages. Figure reads from them are marked
   estimated; table values are not.

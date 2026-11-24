@@ -67,7 +67,7 @@ Same shape as `RunRecord.netlist.components[]`:
 | Field | Meaning |
 |-------|---------|
 | `id` | `/^[A-Za-z][A-Za-z0-9_]*$/`, unique; the name in every diagnostic, probe and override |
-| `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `Switch`, `Button`) or the name of a custom definition supplied by the reader (T012 otherwise) |
+| `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `Switch`, `Button`, `IdealOpAmp`, `OpAmp`, `Comparator`) or the name of a custom definition supplied by the reader (T012 otherwise) |
 | `params` | the component configuration, exactly as in the RunRecord netlist (see below) |
 | `pins` | `{ pinName: netName }` with **every** canonical pin of the type, and only those (T014) |
 | `free` | optional `{ min, max, scale: "lin" \| "log" }` — a `tb.param` sweep range (verified hints) |
@@ -86,6 +86,9 @@ Same shape as `RunRecord.netlist.components[]`:
 | `LED` | `{ Is, n, Vt }` — fixed model; values other than the defaults are refused (T014) | `anode`, `cathode` |
 | `Switch` | `{ closed }` (boolean) | `com`, `a`, `b` |
 | `Button` | `{ pressed }` (boolean) | `1`, `2` |
+| `IdealOpAmp` | `{ gain }` | `inp`, `inn`, `out`, `v+`, `v-` (supply pins may sit alone on `n<digits>` nets = unused) |
+| `OpAmp` | `{ aol, gbw, sr, fp2, vos, ib, ios, swingHigh, swingLow, rout, iscSource, iscSink, iq, part? }` — `part` (string) names the catalog part of a `Part()` device | `inp`, `inn`, `out`, `v+`, `v-` |
+| `Comparator` | `{ avd, vos, ib, ios, tpdHL, tpdLH, overdrive, tpdFast, vol, iol, isink, gleak, iq, emitterPin?, part? }` | `inp`, `inn`, `out`, `v+`, `v-` (+ `emit` when `emitterPin: true`) |
 
 Waveforms: `sin: { offset, amplitude, freq, delay, damping, phase }`,
 `pulse: { v1, v2, td, tr, tf, pw, per }`, `pwl: { points: [[t, v], …], repeat }`,

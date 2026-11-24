@@ -147,8 +147,10 @@ The package is ESM with type declarations. The library entry is browser-safe (no
 ## Components
 
 Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN, PULSE, PWL, PWM,
-AC stimulus), Diode (Shockley, pn-junction limiting), LED, Switch (SPDT), Button, plus custom
-components through `defineComponent`:
+AC stimulus), Diode (Shockley, pn-junction limiting), LED, Switch (SPDT), Button, op-amps
+(`IdealOpAmp`, macro-model `OpAmp`) and open-collector `Comparator`, real op-amps and
+comparators through `Part('LM358')` (docs/OPAMPS.md), plus custom components through
+`defineComponent`:
 
 ```ts
 new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2m' } });
@@ -190,11 +192,11 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | AC small-signal | ✅ complex MNA around the operating point, gain/phase/bandwidth/unity-gain/phase-margin |
 | Sources | ✅ DC, SIN, PULSE, PWL, PWM (voltage and current), AC stimulus |
 | Semiconductors | ✅ Diode, LED · ❌ BJT, MOSFET, JFET |
-| Op-amps, comparators | ❌ |
+| Op-amps, comparators | ✅ `IdealOpAmp`, `OpAmp` macro model (Aol, GBW, 2nd pole, slew, swing, current limit, Vos/Ib), open-collector `Comparator`; `Part('LM358')`, LM741, TL072, MCP6002, NE5532, LM393, LM311 from datasheet data — [docs/OPAMPS.md](docs/OPAMPS.md) |
 | Digital logic, mixed-signal | ❌ |
 | Microcontrollers | ❌ |
 | Noise, distortion, pole-zero analysis | ❌ |
-| Real-part catalog with datasheet ratings | ❌ |
+| Real-part catalog with datasheet ratings | data for every family (docs/PARTS.md); op-amp/comparator ratings checked at the op point (R420–R425) |
 | SPICE netlist import/export | ❌ |
 | Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer support in progress |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
@@ -225,6 +227,7 @@ src/
 ├── elab/       bench DSL, units, canonical netlist + hash, source locations
 ├── doc/        circuit document (circuitsvibe-circuit/1), validation, share links
 ├── verify/     lint, op, dc, ac, tran stages, measurements, diagnostic registry
+├── opamps/     IdealOpAmp, OpAmp, Comparator, real-part mapping, F12x lint, R42x ratings
 ├── schema/     RunRecord types, version identity
 ├── report/     human renderer
 ├── cli/        CLI commands, bench loader, init
