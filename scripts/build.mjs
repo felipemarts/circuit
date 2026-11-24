@@ -24,8 +24,23 @@ await build({
   bundle: true,
   format: 'esm',
   platform: 'neutral',
+  // sucrase (firmware transpilation, src/mcu/firmware.ts) is a CommonJS package.
+  mainFields: ['module', 'main'],
   target: 'es2022',
   sourcemap: true,
+  banner: { js: license },
+  logLevel: 'warning',
+});
+
+// `circuitsvibe/arduino`: the firmware API, so editors type-check firmware files
+// (inside the simulator the import is mapped to the running MCU instead).
+await build({
+  entryPoints: [path.join(root, 'src/mcu/arduino.ts')],
+  outfile: path.join(dist, 'arduino.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'neutral',
+  target: 'es2022',
   banner: { js: license },
   logLevel: 'warning',
 });
@@ -75,7 +90,7 @@ function addDeclarationExtensions(dir) {
   }
 }
 
-for (const f of ['index.js', 'circuitsvibe-standalone.mjs']) {
+for (const f of ['index.js', 'arduino.js', 'circuitsvibe-standalone.mjs']) {
   const kb = (fs.statSync(path.join(dist, f)).size / 1024).toFixed(0);
   console.log(`dist/${f}  ${kb} KiB`);
 }

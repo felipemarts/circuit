@@ -733,6 +733,87 @@
               ]
             }
           }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "text"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "serialContains"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "by": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "text"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "serialNotContains"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "pattern"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "serialMatches"
+            },
+            "pattern": {
+              "type": "string"
+            },
+            "flags": {
+              "type": "string",
+              "pattern": "^[imsuy]*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "serialLines"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         }
       ]
     },
@@ -858,7 +939,7 @@
         "probe": {
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\..+)?$",
-          "description": "'<id>.i' / '<id>.v', a semiconductor device quantity '<id>.<q>' (e.g. 'Q1.ic', 'Q1.vbe', 'M1.vgs', 'D1.p'; circuitsvibe catalog <type> lists them), '<id>.<pin>' (a logic IC or primitive pin, e.g. 'U1.1Y'), or a named net"
+          "description": "'<id>.i' / '<id>.v', a semiconductor device quantity '<id>.<q>' (e.g. 'Q1.ic', 'Q1.vbe', 'M1.vgs', 'D1.p'; circuitsvibe catalog <type> lists them), '<id>.<pin>' (a logic IC, primitive, VHDL-block or MCU pin, e.g. 'U1.1Y', 'U2.q[0]', 'U1.D13'), a named net, or — for serial checks — the id of a microcontroller ('U1')"
         },
         "at": {
           "type": "string"

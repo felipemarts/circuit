@@ -104,3 +104,20 @@ export { ReactiveState } from './analysis/integration';
 export type { LoadContext, AcLoadContext, StepContext, InitContext, AcceptContext, Phasor } from './analysis/context';
 export { SimulationSystem, TransientEngine, ConvergenceError, TimestepTooSmallError, NoAcModelError } from './analysis/engine';
 export type { OpTelemetry, TranTelemetry, TransientOptions, NRTelemetry } from './analysis/engine';
+
+// Microcontrollers (Arduino-style TypeScript firmware, src/mcu) and VHDL blocks (src/vhdl) as bench components.
+export { runLadderAsync } from './verify/ladder';
+export { AsyncAnalysisError } from './analysis/steps';
+export { Mcu, ArduinoUno, mcuPart, mcuPartIds } from './mixed/mcu';
+export type { McuOptions, McuPwmMode, FirmwareInput } from './mixed/mcu';
+export { VhdlBlock } from './mixed/vhdl-block';
+export type { VhdlBlockOptions, VhdlBlockPort } from './mixed/vhdl-block';
+export { SerialExpect } from './elab/serial';
+export { MCU_PROFILES, getMcuProfile } from './mcu/profiles';
+export { MCU_ELECTRICAL } from './mcu/electrical';
+export type { McuElectrical } from './mcu/electrical';
+export { compileFirmware, instantiateFirmware, setFirmwareHost } from './mcu/firmware';
+export type { FirmwareBundle, FirmwareHost } from './mcu/firmware';
+export type { McuProfile, Firmware } from './mcu/types';
+export { compileVhdl } from './vhdl/design';
+export type { VhdlSource } from './vhdl/source';

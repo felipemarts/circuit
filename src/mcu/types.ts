@@ -51,6 +51,8 @@ export interface McuPinBus {
   readDigital(pin: string, t: number): Level;
   /** Pin voltage (V, relative to the MCU's GND) at time t — feeds the ADC. */
   readVoltage(pin: string, t: number): number;
+  /** Optional: supply VCC − GND (V) at time t — the ADC's DEFAULT (VCC) reference. Nominal profile VCC when absent. */
+  readSupply?(t: number): number;
   /**
    * Subscribe to input edges on a pin (used for attachInterrupt). The bus calls
    * `cb(level, t)` when the pin's logic level changes; `t` may be in the future

@@ -1,4 +1,4 @@
-import { runLadder } from '../verify/ladder';
+import { runLadderAsync } from '../verify/ladder';
 import { renderHuman } from '../report/human';
 import { findDiagnosticDoc, DIAGNOSTIC_DOCS } from '../verify/registry';
 import { appendRun, listRuns, findRun, LEDGER_DIR } from '../ledger/ledger';
@@ -203,7 +203,7 @@ async function verify(flags: Flags): Promise<number> {
   }
 
   const overrides = { ...loaded.overrides, ...flags.overrides };
-  const record: RunRecord = runLadder(loaded.desc, {
+  const record: RunRecord = await runLadderAsync(loaded.desc, {
     stages: flags.stages,
     overrides,
     hints: flags.hints,

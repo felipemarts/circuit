@@ -16,7 +16,8 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (D501–D507, src/digital); analog↔digital bridges: levels, supplies, drive (D508–D549, src/mixed) |
 | `F14x` | firmware lint (pre-simulation) | MCU firmware source mistakes (F140–F149) |
 | `F107`–`F119` | semiconductor lint (pre-solver) | transistor bias/drive topology (F107–F110 active) |
-| `R401`–`R409` | datasheet ratings (after op, dc, tran) | a catalog `Part()` exceeds an absolute maximum rating (R401–R404 active; R41x reserved for MCU pins) |
+| `R401`–`R409` | datasheet ratings (after op, dc, tran) | a catalog `Part()` exceeds an absolute maximum rating (R401–R404 active) |
+| `R410`–`R419` | MCU pin-current ratings (after tran) | a microcontroller pin, port group or supply pin exceeds its datasheet current limit (R410–R413 active) |
 | `T005`–`T009` | tooling: `.model` cards | SPICE model card problems (T005–T008 active) |
 | `M6xx` | MCU runtime | firmware execution on a simulated microcontroller (M601–M649) |
 | `V701`–`V749` | VHDL compile / elaboration (pre-simulation) | syntax, unsupported constructs, types, hierarchy (src/vhdl) |
@@ -59,10 +60,15 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `F136` | outputs-tied | error | two logic outputs (at least one push-pull) on one analog net — contention through the analog net |
 | `F137` | floating-logic-input | error / warning | logic input on an analog net with nothing that sets its voltage (only inputs/capacitors); warning for inputs of an unused section (its outputs open) |
 | `F138` | output-on-rail | error | logic output tied to ground, an IC supply rail or an ideal voltage source |
+| `F139` | mcu-supply-unconnected | error | a microcontroller's VCC (Uno: `5V`) or GND pin is unconnected, or both are on the same net |
 | `R401` | voltage-rating-exceeded | fail | a `Part()` exceeds Vceo/Vcbo/Vebo, Vds/±Vgs or VR/VRRM (in `stages.<stage>.ratings`, exit 1) |
 | `R402` | current-rating-exceeded | fail | continuous current over IcMax/IbMax, Id25 or IF/IFAV |
 | `R403` | pulsed-current-rating-exceeded | fail | transient peak over IcPeak, IdPulsed, IFP or IFSM |
 | `R404` | power-rating-exceeded | fail | dissipation over Pd (op/dc value; tran: window average, or peak with `tb.ratings({ pd: 'peak' })`) |
+| `R410` | mcu-pin-current-exceeded | fail | an MCU I/O pin sources/sinks more than its absolute maximum (ATmega328P 40 mA) — peak over the transient, in `stages.tran.ratings` (exit 1) |
+| `R411` | mcu-pin-current-above-recommended | warning | an MCU pin carries more than the datasheet's VOH/VOL test current (ATmega328P 20 mA) but less than the absolute maximum (diagnostic, exit unchanged) |
+| `R412` | mcu-port-current-exceeded | fail | the summed sink or source current of an MCU port group exceeds its limit (ATmega328P 100 mA per group) |
+| `R413` | mcu-supply-current-exceeded | fail | MCU VCC/GND pin current (I/O loads; core current not modelled) or total sink/source current over its limit |
 | `S101` | unsolvable-system | error | singular matrix that lint did not model (rare; please report) |
 | `S201` | nr-nonconvergence | error | NR did not converge at the DC point (op, a DC-sweep point, or the AC operating point) after plain Newton, gmin stepping and source stepping — carries the offending component, ΔV, oscillation history, `attempts`, and the sweep point when in the dc stage |
 | `S202` | nr-nonconvergence | error | NR did not converge at a transient step even after cutting the step (by 8, retried with BE) below the minimum — carries the culprit, `time` and the last `step` |
@@ -228,9 +234,18 @@ Emitted by the microcontroller runtime (`src/mcu/`). Payloads are plain data: `c
 | `M619` | invalid-argument | error | argument out of domain (negative delay, unknown mode, non-function handler…) |
 | `M620` | value-clamped | warning | value clamped/truncated (`analogWrite` outside 0..255, fractional `delay`) |
 | `M621` | timer-pwm-conflict | warning | Timer1 API used together with PWM on its pins (Uno D9/D10) |
+| `M622` | mcu-reset-unpowered | error | VCC−GND below the reset threshold (Uno BOD 2.7 V): at t = 0 the MCU never starts; during the run it browns out and stays in reset (pins high-Z) — carries `supply`, `resetBelow`, `time` |
+| `M623` | mcu-supply-out-of-range | error / warning | supply outside the recommended range for the clock (warning; ATmega328P at 16 MHz: 4.5–5.5 V) or above the absolute maximum (error, 6.0 V) |
 
-Codes M622–M649 are reserved for the MCU runtime. Pin current ratings (R41x) belong to the
-integration and use the limits exposed in the MCU profiles.
+Codes M624–M649 are reserved for the MCU runtime.
+
+**In a bench** (`new Mcu(...)`, `new ArduinoUno(...)`) these payloads become RunRecord
+diagnostics: `stage` is `lint` (F14x, M608 load errors) or `tran` (M6xx, with `time`),
+`subject` is `{ components: ['U1'], pins: ['U1.D13'] }` (the API name moves to
+`evidence.api`), the message starts with the MCU id, and `at` is the firmware
+`file:line` (cwd-relative, e.g. `bench/mcu/blink.fw.ts:12`) — or the `tb.add` line when the
+runtime knows no firmware location. VHDL diagnostics (V7xx) of a `VhdlBlock` keep their
+`.vhd` `file:line:col` (`stage: lint` for V701–V749, `tran` for V750–V799).
 
 ## Fix confidence contract
 

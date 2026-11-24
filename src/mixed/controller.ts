@@ -31,6 +31,8 @@ import { LogicIC, LogicPrimitive, OutputStage, clampCurrent, stageCurrent } from
 import { RAMP_FRACTION, UNPOWERED_FRACTION, type LogicFamilyModel, type TimerModel } from './families';
 import type { BridgeKind } from './ics';
 import { mixedDiagnostic } from './diagnostics';
+import type { McuCosim, McuSerialCapture } from './mcu-cosim';
+import type { RatingResult } from '../schema/types';
 
 /** Max re-solves of one DC point while the logic state changes. */
 export const MAX_SETTLE = 24;
@@ -104,6 +106,10 @@ export interface MixedPlan {
   locOf: Map<string, string | undefined>;
   /** digital net / internal id → display name for messages. */
   display: Map<string, string>;
+  /** VHDL blocks: their elaborated processes as digital netlist components (nets already mapped). */
+  vhdl?: { id: string; components: DigitalNetlistComponent[] }[];
+  /** Microcontrollers (firmware co-simulation, src/mixed/mcu-cosim.ts). */
+  mcus?: McuCosim[];
 }
 
 export interface MixedRunResult {
@@ -198,6 +204,30 @@ export class MixedController implements CoSimHook {
     this.crossTol = Math.max(1e-12, Math.min(1e-9, tstop * 1e-7));
   }
 
+  /** Label of the transient configuration being run (MCU rating / serial records). */
+  config = '';
+
+  /** Serial output of every MCU that printed, in the last transient. */
+  serialCaptures(): McuSerialCapture[] {
+    const out: McuSerialCapture[] = [];
+    for (const m of this.plan.mcus ?? []) {
+      const c = m.serialCapture(this.config);
+      if (c) out.push(c);
+    }
+    return out;
+  }
+
+  /** Serial log of one MCU in the last transient (undefined: no such MCU). */
+  serialLog(id: string): { t: number; port: string; text: string }[] | undefined {
+    const m = (this.plan.mcus ?? []).find(x => x.id === id);
+    return m ? (m.serial ?? []) : undefined;
+  }
+
+  /** MCU pin-current ratings (R410–R413) of the last transient. */
+  mcuRatings(): RatingResult[] {
+    return (this.plan.mcus ?? []).flatMap(m => m.ratings);
+  }
+
   attach(_system: SimulationSystem): void {
     this.run = { diagnostics: [], tEnd: 0 };
     this.sim = undefined;
@@ -222,6 +252,7 @@ export class MixedController implements CoSimHook {
       ic.rangeReported = ic.absReported = ic.brownReported = false;
       ic.ic._powered = true;
     }
+    for (const m of this.plan.mcus ?? []) m.attach();
   }
 
   /** The digital netlist with IC delays at their current supply. */
@@ -243,6 +274,7 @@ export class MixedController implements CoSimHook {
         components.push({ id: `${e.id}__${c.local}`, type: c.type, params: c.params, pins, ...(at ? { at } : {}) });
       }
     }
+    for (const v of this.plan.vhdl ?? []) components.push(...v.components.map(c => ({ ...c, params: c.params, pins: { ...c.pins } })));
     const inputs: DigitalInputPort[] = this.plan.inputs.map(b => ({ net: b.net, initial: b.level ?? 0, strength: 'strong' }));
     return { components, inputs };
   }
@@ -394,6 +426,19 @@ export class MixedController implements CoSimHook {
     for (const b of this.plan.inputs) {
       if (b.checkZone && inZone(b, x)) b.zoneSince = 0;
     }
+    for (const m of this.plan.mcus ?? []) m.beginTransient(x);
+  }
+
+  /** Firmware due at t: run it (asynchronously) — see CoSimHook.work. */
+  work(t: number): Promise<boolean> | undefined {
+    const due = (this.plan.mcus ?? []).filter(m => m.due(t));
+    if (due.length === 0) return undefined;
+    return (async () => {
+      let changed = false;
+      // One runtime at a time: the Arduino API is ambient.
+      for (const m of due) if (await m.work(t)) changed = true;
+      return changed;
+    })();
   }
 
   nextBreakpoint(t: number): number {
@@ -402,6 +447,10 @@ export class MixedController implements CoSimHook {
     if (ne !== undefined && ne > t) bp = ne;
     for (const o of this.plan.outputs) {
       const c = o.stage.nextCorner(t);
+      if (c < bp) bp = c;
+    }
+    for (const m of this.plan.mcus ?? []) {
+      const c = m.nextBreakpoint(t);
       if (c < bp) bp = c;
     }
     return bp;
@@ -424,8 +473,12 @@ export class MixedController implements CoSimHook {
   locate(t0: number, x0: Float64Array, t1: number, x1: Float64Array): number | undefined {
     if (!this.sim) return undefined;
     const c = this.crossings(t0, x0, t1, x1);
-    if (c.length === 0) return undefined;
-    const tc = c[0].t;
+    let tc = c.length > 0 ? c[0].t : Infinity;
+    for (const m of this.plan.mcus ?? []) {
+      const t = m.earliestCrossing(t0, x0, t1, x1);
+      if (t !== undefined && t < tc) tc = t;
+    }
+    if (tc === Infinity) return undefined;
     if (t1 - tc <= this.crossTol) return undefined;
     return Math.max(tc + this.crossTol / 2, t0 + this.crossTol / 2);
   }
@@ -435,6 +488,9 @@ export class MixedController implements CoSimHook {
     if (!sim) return false;
     const t0 = this.t0;
     const x0 = this.x0;
+    // Currents with the stage state the step was solved with — before zero-delay
+    // logic (VHDL processes) reacts to this step's crossings inside (t0, t1].
+    this.checkCurrents(x1, t1, 'tran');
     for (const { b, t } of this.crossings(t0, x0, t1, x1)) {
       b.level = b.level === 0 ? 1 : 0;
       sim.drive(b.net, b.level, Math.max(t, sim.now));
@@ -445,12 +501,11 @@ export class MixedController implements CoSimHook {
     });
     sim.advanceTo(t1);
     off();
-    // Currents with the stage state the step was solved with (before supply updates).
-    this.checkCurrents(x1, t1, 'tran');
     if (this.updateSupplies(x1, true)) discontinuity = true;
     this.updateDrive();
     for (const e of this.plan.ics) this.checkSupply(e, 'tran', t1);
     this.trackZones(t0, x0, t1, x1);
+    for (const m of this.plan.mcus ?? []) if (m.accepted(t0, x0, t1, Float64Array.from(x1))) discontinuity = true;
     this.t0 = t1;
     this.x0 = Float64Array.from(x1);
     this.run.tEnd = t1;
@@ -482,6 +537,10 @@ export class MixedController implements CoSimHook {
       }
     }
     for (const d of sim.diagnostics()) this.report(this.translate(d, 'tran'));
+    for (const m of this.plan.mcus ?? []) {
+      m.finish(this.config, tEnd);
+      for (const d of m.diagnostics()) this.report(d);
+    }
     this.run.recording = sim.recording();
     this.run.tEnd = tEnd;
     this.run.events = sim.stats().events;
@@ -720,6 +779,8 @@ export class MixedController implements CoSimHook {
     const out = JSON.parse(rename(JSON.stringify({ ...d, stage }))) as Diagnostic & { subject?: { components?: string[] } };
     if (out.subject) out.subject.components = comps.length > 0 ? comps : undefined;
     if (out.subject && out.subject.components === undefined) delete out.subject.components;
+    // VHDL diagnostics point into the .vhd source; everything else at the owner's tb.add line.
+    if (/^V\d{3}$/.test(d.code) && d.at) return out;
     const at = comps.map(c => this.plan.locOf.get(c)).find(a => a !== undefined);
     if (at) out.at = at;
     else delete out.at;
@@ -735,7 +796,7 @@ export class MixedController implements CoSimHook {
     const out: Record<string, [number, LogicLevel][]> = {};
     const truncated: string[] = [];
     for (const name of [...signals.keys()].sort()) {
-      const tr: NetTrace | undefined = rec.traces[signals.get(name)!];
+      const tr: NetTrace | undefined = this.trace(signals.get(name)!);
       if (!tr) continue;
       const n = Math.min(tr.t.length, CAPTURE_LIMIT);
       if (tr.t.length > CAPTURE_LIMIT) truncated.push(name);
@@ -747,6 +808,12 @@ export class MixedController implements CoSimHook {
   }
 
   trace(net: string): NetTrace | undefined {
+    if (net.startsWith('mcu:')) {
+      const ref = net.slice(4);
+      const dot = ref.indexOf('.');
+      const m = (this.plan.mcus ?? []).find(x => x.id === ref.slice(0, dot));
+      return m?.trace(ref.slice(dot + 1));
+    }
     return this.run.recording?.traces[net];
   }
 }

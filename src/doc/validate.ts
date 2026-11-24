@@ -63,8 +63,11 @@ const STAGE_OPS: Record<string, string[]> = {
   tran: [
     'settleWithin', 'neverExceed', 'stayAbove', 'stayBelow', 'rippleBelow', 'finalCloseTo',
     'logicAt', 'logicEdges', 'logicFrequency', 'logicDutyCycle', 'logicStable',
+    'serialContains', 'serialNotContains', 'serialMatches', 'serialLines',
   ],
 };
+/** Serial checks: the probe is a microcontroller component id. */
+const SERIAL_OPS = ['serialContains', 'serialNotContains', 'serialMatches', 'serialLines'];
 /** Required and optional numeric fields of each non-scalar check (beyond `op`). */
 const CHECK_FIELDS: Record<string, { num: string[]; optNum?: string[]; nested?: boolean; extra?: string[] }> = {
   within: { num: ['min', 'max'] },
@@ -91,6 +94,10 @@ const CHECK_FIELDS: Record<string, { num: string[]; optNum?: string[]; nested?: 
   logicFrequency: { num: ['value', 'tol'], optNum: ['from', 'to'] },
   logicDutyCycle: { num: ['value', 'tol'], optNum: ['from', 'to'] },
   logicStable: { num: ['from', 'to'], extra: ['value'] },
+  serialContains: { num: [], optNum: ['by'], extra: ['text'] },
+  serialNotContains: { num: [], extra: ['text'] },
+  serialMatches: { num: [], extra: ['pattern', 'flags'] },
+  serialLines: { num: [], optNum: ['count', 'min', 'max'] },
 };
 const LOGIC_LEVELS: unknown[] = [0, 1, 'X', 'Z'];
 
@@ -313,7 +320,9 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
       if (typeof stage !== 'string' || !(stage in STAGE_OPS)) {
         return c.add('T010', `${p}/stage`, "stage must be 'op', 'dc', 'ac' or 'tran'");
       }
-      probeOk(a.probe, `${p}/probe`);
+      if (isObj(a.check) && SERIAL_OPS.includes(a.check.op as string)) {
+        if (typeof a.probe !== 'string' || !ids.has(a.probe)) c.add('T010', `${p}/probe`, `a serial assertion's probe must be the id of a microcontroller component (got ${JSON.stringify(a.probe)})`);
+      } else probeOk(a.probe, `${p}/probe`);
       if (a.at !== undefined && typeof a.at !== 'string') c.add('T010', `${p}/at`, 'at must be a string');
       for (const k of ['tran', 'dc', 'ac'] as const) {
         if (k === stage) {
@@ -439,7 +448,7 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
   for (const { id, type, obj, path } of comps) {
     let built: Component;
     try {
-      built = buildComponent(type, obj.params as Record<string, never>, defs);
+      built = buildComponent(type, obj.params as Record<string, never>, defs, Array.isArray(value.sources) ? (value.sources as { path: string; text: string }[]) : undefined);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!(type in defs) && /unknown type/.test(message)) {
@@ -453,7 +462,9 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
     if (mismatch) c.add('T014', `${path}/params`, `component ${id} (${type}): ${mismatch}`, [id]);
     const want = canonicalPins(built);
     const given = Object.keys(obj.pins as Obj);
-    for (const pin of given) {
+    // A VHDL block whose source does not compile accepts any pin (the lint reports the V7xx error).
+    const lenient = (built as { _lenientPins?: boolean })._lenientPins === true;
+    for (const pin of lenient ? [] : given) {
       if (!want.includes(pin)) c.add('T014', `${path}/pins/${pin}`, `${type} ${id} has no pin '${pin}' (pins: ${want.join(', ')})`, [id]);
     }
     for (const pin of want) {
@@ -533,6 +544,24 @@ function checkFields(c: Collector, check: Obj, path: string): void {
   if (check.op === 'logicAt' && !LOGIC_LEVELS.includes(check.value)) c.add('T010', levelPath, "value must be 0, 1, 'X' or 'Z'");
   if (check.op === 'logicStable' && check.value !== undefined && !LOGIC_LEVELS.includes(check.value)) {
     c.add('T010', levelPath, "value must be 0, 1, 'X' or 'Z'");
+  }
+  if ((check.op === 'serialContains' || check.op === 'serialNotContains') && (typeof check.text !== 'string' || check.text === '')) {
+    c.add('T010', `${path}/text`, `${check.op} needs a non-empty string 'text'`);
+  }
+  if (check.op === 'serialMatches') {
+    if (typeof check.pattern !== 'string') c.add('T010', `${path}/pattern`, "serialMatches needs a string 'pattern' (a regular expression source)");
+    else if (check.flags !== undefined && (typeof check.flags !== 'string' || !/^[imsuy]*$/.test(check.flags))) c.add('T010', `${path}/flags`, "flags must be a string of RegExp flags (i, m, s, u, y)");
+    else {
+      try {
+        new RegExp(check.pattern, (check.flags as string | undefined) ?? '');
+      } catch {
+        c.add('T010', `${path}/pattern`, `invalid regular expression /${check.pattern}/`);
+      }
+    }
+  }
+  if (check.op === 'serialLines') {
+    for (const k of ['count', 'min', 'max']) if (check[k] !== undefined && !isInt(check[k])) c.add('T010', `${path}/${k}`, `'${k}' must be a non-negative integer`);
+    if ((check.count === undefined) === (check.min === undefined && check.max === undefined)) c.add('T010', path, 'serialLines takes either count or min/max');
   }
   if (check.op === 'logicEdges' && !['rising', 'falling', 'both'].includes(check.edge as string)) {
     c.add('T010', `${path}/edge`, "edge must be 'rising', 'falling' or 'both'");

@@ -910,7 +910,11 @@ export class McuRuntime {
 
   private referenceVoltage(): number {
     const ref = this.profile.adc.references[this.adcReference] ?? 'vcc';
-    if (ref === 'vcc') return this.profile.vcc;
+    if (ref === 'vcc') {
+      // The analog bridge knows the real supply; mock buses fall back to the nominal VCC.
+      const vs = this.bus.readSupply?.(this.now);
+      return vs !== undefined && vs > 0 ? vs : this.profile.vcc;
+    }
     if (typeof ref === 'number') return ref;
     const v = this.bus.readVoltage(ref.pin, this.now);
     return v > 0 ? v : this.profile.vcc;

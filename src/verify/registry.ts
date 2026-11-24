@@ -15,6 +15,8 @@
  *   F107–F110 semiconductor lint · R401–R404 datasheet ratings · T005–T008 .model cards
  */
 
+import { MCU_INTEGRATION_DOCS } from './registry-mcu';
+
 export interface DiagnosticDoc {
   code: string;
   slug: string;
@@ -1417,6 +1419,7 @@ run in the effect it describes. Temperature-only (EG, XTI, XTB, TNOM…) and
 noise-only (KF, AF) parameters have no effect at the nominal temperature and
 are accepted silently.`,
   },
+  ...MCU_INTEGRATION_DOCS,
 ];
 
 export function findDiagnosticDoc(code: string): DiagnosticDoc | undefined {

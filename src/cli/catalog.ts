@@ -4,6 +4,7 @@
  */
 
 import { mixedCatalog, MIXED_GRAMMAR_NOTES } from '../mixed/catalog';
+import { mcuCatalog, MCU_GRAMMAR_NOTES } from '../mixed/mcu-catalog';
 
 export interface CatalogEntry {
   type: string;
@@ -116,6 +117,7 @@ export const COMPONENT_CATALOG: CatalogEntry[] = [
   },
   // Logic ICs, NE555 and generic logic primitives (src/mixed).
   ...mixedCatalog(),
+  ...mcuCatalog(),
 ];
 
 export const GRAMMAR_NOTES = `PROBES (every stage)
@@ -166,4 +168,6 @@ SIZING DELEGATION  tb.param('R1', {min:'100', max:'10k', scale:'log'})
                      returns a VERIFIED passing range instead of making you guess
 NET NAMES          tb.name('out', r1.pin('2'))  -> probe 'out' in any stage
 
-${MIXED_GRAMMAR_NOTES}`;
+${MIXED_GRAMMAR_NOTES}
+
+${MCU_GRAMMAR_NOTES}`;
