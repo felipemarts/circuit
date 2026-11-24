@@ -475,7 +475,9 @@ the outputs are modeled high-Z and the IC does nothing useful.
   - op stage: warning (the operating point is computed with the outputs off;
     a power-up ramp from 0 V legitimately starts there);
   - tran stage: error when the IC was never powered during the run, or lost
-    its supply after being powered (brown-out, with the time).
+    its supply after being powered (brown-out, with the time). After a
+    brown-out the IC stays off for the rest of the run (re-power is not
+    modeled); a power-up ramp from 0 V is fine.
 
 Fixes: connect VCC to a stiff supply; do not feed an IC through a large
 series resistor; reduce the load on its outputs.`,

@@ -85,6 +85,7 @@ circuitsvibe verify <bench.ts> [options]  lint → op → dc → ac → tran (fa
     --stage op,dc,ac,tran run a subset (lint always runs)
     --no-hints            skip verified sizing hints
     --no-ledger           don't append to .circuitsvibe/runs.jsonl
+    --vcd out.vcd         write the logic-analyzer capture (VCD)
 circuitsvibe sweep <bench.ts> --source V1 --from 0 --to 5 [--points 51 | --step 0.1]
     [--probe out,R1.i] [--param R1] [--json]   DC transfer table / JSON
 circuitsvibe log list [--json] | log show <runId>
@@ -116,8 +117,9 @@ The package is ESM with type declarations. The library entry is browser-safe (no
 ## Components
 
 Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN, PULSE, PWL, PWM,
-AC stimulus), Diode (Shockley, pn-junction limiting), LED, Switch (SPDT), Button, plus custom
-components through `defineComponent`:
+AC stimulus), Diode (Shockley, pn-junction limiting), LED, Switch (SPDT), Button, logic ICs and
+the NE555 (`Part('74HC04')`, pins by datasheet name or number), generic logic primitives
+(`Nand`, `DFF`, `Counter`, `Clock`, …), plus custom components through `defineComponent`:
 
 ```ts
 new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2m' } });
@@ -160,7 +162,7 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | Sources | ✅ DC, SIN, PULSE, PWL, PWM (voltage and current), AC stimulus |
 | Semiconductors | ✅ Diode, LED · ❌ BJT, MOSFET, JFET |
 | Op-amps, comparators | ❌ |
-| Digital logic, mixed-signal | ❌ |
+| Digital logic, mixed-signal | ✅ event-driven logic co-simulated with the transient: real ICs `Part('74HC00' / '74HC04' / '74HC14' / '74HC74' / '74HC595' / '74HCT04' / 'CD4017' / 'CD4011' / 'NE555')` with datasheet pins, levels, drive and tpd per VCC; generic logic primitives; `tb.expect.logic(...)`; logic capture + `--vcd` |
 | Microcontrollers | ❌ |
 | Noise, distortion, pole-zero analysis | ❌ |
 | Real-part catalog with datasheet ratings | ❌ |
@@ -197,6 +199,9 @@ src/
 ├── cli/        CLI commands, bench loader, init
 ├── ledger/     .circuitsvibe/runs.jsonl
 ├── core/ components/ analysis/ solver/   the MNA engine
+├── digital/    event-driven logic engine
+├── mixed/      logic ICs, NE555, primitives, analog↔digital bridges, co-simulation
+├── parts/      real-parts catalog (datasheet data)
 └── ui/         the visual simulator
 ```
 

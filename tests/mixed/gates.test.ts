@@ -126,9 +126,46 @@ describe('74HC04 output stage', () => {
     const outFall = crossing(t, v.out, 2.5, 'fall')!;
     const inFall = crossing(t, v.in, 2.5, 'fall')!;
     const outRise = crossing(t, v.out, 2.5, 'rise', inFall)!;
-    console.log('tpd', tpd, outFall - inRise, outRise - inFall);
     expect(Math.abs(outFall - inRise - tpd) / tpd).toBeLessThan(0.2);
     expect(Math.abs(outRise - inFall - tpd) / tpd).toBeLessThan(0.2);
+  });
+});
+
+describe('74HC14 Schmitt trigger', () => {
+  it('RC relaxation oscillator: f within 1 % of 1/(RC·[ln((VCC−VT−)/(VCC−VT+)) + ln(VT+/VT−)]), ramp bounded by VT±', () => {
+    const fam = logicFamilyModel('74HC14');
+    const vtp = fam.vtPlus!(5);
+    const vtm = fam.vtMinus!(5);
+    expect(vtp).toBeCloseTo(2.5 + 0.8 / 3, 9); // VT+ typ 2.5 V @ 4.5 V, 3.3 V @ 6 V
+    expect(vtm).toBeCloseTo(1.6 + 0.4 / 3, 9); // VT− typ 1.6 V @ 4.5 V, 2.0 V @ 6 V
+    const R = 10e3;
+    const C = 10e-9;
+    const f = 1 / (R * C * (Math.log((5 - vtm) / (5 - vtp)) + Math.log(vtp / vtm)));
+    const desc = bench('hc14-osc', tb => {
+      const u = tb.add('U1', Part('74HC14')) as LogicIC;
+      power(tb, u, 5);
+      const r1 = tb.add('R1', new Resistor(R));
+      const c1 = tb.add('C1', new Capacitor(C));
+      u.pin('1Y').connect(r1.pin('1'));
+      r1.pin('2').connect(u.pin('1A'));
+      c1.pin('1').connect(u.pin('1A'));
+      c1.pin('2').connect(tb.gnd);
+      tieLow(tb, u, ['2A', '3A', '4A', '5A', '6A']);
+      tb.name('osc', u.pin('1Y'));
+      tb.name('ramp', u.pin('1A'));
+      const run = tb.expect.tran({ tstop: '2m', maxStep: '10u' });
+      run.logic('osc').toHaveFrequency(f, 0.01, { from: '0.3m' });
+      run.logic('osc').toToggle({ min: 40 });
+      run.probe('ramp').toStayAbove(vtm - 0.01, { from: '0.3m' });
+      run.probe('ramp').toStayBelow(vtp + 0.01, { from: '0.3m' });
+    });
+    const r = runLadder(desc, { stages: ['lint', 'tran'] });
+    expect(r.exitCode, JSON.stringify(r.stages.tran?.assertions)).toBe(0);
+    // Clean edges: the output swings rail to rail although the input only ramps between VT− and VT+.
+    const { t, v } = waves(desc, 2e-3, ['osc'], 10e-6);
+    const late = v.osc.filter((_, i) => t[i] > 0.3e-3);
+    expect(Math.max(...late)).toBeGreaterThan(4.9);
+    expect(Math.min(...late)).toBeLessThan(0.1);
   });
 });
 
@@ -155,7 +192,6 @@ describe('A→D threshold crossing', () => {
     const edges = r.stages.tran!.logic![0].signals['U1.1A'];
     const vih = logicFamilyModel('74HC04').vih(5);
     const analytic = 100e-9 + 0.05e-9 - R * C * Math.log(1 - vih / 5); // RC step starting at the ramp midpoint
-    console.log('rc', edges, analytic);
     expect(edges[1][1]).toBe(1);
     expect(Math.abs(edges[1][0] - analytic)).toBeLessThan(0.5e-9); // within 0.5 ns of ~220 ns
   });
@@ -187,7 +223,6 @@ describe('unpowered / out-of-range supply', () => {
         tb.expect.logic('y', { tstop: '1u' }).toBe(1);
       }),
     );
-    console.log(JSON.stringify(r.diagnostics.map(d => [d.code, d.severity, d.stage, d.message])));
     expect(r.exitCode).toBe(2);
     const h = runLadder(
       bench('hct', tb => {

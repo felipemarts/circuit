@@ -12,8 +12,8 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `S2xx` | nonlinear solver, transient stepping, AC models | Newton-Raphson, timestep control, small-signal models |
 | `A3xx` | assertions | spec not met |
 | `T0xx` | tooling | bench authoring error |
-| `F130`–`F139` | digital lint (pre-simulation) | digital netlist structure (src/digital) |
-| `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (src/digital) |
+| `F130`–`F139` | digital lint (pre-simulation) | digital netlist structure (F130–F134, src/digital) and bench-level mixed-signal structure (F135–F139, src/mixed) |
+| `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (D501–D507, src/digital); analog↔digital bridges: levels, supplies, drive (D508–D549, src/mixed) |
 | `F14x` | firmware lint (pre-simulation) | MCU firmware source mistakes (F140–F149) |
 | `M6xx` | MCU runtime | firmware execution on a simulated microcontroller (M601–M649) |
 
@@ -48,6 +48,17 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `D505` | drive-in-past | error | external drive() scheduled before the current time — applied at the current time instead |
 | `D506` | unknown-control | warning | clock edge through X/Z or unknown async set/reset/latch enable that would change state — outputs X |
 | `D507` | weak-contention | warning | pull-up and pull-down are the only drivers of a net — net is X |
+| `F135` | ic-supply-unconnected | error | an IC's VCC (VDD) or GND (VSS) pin is unconnected, or both are on the same net |
+| `F136` | outputs-tied | error | two logic outputs (at least one push-pull) on one analog net — contention through the analog net |
+| `F137` | floating-logic-input | error / warning | logic input on an analog net with nothing that sets its voltage (only inputs/capacitors); warning for inputs of an unused section (its outputs open) |
+| `F138` | output-on-rail | error | logic output tied to ground, an IC supply rail or an ideal voltage source |
+| `D508` | input-forbidden-zone | error | non-Schmitt input between VIL and VIH (at its supply): at the operating point, or in the transient longer than the datasheet max input transition time — carries `vil`, `vih`, `supply`, dwell and `time` |
+| `D509` | supply-out-of-range | error / warning | IC supply outside the recommended range (warning) or beyond the absolute maximum / reversed (error) — carries `supply`, `recommended`, `time` |
+| `D510` | ic-unpowered | error / warning | supply below half the minimum operating voltage: warning at the operating point; error when never powered during the transient or browned out (with `time`) |
+| `D511` | output-overcurrent | error | output pin current above the absolute maximum (or CD4000B 100 mW/output); names the opposing driver when two outputs fight on one net — carries `current`, `limit`, `time` |
+| `D512` | unknown-output | warning | an X logic value drives an analog net (output stage modeled half-on, mid-rail) |
+| `D513` | input-clamp-overcurrent | error | input driven beyond its rails: protection-diode current above \|IIK\| max |
+| `D514` | no-static-logic-state | warning | no consistent DC logic state (oscillator): the op is reported with the outputs of the last settle pass |
 
 Semantic notes:
 - Lint **always runs** (even with `--stage op`): solving a circuit that lint would reject
@@ -61,6 +72,14 @@ Semantic notes:
 - `hint.passingRange` covers only the **longest contiguous run** of passing samples
   (each sample passes lint AND all op assertions); the exact simulated values
   are in `passingSamples`.
+
+Mixed-signal notes:
+- D5xx diagnostics from the digital engine (D501–D507) and the bridges (D508–D514) carry `time`
+  (seconds) when they happen in the transient and `at` = the `tb.add` location of the IC or
+  primitive; internal names are rewritten to bench names (`U1.1Y`, `U1:clr` for an IC's
+  internal net). Setup/hold violations (D502/D503) of a real flip-flop (74HC74: tsu 20 ns)
+  therefore point at the IC.
+- Codes D515–D549 are reserved for the mixed-signal runtime, F139 for bench-level digital lint.
 
 ## MCU codes (firmware runtime and firmware lint)
 
@@ -188,11 +207,33 @@ Stage telemetry (`stages.<stage>.solver`):
 | op | `method` (`linear` / `newton-raphson`), `iterations`, `aids?`, `attempts?` |
 | dc | `method`, `iterations` (all points), `points`, `aidedPoints?` |
 | ac | `method: "complex-lu"`, `iterations` (operating point), `points` (sweep frequencies), `aids?` |
-| tran | `method` (`trap` / `be`), `iterations`, `acceptedSteps`, `rejectedSteps`, `minStep`, `runs[]` (per configuration: `config`, `newtonFailures`, `lteRejections`, `maxStepTaken`, `breakpoints`, ...) |
+| tran | `method` (`trap` / `be`), `iterations`, `acceptedSteps`, `rejectedSteps`, `minStep`, `runs[]` (per configuration: `config`, `newtonFailures`, `lteRejections`, `maxStepTaken`, `breakpoints`, mixed-signal `eventCuts`/`digitalEvents`, ...) |
 
 Assertion results may also carry `note` (why a measurement is missing or how it was made),
 `xFirstViolation` (dc: sweep value of the first violation) and `ref` (AC reference probe).
 Transient final values in `stages.tran.probes` are keyed `<probe>@tstop=…s,dt=…s[,maxStep=…]`.
+
+Logic analyzer (benches with logic ICs / primitives): `stages.tran.logic[]`, one entry per
+transient configuration:
+
+```jsonc
+"logic": [{
+  "config": "tstop=0.003s,dt=0.000003s,maxStep=0.00006s",
+  "tEnd": 0.003,
+  "signals": {                      // every logic-probed signal + every tb.name'd net with a logic meaning
+    "out": [[0, 1], [0.000153, 0], [0.000222, 1]],   // [t (s), value 0 | 1 | 'X' | 'Z'], t = 0 is power-on
+    "U1.DISCH": [[0, 0], [0.000153, 1]]
+  },
+  "truncated": ["clk"],             // only when a signal exceeded 5000 changes
+  "events": 1234                    // digital events processed
+}]
+```
+
+`circuitsvibe verify x.bench.ts --vcd out.vcd` writes the same capture as a VCD file
+(`out.2.vcd`, … for further configurations). Logic assertion results carry `measured`
+(the value as a number: 0/1, an edge count, a frequency, a duty cycle) and `measuredLogic`
+when the logic value is X/Z; `tFirstViolation` for `toBeStable`. The tran run telemetry adds
+`eventCuts` (steps cut back to a threshold crossing) and `digitalEvents`.
 
 Netlist `params` are plain JSON and complete enough to rebuild the component
 (`buildComponent(type, params)`): sources carry their waveform and AC stimulus, e.g.
@@ -224,7 +265,21 @@ declared in a different order produces the same numbers (only `at` locations dif
 '<id>.i'    current through the component  e.g.: 'D1.i'
 '<id>.v'    voltage across the component   e.g.: 'R1.v'
 '<net>'     voltage of a net named via tb.name(...)   (every stage)
+'<id>.<pin>'  voltage of an IC pin ('U1.1Y', 'U1.~1Q', 'U1.pin6') or of a bridged primitive pin (op, tran)
 ```
+
+Logic probes (`tb.expect.logic(probe)`):
+
+```
+'<net>'        a tb.name'd net: a pure-digital net, or an analog net carrying a logic pin
+               (its output pin's value if it has one, else its first input pin's)
+'U1.<pin>'     an IC pin by datasheet name ('1Y', '~OE', "QH'", 'CARRY OUT'; case, spaces and _ ignored)
+'U1.pin<N>'    an IC pin by number
+'G1.<pin>'     a primitive pin ('q', 'y', 'clk')
+```
+
+An IC input pin's logic value is what its bridge recognised (VIH/VIL, VT+/VT−, comparator);
+an output pin's is the internal logic value driving its output stage.
 
 AC probes are phasors; assertions measure H = probe / stimulus (the single source with
 `ac`), or probe / ref with `.probe(p, { ref })`.

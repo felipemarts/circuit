@@ -58,6 +58,8 @@ Other stages, same pattern (details: `npx circuitsvibe agents`):
 tb.expect.dc({ source: 'V1', from: 0, to: 5, points: 51 }).probe('out').toBeMonotonic('increasing');
 tb.expect.ac({ from: '10', to: '1M' }).probe('out').gainAt('1k').toBeWithin(-3.1, -2.9); // needs a source with ac: 1
 new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2m' } });  // also sin, pwl, pwm
+const u1 = tb.add('U1', Part('74HC04'));   // logic IC: wire VCC/GND, tie unused inputs; pins by name or number
+tb.expect.logic('U1.1Y', { tstop: '1m' }).toHaveFrequency('10k', 0.01);   // logic assertions (tran stage)
 ```
 
 ## Reference on demand
@@ -69,6 +71,7 @@ new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2
 
 Supported today: Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN,
 PULSE, PWL, PWM, AC stimulus), Diode, LED, Switch (SPDT), Button, custom parts via
-`defineComponent`; DC operating point (with gmin/source stepping), DC sweep, AC
-small-signal, adaptive transient. Not yet: transistors, op-amps, digital logic,
-microcontrollers.
+`defineComponent`; logic ICs and NE555 via `Part(...)` (74HC00/04/14/74/595, 74HCT04,
+CD4017, CD4011, NE555) and generic logic primitives (Nand, DFF, Counter, Clock, …)
+co-simulated with the transient; DC operating point (with gmin/source stepping), DC sweep,
+AC small-signal, adaptive transient. Not yet: transistors, op-amps, microcontrollers in benches.

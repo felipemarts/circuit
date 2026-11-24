@@ -1,9 +1,9 @@
 # src/digital — event-driven digital engine
 
 Self-contained 4-valued logic simulator for CircuitsVibe: pure TypeScript, zero
-dependencies, browser-safe (no Node APIs), deterministic. It is **not yet wired into
-the bench DSL, the ladder or `src/forge.ts`**; this document is the contract for the
-integration step that will co-simulate it with the analog transient.
+dependencies, browser-safe (no Node APIs), deterministic. Benches use it through
+src/mixed (logic ICs, primitives, analog↔digital bridges — see src/mixed/README.md);
+this document is the engine contract that integration builds on.
 
 ```
 logic.ts        Logic = 0 | 1 | 'X' | 'Z', operator tables, multi-driver resolution
@@ -222,9 +222,11 @@ hand-written JSON (`{ type: 'And', params: { inputs: 3, delay: '2n' } }`) is acc
 
 ## Integration notes / known gaps
 
-- Not yet exported from `src/forge.ts`; no `tb.digital` / `tb.expect.logic` yet.
-- `units.ts` duplicates the small engineering-suffix parser of `src/core/units` to keep
-  this module independent; dedupe on integration.
+- Benches reach it through src/mixed (`Part(...)`, the primitives exported from
+  `src/forge.ts`, `tb.expect.logic`), not through `DigitalCircuit`.
+- `units.ts` keeps its own small engineering-suffix parser (time/frequency units only,
+  binary scaling) rather than `src/core/units` (electrical units, decimal scaling): merging
+  them would change accepted inputs on both sides, so it was left as is.
 - A `drive()` at t = 0 is an event, not part of the power-on settle (see above).
 - Sequential parts are evaluated on both clock edges (cheap early-out); no per-pin
   sensitivity lists yet. ~1 M events/s on a 1000-FF chain (tests/digital/perf.test.ts).

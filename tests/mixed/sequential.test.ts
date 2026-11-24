@@ -148,7 +148,6 @@ describe('NE555', () => {
       const r = runLadder(astable(vcc));
       expect(r.exitCode, JSON.stringify([r.diagnostics, r.stages.tran?.assertions])).toBe(0);
       const [f, d] = r.stages.tran!.assertions!;
-      console.log(vcc, f.measured, d.measured);
       expect(Math.abs(f.measured! - 1.44 / ((R1 + 2 * R2) * C)) / (1.44 / ((R1 + 2 * R2) * C))).toBeLessThan(0.02);
     });
   }
@@ -190,7 +189,6 @@ describe('NE555', () => {
     expect(r.exitCode, JSON.stringify([r.diagnostics, r.stages.tran?.assertions])).toBe(0);
     const edges = r.stages.tran!.logic![0].signals.out;
     const width = edges[2][0] - edges[1][0];
-    console.log('mono', width, 1.1 * R * Cm);
     expect(Math.abs(width - 1.1 * R * Cm) / (1.1 * R * Cm)).toBeLessThan(0.02);
   });
 });
