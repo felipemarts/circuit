@@ -326,6 +326,39 @@ export default bench('led-driver', (tb) => {
   </div>
 </section>
 
+<!-- ═══════════════════════════ SEE IT LIVE ═══════════════════════════ -->
+<section class="section" id="live">
+  <div class="container" style="position:relative;z-index:1">
+    <div class="eyebrow">Links de compartilhamento</div>
+    <h2 class="h2">Veja ao vivo.</h2>
+    <p class="lead">Um agente roda <code>npx circuitsvibe share x.bench.ts</code> e recebe um link que carrega o circuito inteiro na URL — sem servidor, nada armazenado.
+      Abra um: o esquemático é desenhado automaticamente, a mesma escada de verificação roda no seu navegador e o resultado (o que passou, o que falhou, por quê) fica sobre o desenho.</p>
+    <div class="gallery">
+      <a class="card ex reveal" href="app.pt.html#c=1.jZNNb9swDIb_C6-TPUm2_KFjk24IsHqtV-Qy9CArSqM2sQzZTTcU_e8D5XwXw3YTCfF5xZfUG6i-N36wru1B_nwDvTL6GeQbbNQvkDSmXBDY2DacmSDgOpDwaoeVbeGdgF2ABMWAQOddY0DClMUWCPSDesTQdfBOTrihvjFr9woEtmr9YhCdHFD8BHXH4q02_4Kpxm3NKYxSeuQl5zzbXOAeCGi36Vxr2mG0INRNQ0vKq02PQrMeJItTZiLOCNQ9SB7ngsB82JlUCAIt3hGY7pQfQMK362lUX08jcXODXnW2DTDVugXKt6ih1bDahRwvDb87M5aGVsNjvt7Ovp89ZwsyCZ7tkZ-wHluNQMJjuzghzd0a2_3hXrw2R-bdeYNXS5CcZnFCOYErj0GchWDypFEtz8qMmYiFjAGZxlnKWTpmvmi0QTDOkpTA7Hk5upJzjnbNnj3GhzB4yTORcBMxigmNfiY0z5mJSkyY88TNUxDgScFoCMOcucg4zwlUGoFlkWcEKhOsYVRwAtUyTIRAhQ3FRZlhdd2AFHGR4PU6KGciZzjW_fYwAvdLbJGVIi_GR957kFlccMoTExUE5grhlFI8epBlnJQF4ufjW1M8md1ptw-8Skqanq5Cg3NLcQ3GBSBgPgywuq2OY6uvzsbmQaY5pSdEtt8EPqKPnNr0th-cD7ClN-bwzcc2wi9PcwK9VmssWLvHwxevcSEvlJn4ICz2wuxvwoE2n0wu91lcbrP4n21-INCqTXisWUSDV-0oFfWvdtAr_Ot6ZTYKJGjr9Ysd-q1tTLQLPjN4_wM">
+        <div class="schem"><svg viewBox="0 0 220 120" aria-hidden="true"><g stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="26" y="20" width="0" height="0"/><path d="M14 60h40"/><polyline points="54,60 60,52 70,68 80,52 90,68 96,60"/><path d="M96 60h20"/><circle cx="130" cy="60" r="14"/><path d="M116 60h8M124 50v20M124 54l12-8M124 66l12 8M136 42v-14M136 78v12"/><polygon points="128,14 144,14 136,28"/><path d="M128 28h16M136 14V6"/><path d="M126 96h20M130 101h12M134 106h4"/></g></svg></div>
+        <div class="tagline"><span>tran · ratings</span><span>share link</span></div>
+        <h3>Chave a transistor + LED</h3>
+        <p>Um GPIO de 3,3 V aciona um 2N3904 por 4,7 kΩ e o transistor acende um LED vermelho a partir de 5 V: limites do datasheet verificados, asserções de ponto de operação na corrente do LED, Vce e corrente de base.</p>
+        <span class="go">Abrir no visualizador <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <a class="card ex reveal" href="app.pt.html#c=1.zZNBb9owFMe_y7vOMDvENPi2BdZWqloJKJepB2NeqbXEzmzDyhDfvXIIkNKpO03dKXLi_N7v_-y3Bek9uqCt8SC-b0E9ofoBYguPzpYgaJcmBGwFAgq71Oqbw58rNGoDBIItDhvWslghCJ51U5pd0D6jWdZPB0l_R0AvQIBkQKBydo4gwK4CEPBBLuMqOGkiLT7EFhahhlLKCGgFAn6js0CglM-TgNXpY4nhyS72gCoCfLD1Z7bbkb8GGa7CJt-oAv8YhHb5gLOUXVCa0jTjWe8YJPl_gvggN1_mdh0zNOJJd3A07bVMgy61WX607Fcs7K-TbL_LjrLpR8rWggbX6EbPCnEBrYtAGT9K8pbkkHX1P1Z8IKBsWVmDJuyns9bI61mSTpY-llINjNLYzUqb-i1r9zEBAUuzgB2BsKmibi4rqXSwDmIjauzwNfbag2DYSSiB2T5MwjNOwIBIWnWksYsINPFvJWMYfFPtZjQ81Rm_ruNApBeUnqmbpNE2vRZnjF77V9Lj5BzGYifOab2G1nTkXeLNObGfnfP2c5_sY78Huz87qkKWFYhHWXiMZ-sMumi1qaBVIb-7nUZ0HInh9SS_OiS4vB02rSVwdz89ioxHk9H00LTp1Xg0aR_-dHx92V7P8ny_9yR-O-Kcn6zjjrb2GsSg5ffpUKrz5qBntojzMLErpxDiBTayrK8Hcs470gc5L7BT1CNmsL7VTYjG74GAV09YShCgtFMrHfxaz7HTLD4z2L0A">
+        <div class="schem"><svg viewBox="0 0 220 120" aria-hidden="true"><g stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="86" y="30" width="60" height="64" rx="3"/><path d="M70 44h16M70 58h16M70 72h16M146 44h22M146 72h16"/><path d="M34 44h36M34 44v-20h20M34 58v14M34 72h36"/><polyline points="40,20 46,12 52,28 58,12 64,28 70,20"/><path d="M176 44v30M168 74h16M168 80h16"/><text x="116" y="66" class="lbl big" text-anchor="middle">555</text></g></svg></div>
+        <div class="tagline"><span>misto · lógica</span><span>share link</span></div>
+        <h3>NE555 astável</h3>
+        <p>O pisca-pisca clássico: analisador lógico no OUT (58 Hz, 59 % de duty), o capacitor de temporização oscilando entre 1/3 e 2/3 de VCC.</p>
+        <span class="go">Abrir no visualizador <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <a class="card ex reveal" href="app.pt.html#c=1.rZRNb9swDIb_C69TPEvyp25r1gEFNq_LulyGHhRFadTWH5CddEOR_z5Qcpa4cbsc5otF2nr4UqT4DLJtte1MXbUgfj6DWmv1AOIZSvkLRBiEIU0IlKbqDUagbkDAk-nWpoIdAbMEAZICgcbWCw0CvtHAKCDQdvIO7bqBHXmJ3lP5K0A2BG6VPiVKhbiVrUsQlEBTm6prr7X9qJVcahAsJNDVIGjYPztyUDGUE_G9nvxE0Kon9B_upKk-dAel_EhpvemOZEr1H2W62HJRb_EgtvJxow87dr20hayWT2bZrfny4iAwelPgLQFVl01d6arzPeB2TS9xl7SybJ0MX_-Q7gg0pnI-CgIqLDzDU6mWGLH73SB4KhupTFdbdwAeeFWMEk-RrEdW_B_Erz9uzkRGPRLTf5P5jQ6IFyssTxLwkBG4sGgEiTOm9woED9IkT6ieUOfRIKIgiRiNvOeTExRTRnlE4Oph5fSxlDFG0bZo_zVbEDRgScyZntAQHQoEC3iYplRPcnTooePLvQvAeEZDZ2pnxgljKYFCITDP0oRAoVEsp2HMCBTY0EFMoMCEgixPcPdsASIOMo6_z1zkJE4pJTDT-9oTuFlhijSP08yLvLEgkiBjIeN6khGYy_624NKCyAOeZ4ife60RrnS_aqTtQAAreB5GcFSzha8-wYr64mnfa4faFdfFoWqzYdUsiCj112LQBfFYY810a9pBD8zYSxoNR2h8tPNHcNMxca9qi96GXY5pO-9SjtA-n5Opnxnn8ObTYa5bEJQd0d7tM52cwOb1Iw6l7_XGKn1EfDE1_Cwt5Z0fpWuJdwIFb_1rEImdE-mWQCVL_KD0RJbNo1kZbYFApd08dOnfEmjVWpcSfzNWbUzXbs1CT3rjPYXdHw">
+        <div class="schem"><svg viewBox="0 0 220 120" aria-hidden="true"><g stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 60h30M44 50v20M50 50v20M50 60h30"/><circle cx="94" cy="60" r="14"/><path d="M80 60h8M88 50v20M88 54l12-8M88 66l12 8M100 42v-12M100 78v12"/><path d="M100 30h-8M100 30v-6"/><polyline points="92,24 96,18 100,30 104,18 108,30 112,24"/><path d="M100 90h24M104 95h16M108 100h8"/><path d="M130 38q20 0 30-10t30-6"/><path d="M130 38v26M130 64h60"/></g></svg></div>
+        <div class="tagline"><span>ac · Bode</span><span>share link</span></div>
+        <h3>Amplificador emissor comum</h3>
+        <p>2N3904 com divisor de base e emissor desacoplado: gráfico de Bode com ganho de 40,5 dB e as bordas de −3 dB marcadas.</p>
+        <span class="go">Abrir no visualizador <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════ ROADMAP ═══════════════════════════ -->
 <section class="section" id="roadmap">
   <div class="container">

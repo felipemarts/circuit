@@ -25,6 +25,14 @@ export * from './schema/types';
 
 // Circuit document (circuitsvibe-circuit/1) and share-by-URL links.
 export * from './doc';
+// Viewer helpers (browser-safe, no DOM): auto-layout, symbols, the browser simulation driver and panel models.
+export { layoutCircuit } from './view/layout';
+export type { Layout as SchematicLayout, PlacedComponent, Wire as SchematicWire, Port as SchematicPort } from './view/layout';
+export { symbolFor } from './view/symbols';
+export type { SymbolGeom, PinGeom } from './view/symbols';
+export { simulateDoc } from './view/simulate';
+export type { SimResult, SimProgress, TranData, AcData, DcData, OpState } from './view/simulate';
+export { verdictModel, assertionModels, diagnosticModels, ratingGroups, scopeModel, bodeModel, dcModel, logicModel, highlightModels } from './view/models';
 export { ENGINE } from './schema/version';
 
 // Engine surface (same exports as the library root).
