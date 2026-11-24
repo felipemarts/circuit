@@ -10,6 +10,7 @@
  *   T0xx  tooling / bench authoring
  *   M6xx  MCU / firmware runtime (M601–M649)
  *   F14x  firmware lint (F140–F149)
+ *   F107–F110 semiconductor lint · R401–R404 datasheet ratings · T005–T008 .model cards
  */
 
 export interface DiagnosticDoc {
@@ -660,6 +661,173 @@ hardware transmits nothing. Add Serial.begin(9600) in setup().`,
     explanation: `Static twin of M615: no pinMode(pin, OUTPUT) (or analogWrite/tone) for a
 pin that is written. Pins start as INPUT; on AVR the write only toggles the
 pull-up. Add pinMode(pin, OUTPUT) in setup().`,
+  },
+  // ── Semiconductors: lint F107–F110, datasheet ratings R401–R404, .model cards T005–T008 ──
+  {
+    code: 'F107',
+    slug: 'bjt-base-floating',
+    title: "BJT base has no DC bias (warning)",
+    explanation: `The base net of a bipolar transistor connects only to capacitors (or to
+other transistor bases): nothing can supply base current at DC, so the
+transistor sits in cutoff (Ic ≈ 0) at the operating point. An AC-coupled
+input then only conducts on peaks above ~0.6 V.
+
+The circuit is solvable, so this is a warning. Fix: bias the base — a
+resistor divider from the supply, or a base resistor from the driving
+signal (Rb ≈ (Vdrive − 0.7 V)/Ib).`,
+  },
+  {
+    code: 'F108',
+    slug: 'mosfet-gate-floating',
+    title: "MOSFET gate has no DC path (driven only through a capacitor, or open)",
+    explanation: `A MOSFET gate is insulated: no DC current flows into it, so a gate net
+that reaches the rest of the circuit only through capacitors (or not at all)
+has an undefined DC voltage — the MNA matrix is singular, and a real gate
+floats to a random voltage and leaves the transistor half-on.
+
+This replaces F101 for floating islands that contain a MOSFET gate. Fix:
+give the gate a DC path — a gate-source pull-down (10k–1M), or drive it from
+a source or a logic output through a gate resistor.`,
+  },
+  {
+    code: 'F109',
+    slug: 'bjt-junction-clamped',
+    title: "BJT junction forward-clamped by an ideal source (no base resistor)",
+    explanation: `The base-emitter (or base-collector) junction of a BJT sits directly across
+ideal voltage sources, so its forward voltage is fixed. A junction is a
+diode: at a fixed 1–5 V the exponential current is astronomically large
+(the message gives the model's own estimate), Newton-Raphson diverges and a
+real transistor would be destroyed. Like F105, it fires only when the
+model's estimate exceeds 100 A (the model's Rb/Re bound it when present).
+
+Fix: always drive a base through a resistor, Rb = (Vdrive − 0.7 V)/Ib; for a
+saturated switch pick Ib ≈ Ic/10.`,
+  },
+  {
+    code: 'F110',
+    slug: 'reversed-polarity',
+    title: "P-type device at the lowest potential / N-type at the highest (warning)",
+    explanation: `A PNP/PMOS conducts when its base/gate is below its emitter/source; an
+NPN/NMOS when it is above. In a circuit made only of resistors, diodes,
+transistors, switches and ground-referenced voltage sources, no node can go
+below the most negative or above the most positive source voltage (no-gain
+property). So a PNP or enhancement PMOS with its emitter/source pinned at
+the lowest potential (or an NPN or enhancement NMOS at the highest) can never
+turn on: it is almost certainly wired like the opposite type.
+
+The rule only runs when that proof holds (no capacitors, inductors, current
+sources or custom parts; every voltage source referenced to gnd). Fix: move
+the emitter/source to the right rail (P-type: positive supply, high side;
+N-type: ground, low side) or use the complementary device.`,
+  },
+  {
+    code: 'R401',
+    slug: 'voltage-rating-exceeded',
+    title: "a catalog part exceeds a datasheet voltage rating",
+    explanation: `A Part() device was simulated above one of its absolute maximum voltage
+ratings: BJT Vceo (collector-emitter with the base open — the conservative
+rating), Vcbo, Vebo (reverse base-emitter); MOSFET Vds, ±Vgs; diode VR (DC
+stages) or VRRM (repetitive peak, transient stage). op: the operating-point
+value; dc: the largest value over the sweep (with its sweep x); tran: the
+instantaneous peak, its time and the first time the limit was crossed.
+
+Ratings are reported in stages.<stage>.ratings[] — separate from the
+bench's own assertions — with value, limit, utilization, margin and the
+datasheet citation. Exit code 1: the circuit is valid but the real part
+would be over-stressed. Fix the voltage (supply, clamp, snubber, gate
+divider) or pick a part with a higher rating. tb.ratings({ derate: 0.8 })
+checks against 80 % of every limit; tb.ratings(false) disables the checks.`,
+  },
+  {
+    code: 'R402',
+    slug: 'current-rating-exceeded',
+    title: "a catalog part exceeds a continuous current rating",
+    explanation: `A Part() device carries more than its continuous current rating: BJT IcMax
+(and IbMax when printed), MOSFET Id25, diode/LED IF or IFAV.
+
+op/dc compare the DC value. In tran, absolute maximum ratings hold at every
+instant, so the instantaneous peak is compared — except when the datasheet
+also prints a pulsed/surge rating (IcPeak, IdPulsed, IFP, IFSM): then the
+continuous rating is compared with the time AVERAGE over the transient
+window, and the peak is checked against the pulsed rating (R403).
+
+When tb.param is declared and the op stage fails, the platform sweeps the
+free parameter and attaches a VERIFIED fix: a range where every op rating
+and op assertion passes. Fix: more series/collector/load resistance, less
+base or gate drive, or a stronger part.`,
+  },
+  {
+    code: 'R403',
+    slug: 'pulsed-current-rating-exceeded',
+    title: "a catalog part exceeds a pulsed or surge current rating",
+    explanation: `In the transient stage the instantaneous peak current exceeded the part's
+pulsed rating: BJT IcPeak, MOSFET IdPulsed, LED IFP, rectifier IFSM (the
+non-repetitive surge, e.g. capacitor inrush at power-up). The result gives
+the peak, its time and the first crossing time.
+
+Pulse ratings carry pulse-width/duty conditions (listed in conditions);
+the check does not verify the pulse width. Fix: limit the inrush/peak
+(series resistance, soft start, slower edges) or choose a part with a
+higher pulse rating.`,
+  },
+  {
+    code: 'R404',
+    slug: 'power-rating-exceeded',
+    title: "a catalog part exceeds its power dissipation rating (Pd)",
+    explanation: `The dissipated power Σ V·I of a Part() device exceeds its Pd rating.
+op/dc: the DC power. tran: Pd is a steady-state thermal rating, so by
+default the time AVERAGE power over the transient window is compared
+(tb.ratings({ pd: 'peak' }) compares the instantaneous peak instead); the
+result also reports the window.
+
+Pd holds at the datasheet conditions shown (TA = 25 °C free air for small
+parts; TC = 25 °C — an ideal heatsink — for TO-220 power parts, whose
+free-air limit is far lower). Junction temperature is not simulated.
+Fix: switch the device fully on/off (less V·I), spread the dissipation, or
+choose a larger package/heatsink.`,
+  },
+  {
+    code: 'T005',
+    slug: 'model-unknown-param',
+    title: ".model card has an unknown parameter (warning, ignored)",
+    explanation: `A parameter in a .model card given to Diode/LED/NPN/PNP/NMOS/PMOS.fromModel
+is not a SPICE parameter this simulator knows for that device type (often a
+typo or a vendor dialect). It is ignored and the run continues; evidence
+lists the names. Fix the spelling or drop it — circuitsvibe catalog <type>
+lists the supported parameters.`,
+  },
+  {
+    code: 'T006',
+    slug: 'model-unsupported',
+    title: ".model card uses an unsupported device type or LEVEL",
+    explanation: `The card's device type is not one of D, NPN, PNP, NMOS, PMOS (e.g. NJF,
+VDMOS), its LEVEL is not 1 (Level-2/3/BSIM MOSFETs are not implemented), or
+the card type does not match the fromModel used (a PNP card passed to
+NPN.fromModel). Nothing is simulated: the lint stage stops the run (exit 3).
+Use a supported card, the matching fromModel, or a catalog Part().`,
+  },
+  {
+    code: 'T007',
+    slug: 'model-parse-error',
+    title: ".model card is malformed",
+    explanation: `The card could not be read: no '.model' line, more than one card, a token
+that is not <param>=<value>, a value that is not a number, or a value out of
+range (e.g. M >= 1). Syntax: .model <name> <type>(<p>=<v> ...), continuation
+lines start with '+', parentheses and commas are optional, SPICE suffixes
+are case-insensitive (T G MEG K M=milli MIL U N P F; a trailing unit such as
+pF is ignored). Exit 3; nothing is simulated.`,
+  },
+  {
+    code: 'T008',
+    slug: 'model-param-not-modeled',
+    title: ".model card parameter is known but not modeled (warning)",
+    explanation: `The card sets a real SPICE parameter whose effect this simulator does not
+model — e.g. BJT IRB/RBM (base-resistance modulation), XTF/VTF/ITF (transit
+time modulation), XCJC, CJS; diode ISR/NR/IKF; MOSFET process parameters
+(NSUB, CJ, CJSW…). It is ignored, so results can differ from a full SPICE
+run in the effect it describes. Temperature-only (EG, XTI, XTB, TNOM…) and
+noise-only (KF, AF) parameters have no effect at the nominal temperature and
+are accepted silently.`,
   },
 ];
 

@@ -5,6 +5,7 @@ import { appendRun, listRuns, findRun, LEDGER_DIR } from '../ledger/ledger';
 import { parseValue, formatEng } from '../elab/units';
 import { loadBench } from './load';
 import { COMPONENT_CATALOG, GRAMMAR_NOTES } from './catalog';
+import { SEMI_PARAMS, partDetail, partSummaries, renderPartDetail, renderPartList } from './partsCatalog';
 import { CLI, ENGINE, VERSION } from '../schema/version';
 import { init } from './init';
 import AGENTS_MD from '../../AGENTS.md';
@@ -304,18 +305,35 @@ function catalog(flags: Flags): number {
     ? COMPONENT_CATALOG.filter(e => e.type.toLowerCase() === type.toLowerCase())
     : COMPONENT_CATALOG;
   if (type && entries.length === 0) {
+    // A real part id ('2N3904', '1n4148', an alias)?
+    const detail = partDetail(type);
+    if (detail) {
+      console.log(flags.json ? JSON.stringify({ part: detail }, null, 2) : renderPartDetail(detail));
+      return 0;
+    }
     console.error(
-      `error: unknown component type '${type}'. Known types: ${COMPONENT_CATALOG.map(e => e.type).join(', ')}`,
+      `error: unknown component type or part '${type}'. Known types: ${COMPONENT_CATALOG.map(e => e.type).join(', ')}; parts: ${partSummaries().map(p => p.id).join(', ')}`,
     );
     return 3;
   }
+  const withParams = entries.map(e => (SEMI_PARAMS[e.type] ? { ...e, params: SEMI_PARAMS[e.type] } : e));
   if (flags.json) {
-    console.log(JSON.stringify({ components: entries, grammar: GRAMMAR_NOTES }, null, 2));
+    console.log(JSON.stringify({ components: withParams, ...(type ? {} : { parts: partSummaries() }), grammar: GRAMMAR_NOTES }, null, 2));
     return 0;
   }
   for (const e of entries) {
-    console.log(`${e.type}\n  example: ${e.example}\n  pins:    ${e.pins}\n  value:   ${e.value}\n  dc:      ${e.dc}\n`);
+    console.log(`${e.type}\n  example: ${e.example}\n  pins:    ${e.pins}\n  value:   ${e.value}\n  dc:      ${e.dc}`);
+    const params = SEMI_PARAMS[e.type];
+    if (params && type) {
+      console.log(`  params (case-insensitive · default · unit):`);
+      for (const p of params) console.log(`    ${p.name.padEnd(7)} ${String(p.default ?? '—').padEnd(9)} ${p.unit.padEnd(5)} ${p.description}`);
+    }
+    console.log('');
   }
-  if (!type) console.log(GRAMMAR_NOTES);
+  if (!type) {
+    console.log(renderPartList(partSummaries()));
+    console.log('');
+    console.log(GRAMMAR_NOTES);
+  }
   return 0;
 }
