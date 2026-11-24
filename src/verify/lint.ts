@@ -2,6 +2,7 @@ import type { Elaboration } from '../elab/bench';
 import type { Diagnostic } from '../schema/types';
 import { conductsAtDC, isDCVoltageSourceEdge, describeComponent } from '../elab/describe';
 import type { Component } from '../core/Component';
+import { lintSemiconductors, modelDiagnostics } from './lintSemis';
 
 /**
  * L0 — structural lint. Pure graph analysis over the elaborated netlist,
@@ -25,6 +26,17 @@ export function runLint(elab: Elaboration): Diagnostic[] {
     const analog = nets.filter(n => !mixed.pureNets.has(n));
     return isLogicPrimitive(id) ? [...new Set([...analog, 'gnd'])] : analog;
   };
+  // Nets a component connects at DC: a MOSFET gate is insulated (its own group).
+  const dcGroupsOf = (id: string): string[][] => {
+    const c = byId.get(id)!;
+    if (c.type === 'NMOS' || c.type === 'PMOS') {
+      return [[...new Set([c.pins['d'], c.pins['s'], ...(c.pins['b'] ? [c.pins['b']] : [])])]];
+    }
+    return [netsOf(id)];
+  };
+
+  // Model-card problems (T005–T008) first: they are about the bench text.
+  diagnostics.push(...modelDiagnostics(elab));
 
   // Fixpoint reachability from gnd over components passing the filter.
   const reach = (filter: (id: string) => boolean): { nets: Set<string>; comps: Set<string> } => {
@@ -82,7 +94,25 @@ export function runLint(elab: Elaboration): Diagnostic[] {
   const reachedComps = all.comps;
 
   // ── F101: nets with no DC path to ground (islands isolated by caps/current sources) ──
-  const dc = reach(id => reachedComps.has(id) && conductsAtDC(compOf(id)));
+  const dc = { nets: new Set<string>(['gnd']) };
+  {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const id of ids) {
+        if (!reachedComps.has(id) || !conductsAtDC(compOf(id))) continue;
+        for (const group of dcGroupsOf(id)) {
+          if (!group.some(n => dc.nets.has(n))) continue;
+          for (const n of group) {
+            if (!dc.nets.has(n)) {
+              dc.nets.add(n);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+  }
   const reachedNets = new Set<string>(['gnd']);
   for (const id of reachedComps) for (const n of netsOf(id)) reachedNets.add(n);
   const floating = [...reachedNets].filter(n => !dc.nets.has(n)).sort();
@@ -101,11 +131,13 @@ export function runLint(elab: Elaboration): Diagnostic[] {
       // floating nets does NOT make them one DC island, and merging them
       // would produce a single diagnostic whose one fix can't fix both.
       if (!conductsAtDC(compOf(id))) continue;
-      const cNets = netsOf(id).filter(n => parent.has(n));
-      for (let i = 1; i < cNets.length; i++) {
-        const a = find(cNets[0]);
-        const b = find(cNets[i]);
-        if (a !== b) parent.set(b, a);
+      for (const group of dcGroupsOf(id)) {
+        const cNets = group.filter(n => parent.has(n));
+        for (let i = 1; i < cNets.length; i++) {
+          const a = find(cNets[0]);
+          const b = find(cNets[i]);
+          if (a !== b) parent.set(b, a);
+        }
       }
     }
     const islands = new Map<string, string[]>();
@@ -116,6 +148,37 @@ export function runLint(elab: Elaboration): Diagnostic[] {
     for (const nets of [...islands.values()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
       const pins = nets.flatMap(n => doc.nets[n] ?? []).sort();
       const exampleRef = pins[0];
+      // A MOSFET gate in the island: the insulated gate has no DC path at all.
+      const gates = pins.filter(ref => {
+        const [cid, pin] = ref.split('.');
+        const t = byId.get(cid)?.type;
+        return (t === 'NMOS' || t === 'PMOS') && pin === 'g';
+      });
+      if (gates.length > 0) {
+        const mos = gates.map(g => g.split('.')[0]);
+        const viaCap = pins.some(ref => byId.get(ref.split('.')[0])?.type === 'Capacitor');
+        diagnostics.push({
+          code: 'F108',
+          slug: 'mosfet-gate-floating',
+          severity: 'error',
+          stage: 'lint',
+          message: `gate of ${mos.join(', ')} on net${nets.length > 1 ? 's' : ''} ${nets.join(', ')} has no DC drive${viaCap ? ' — it is driven only through a capacitor' : ''}`,
+          subject: { net: nets[0], components: mos, pins },
+          note: 'a MOSFET gate is insulated (no DC current): with nothing setting its DC voltage the operating point is undefined (the MNA matrix is singular) and a real gate floats to a random voltage, half-on',
+          fixes: [
+            {
+              kind: 'add-component',
+              confidence: 'suggested',
+              detail: `give ${gates[0]} a DC path: a gate-source pull-down (e.g. 100k from ${nets[0]} to the source) or drive it from a source/output through a gate resistor`,
+              patch: `const rg = tb.add('Rg_${mos[0]}', new Resistor('100k'));
+rg.pin('1').connect(${mos[0].toLowerCase()}.pin('g'));
+rg.pin('2').connect(/* ${mos[0]}'s source net */);`,
+            },
+          ],
+          at: elab.locOf.get(mos[0]),
+        });
+        continue;
+      }
       diagnostics.push({
         code: 'F101',
         slug: 'floating-net',
@@ -254,7 +317,10 @@ export function runLint(elab: Elaboration): Diagnostic[] {
       const Is = Number(comp.params['Is'] ?? 1e-14);
       const n = Number(comp.params['n'] ?? 1);
       const Vt = Number(comp.params['Vt'] ?? 0.02585);
-      const clampCurrent = drop > 0 ? Is * Math.exp(drop / (n * Vt)) : 0;
+      // A model series resistance (Rs) bounds the current by drop/Rs.
+      const Rs = Number(comp.params['Rs'] ?? 0);
+      const expCurrent = drop > 0 ? Is * Math.exp(drop / (n * Vt)) : 0;
+      const clampCurrent = Rs > 0 ? Math.min(expCurrent, drop / Rs) : expCurrent;
       if (clampCurrent > CLAMP_CURRENT_LIMIT) {
         diagnostics.push({
           code: 'F105',
@@ -304,6 +370,7 @@ export function runLint(elab: Elaboration): Diagnostic[] {
     }
   }
 
+  diagnostics.push(...lintSemiconductors(elab, reachedComps));
   if (mixed) diagnostics.push(...mixed.lint);
   return diagnostics;
 }

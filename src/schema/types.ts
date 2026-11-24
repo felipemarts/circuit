@@ -237,6 +237,81 @@ export interface StageRecord {
   assertions?: AssertionResult[];
   /** tran: logic-analyzer capture per transient run (mixed-signal / digital benches). */
   logic?: LogicCapture[];
+  /**
+   * Real-part datasheet checks (absolute maximum ratings of Part() devices),
+   * kept apart from the bench's own assertions (the simulated spec). Present
+   * on op, dc and tran when the circuit contains catalog parts.
+   */
+  ratings?: RatingResult[];
+}
+
+/**
+ * One absolute-maximum-rating check of a catalog part (Part('2N3904')…).
+ * Values are magnitudes in the rated sense (e.g. Vce of an NPN, |Vce| of a
+ * PNP). A failing entry carries code R401–R404, message, note, fixes and the
+ * tb.add location; its confidence is 'verified' because the value was simulated
+ * (`modelEstimated` says when the part's model card is itself a fit).
+ */
+export interface RatingResult {
+  /** R401 voltage · R402 continuous current · R403 pulsed/surge current · R404 power. */
+  code: string;
+  slug: string;
+  verdict: 'pass' | 'fail';
+  /** Component id in the bench. */
+  component: string;
+  /** Catalog part id. */
+  part: string;
+  /** Rating name as in the catalog (Vceo, IcMax, Vds, Vgs, Id25, IF, IFSM, Pd…). */
+  rating: string;
+  /** What is rated, in words. */
+  description: string;
+  /** Probe the value comes from (e.g. 'Q1.vce'). */
+  quantity: string;
+  /**
+   * How the stage value is reduced: 'value' (op), 'peak' (largest over the dc
+   * sweep or the transient window), 'average' (time average over the
+   * transient window — continuous-current ratings that have a pulsed
+   * companion, and Pd).
+   */
+  measure: 'value' | 'peak' | 'average';
+  /** Datasheet absolute maximum (magnitude). */
+  limit: number;
+  /** tb.ratings({ derate }) factor, when not 1. */
+  derate?: number;
+  /** limit × derate: the number the value is compared with. */
+  allowed: number;
+  unit: string;
+  /** The compared value (magnitude). */
+  value: number;
+  /** value / allowed. */
+  utilization: number;
+  /** allowed − value (negative when exceeded). */
+  margin: number;
+  /** tran: time of the peak (s). */
+  time?: number;
+  /** tran: first time the instantaneous value exceeded the allowed value. */
+  tFirstViolation?: number;
+  /** tran 'average': the averaging window [from, to] (s). */
+  window?: [number, number];
+  /** dc: sweep value where the peak occurred. */
+  x?: number;
+  /** dc/tran: which sweep / transient configuration. */
+  config?: string;
+  /** Datasheet test conditions of the rating (e.g. { TA: 25 }). */
+  conditions?: Record<string, number | string>;
+  /** Citation of the rating: publisher, document, revision. */
+  source: string;
+  url?: string;
+  /** The rating value itself is estimated (catalog flag). */
+  estimated?: boolean;
+  /** The part's model card is estimated (fitted), so the simulated value inherits its error. */
+  modelEstimated?: boolean;
+  confidence: 'verified';
+  message?: string;
+  note?: string;
+  fixes?: Fix[];
+  at?: string;
+  hint?: VerifiedParamHint;
 }
 
 export interface SolverAttempt {

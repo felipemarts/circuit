@@ -8,7 +8,7 @@ import type { StageOutcome } from './op';
 import type { AcSweepConfig, AssertionResult, AssertionSpec, CheckSpec, Diagnostic } from '../schema/types';
 import type { ComplexMNAMatrix } from '../solver/MNAMatrix';
 
-const COMPONENT_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
+import { COMPONENT_PROBE_RE, asQuantityDevice } from '../elab/quantity';
 /** 20·log10(1/√2): the half-power level. */
 export const MINUS_3DB = 20 * Math.log10(Math.SQRT1_2);
 
@@ -45,6 +45,8 @@ function probePhasor(ctx: AcContext, expr: string, re: Float64Array, im: Float64
   const m = expr.match(COMPONENT_PROBE_RE);
   if (m) {
     const comp = ctx.elab.components.get(m[1])!;
+    const dev = asQuantityDevice(comp);
+    if (dev?.acQuantity) return dev.acQuantity(m[2], re, im, omega) ?? [NaN, NaN];
     const r = comp.acReadResults(re, im, omega, matrix);
     if (!r) return [NaN, NaN];
     if (m[2] === 'v') return r.voltage;

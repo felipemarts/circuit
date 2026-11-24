@@ -1,4 +1,4 @@
-import { STAGE_ORDER, type AssertionResult, type CheckSpec, type Diagnostic, type RunRecord, type ScalarCheck, type StageRecord } from '../schema/types';
+import { STAGE_ORDER, type LogicCapture, type RatingResult, type AssertionResult, type CheckSpec, type Diagnostic, type RunRecord, type ScalarCheck, type StageRecord } from '../schema/types';
 import { formatEng } from '../elab/units';
 import { CLI } from '../schema/version';
 
@@ -40,12 +40,15 @@ export function renderHuman(record: RunRecord): string {
     if (passed > 0) {
       lines.push(`        ${passed} assertion${passed > 1 ? 's' : ''} passed`);
     }
+    if (stage?.logic && stage.logic.length > 0) lines.push(...renderLogic(stage.logic));
+    if (stage?.ratings && stage.ratings.length > 0) lines.push(...renderRatings(stage.ratings));
   }
 
   lines.push('');
   const failCount =
     record.diagnostics.filter(d => d.severity === 'error').length +
-    STAGE_ORDER.flatMap(s => record.stages[s]?.assertions ?? []).filter(a => a.verdict === 'fail').length;
+    STAGE_ORDER.flatMap(s => record.stages[s]?.assertions ?? []).filter(a => a.verdict === 'fail').length +
+    STAGE_ORDER.flatMap(s => record.stages[s]?.ratings ?? []).filter(r => r.verdict === 'fail').length;
   const head = record.verdict === 'pass' ? 'PASS' : record.verdict === 'fail' ? 'FAIL' : 'ERROR';
   const first = record.firstFailure ? ` · first failure: ${record.firstFailure}` : '';
   lines.push(`${head}${failCount > 0 ? ` · ${failCount} problem${failCount > 1 ? 's' : ''}` : ''}${first} · exit ${record.exitCode}`);
@@ -79,6 +82,51 @@ function renderDiagnostic(d: Diagnostic): string[] {
     lines.push(`          fix (${fix.confidence}): ${fix.detail}`);
   }
   lines.push(`          docs: ${CLI} explain ${d.code}`);
+  return lines;
+}
+
+const LOGIC_SIGNALS_SHOWN = 8;
+
+/**
+ * Logic-analyzer capture of a mixed-signal transient, one line per run:
+ * per signal its number of changes and final level (full traces: --json / --vcd).
+ */
+function renderLogic(captures: LogicCapture[]): string[] {
+  return captures.map(cap => {
+    const entries = Object.entries(cap.signals);
+    const shown = entries.slice(0, LOGIC_SIGNALS_SHOWN).map(([name, trace]) => {
+      const changes = Math.max(0, trace.length - 1);
+      return `${name} ${changes} change${changes === 1 ? '' : 's'}, final ${trace.length > 0 ? trace[trace.length - 1][1] : '?'}`;
+    });
+    const more = entries.length > LOGIC_SIGNALS_SHOWN ? ` · +${entries.length - LOGIC_SIGNALS_SHOWN} more` : '';
+    const cut = cap.truncated && cap.truncated.length > 0 ? ` (truncated: ${cap.truncated.join(', ')})` : '';
+    return `        logic [${cap.config}]: ${shown.join(' · ')}${more}${cut}`;
+  });
+}
+
+/**
+ * Datasheet ratings of real parts, shown apart from the bench's spec: every
+ * violation in full, then a one-line summary with the tightest margin.
+ */
+function renderRatings(ratings: RatingResult[]): string[] {
+  const lines: string[] = [];
+  for (const r of ratings) {
+    if (r.verdict !== 'fail') continue;
+    lines.push(`        ${r.code} ratings: ${r.message}`);
+    if (r.at) lines.push(`          at ${r.at}`);
+    if (r.tFirstViolation !== undefined) lines.push(`          first exceeded at t=${formatEng(r.tFirstViolation, 's')}`);
+    lines.push(`          datasheet: ${r.part} ${r.rating} max ${formatEng(r.limit, r.unit)} — ${r.source}${r.modelEstimated ? ' (model card estimated)' : ''}`);
+    for (const fix of r.fixes ?? []) lines.push(`          fix (${fix.confidence}): ${fix.detail}`);
+    lines.push(`          docs: ${CLI} explain ${r.code}`);
+  }
+  const failed = ratings.filter(r => r.verdict === 'fail').length;
+  const tightest = ratings.filter(r => r.verdict === 'pass').sort((a, b) => b.utilization - a.utilization)[0];
+  const parts = [...new Set(ratings.map(r => r.component))].length;
+  lines.push(
+    `        ratings (datasheet absolute max, simulated): ${ratings.length} checked on ${parts} part${parts > 1 ? 's' : ''}, ${failed} exceeded${
+      tightest ? ` · tightest passing: ${tightest.component} ${tightest.rating} at ${Math.round(tightest.utilization * 100)}%` : ''
+    }`,
+  );
   return lines;
 }
 

@@ -214,7 +214,16 @@ export class SimulationSystem {
       n.index = i + 1;
     });
     this.nodes = [ground, ...others];
-    this.nodeCount = others.length + 1;
+    // Internal device nodes (series resistances) follow the nets, in component order.
+    let nextNode = others.length + 1;
+    for (const comp of this.components) {
+      const count = comp.getInternalNodeCount();
+      if (count > 0) {
+        comp.assignInternalNodes(nextNode);
+        nextNode += count;
+      }
+    }
+    this.nodeCount = nextNode;
     let branches = 0;
     for (const comp of this.components) {
       const count = comp.getVSourceCount();

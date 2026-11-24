@@ -35,10 +35,28 @@ export interface CircuitDoc {
    * records them so a verify reports the same `overrides` as the bench run.
    */
   overrides?: Record<string, number>;
+  /**
+   * Datasheet-rating check settings (`tb.ratings(...)`) when they differ from
+   * the defaults (`{ enabled: true, derate: 1, pd: 'average', ignore: [] }`);
+   * only the non-default keys are written. Absent = defaults.
+   */
+  ratings?: CircuitRatings;
   /** Embedded text files (future: VHDL, firmware). Carried verbatim; ascending `path`. */
   sources?: CircuitSource[];
   /** Optional, viewer-only placement hints. Never affects simulation. */
   layout?: CircuitLayout;
+}
+
+/** `tb.ratings({...})` as data (R401–R404 checks of Part() semiconductors). */
+export interface CircuitRatings {
+  /** false: no rating checks at all (`tb.ratings(false)`). */
+  enabled?: boolean;
+  /** Multiply every absolute maximum by this factor, 0 < derate ≤ 1. */
+  derate?: number;
+  /** How Pd is compared in the transient stage. */
+  pd?: 'average' | 'peak';
+  /** Component ids excluded from the checks (ascending, unique). */
+  ignore?: string[];
 }
 
 export interface CircuitMeta {
@@ -58,6 +76,13 @@ export interface CircuitComponent {
   pins: Record<string, string>;
   /** Free parameter declared with tb.param (sweep range for verified hints). */
   free?: ParamSpec;
+  /**
+   * The verbatim SPICE `.model` card of a semiconductor built with
+   * `<Type>.fromModel(card)` (Diode, LED, NPN, PNP, NMOS, PMOS). Re-read on load
+   * to reproduce the card's lint diagnostics (T005–T008); the electrical values
+   * are those of `params`, whose `model` must name the same card.
+   */
+  modelCard?: string;
   /** Origin location (`file:line` of the tb.add call). Informational; dropped from share links. */
   at?: string;
 }

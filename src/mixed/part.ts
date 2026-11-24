@@ -1,10 +1,9 @@
 /**
  * IC side of the `Part()` factory.
  *
- * Merge seam: `Part(id)` in src/elab/part.ts dispatches here first. Another
- * part family (e.g. semiconductors) adds its own `xxxPart(id, opts)` that
- * returns `undefined` for ids it does not simulate, and `Part()` becomes the
- * union: `icPart(id, opts) ?? semiPart(id, opts) ?? throw`.
+ * `Part(id)` in src/elab/part.ts walks PART_RESOLVERS: this IC family first,
+ * then the semiconductors (src/components/Part.ts); each returns `undefined`
+ * for ids it does not simulate. A new family is one line in PART_RESOLVERS.
  */
 import { LogicIC, type IcOptions } from './device';
 import { findIcDef, icIds } from './ics';

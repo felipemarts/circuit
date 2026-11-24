@@ -3,7 +3,8 @@
 // expectation written in its header comment:
 //   - benches outside bench/broken/ must exit 0;
 //   - seeded-broken benches declare `Expected: <CODE> ... exit <N>` and must
-//     exit N and report CODE (as a diagnostic or a failed assertion code).
+//     exit N and report CODE (as a diagnostic, a failed assertion code A301,
+//     or a failed datasheet rating R401–R404).
 // Each bench runs twice and the two --json RunRecords must be byte-identical
 // (the determinism contract). Each bench is also exported to a circuit
 // document and verified from it: the RunRecord must be byte-identical (a bench
@@ -38,7 +39,8 @@ function expectation(file) {
   const rel = path.relative(root, file).split(path.sep).join('/');
   if (!rel.startsWith('bench/broken/')) return { exit: 0 };
   const header = fs.readFileSync(file, 'utf8').match(/\/\*\*([\s\S]*?)\*\//)?.[1] ?? '';
-  const code = header.match(/Expected:\s*([FSATDM]\d{3})/)?.[1];
+  // Any diagnostic family: F/S/A/T (core), D (digital/mixed), M (MCU), V (VHDL), R (ratings)…
+  const code = header.match(/Expected:\s*([A-Z]\d{3})/)?.[1];
   const exit = header.match(/\bexit (\d)\b/i)?.[1];
   if (!code || exit === undefined) {
     throw new Error(`${rel}: seeded-broken benches must state "Expected: <CODE> … exit <N>" in their header`);
@@ -77,6 +79,7 @@ for (const file of findBenches(path.join(root, 'bench'))) {
     const codes = new Set(record.diagnostics.map((d) => d.code));
     for (const stage of Object.values(record.stages)) {
       for (const a of stage.assertions ?? []) if (a.verdict === 'fail') codes.add('A301');
+      for (const r of stage.ratings ?? []) if (r.verdict === 'fail') codes.add(r.code);
     }
     if (!codes.has(want.code)) problems.push(`expected ${want.code}, got [${[...codes].join(', ')}]`);
   }

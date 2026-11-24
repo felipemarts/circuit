@@ -11,6 +11,7 @@ import type {
   VerifiedParamHint,
 } from '../schema/types';
 import type { DCResult } from '../analysis/DCAnalysis';
+import { attachRatingHint, evaluateOpRatings, ratingChecks } from './ratings';
 
 export { solverDiagnostic, opSolverRecord } from './solverDiag';
 
@@ -19,7 +20,7 @@ export interface StageOutcome {
   diagnostics: Diagnostic[];
 }
 
-const COMPONENT_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
+import { COMPONENT_PROBE_RE, asQuantityDevice } from '../elab/quantity';
 
 /** Resolve a probe expression against a solved DC operating point. */
 export function resolveOpProbe(elab: Elaboration, dc: DCResult, probe: string): number {
@@ -27,6 +28,12 @@ export function resolveOpProbe(elab: Elaboration, dc: DCResult, probe: string): 
   if (m) {
     const comp = elab.components.get(m[1]);
     if (!comp) throw new Error(`probe '${probe}': unknown component '${m[1]}'`);
+    const dev = asQuantityDevice(comp);
+    if (dev) {
+      const q = dev.quantity(m[2]);
+      if (typeof q !== 'number') throw new Error(`probe '${probe}': ${m[1]} has no quantity '${m[2]}'`);
+      return q;
+    }
     const value = m[2] === 'i' ? (comp as { current?: number }).current : (comp as { voltage?: number }).voltage;
     if (typeof value !== 'number') {
       throw new Error(`probe '${probe}': ${m[1]} does not expose ${m[2] === 'i' ? 'current' : 'voltage'}`);
@@ -67,7 +74,7 @@ const HINT_SAMPLES = 25;
  * op-stage assertions pass. The hint is simulated before it is suggested —
  * `confidence: verified` is a hard contract.
  */
-function computeVerifiedHint(elab: Elaboration, opAssertions: AssertionSpec[]): VerifiedParamHint | undefined {
+function computeVerifiedHint(elab: Elaboration, opAssertions: AssertionSpec[], withRatings = false): VerifiedParamHint | undefined {
   for (const [param, spec] of [...elab.params.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
     const samples: number[] = [];
     for (let k = 0; k < HINT_SAMPLES; k++) {
@@ -87,7 +94,8 @@ function computeVerifiedHint(elab: Elaboration, opAssertions: AssertionSpec[]): 
         // value — a 'verified' hint must survive the full ladder.
         if (runLint(el).some(d => d.severity === 'error')) return false;
         const dc = el.circuit.analyze('dc');
-        return evaluateOpAssertions(el, dc, opAssertions).every(r => r.verdict === 'pass');
+        if (!evaluateOpAssertions(el, dc, opAssertions).every(r => r.verdict === 'pass')) return false;
+        return !withRatings || evaluateOpRatings(el, p => resolveOpProbe(el, dc, p)).every(r => r.verdict === 'pass');
       } catch {
         return false; // non-convergent or invalid sample
       }
@@ -111,7 +119,7 @@ function computeVerifiedHint(elab: Elaboration, opAssertions: AssertionSpec[]): 
         passingRange: [run[0], run[run.length - 1]],
         suggestedValue: suggested,
         passingSamples: run.map(v => Number(v.toPrecision(6))),
-        note: `${HINT_SAMPLES}-point ${spec.scale} sweep of ${param} over [${formatEng(spec.min)}, ${formatEng(spec.max)}]; every listed SAMPLED value passes lint and ALL op assertions (simulated); the range spans sampled points only`,
+        note: `${HINT_SAMPLES}-point ${spec.scale} sweep of ${param} over [${formatEng(spec.min)}, ${formatEng(spec.max)}]; every listed SAMPLED value passes lint and ALL op assertions${withRatings ? ' and keeps every part within its datasheet absolute maximum ratings at the operating point' : ''} (simulated); the range spans sampled points only`,
       };
     }
   }
@@ -145,19 +153,24 @@ export function runOp(elab: Elaboration, opts: { hints: boolean }): StageOutcome
 
   const assertions = evaluateOpAssertions(elab, dc, opAssertions);
   const failed = assertions.filter(a => a.verdict === 'fail');
-  if (failed.length > 0 && opts.hints && elab.params.size > 0) {
-    const hint = computeVerifiedHint(elab, opAssertions);
+  const ratings = evaluateOpRatings(elab, p => resolveOpProbe(elab, dc, p));
+  const ratingFailed = ratings.some(r => r.verdict === 'fail');
+  if ((failed.length > 0 || ratingFailed) && opts.hints && elab.params.size > 0) {
+    // With catalog parts the hint must keep them within their ratings too.
+    const hint = computeVerifiedHint(elab, opAssertions, ratingChecks(elab, 'op').length > 0);
     if (hint) {
       for (const a of failed) a.hint = hint;
+      attachRatingHint(ratings, hint);
     }
   }
 
   return {
     stage: {
-      verdict: mixedDiags.some(d => d.severity === 'error') ? 'error' : failed.length > 0 ? 'fail' : 'pass',
+      verdict: mixedDiags.some(d => d.severity === 'error') ? 'error' : failed.length > 0 || ratingFailed ? 'fail' : 'pass',
       probes,
       solver: opSolverRecord(dc.telemetry),
       assertions,
+      ...(ratings.length > 0 ? { ratings } : {}),
     },
     diagnostics: mixedDiags,
   };

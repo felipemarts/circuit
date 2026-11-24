@@ -1,7 +1,8 @@
 import type { Diagnostic } from '../schema/types';
 import type { Component } from '../core/Component';
 import type { ComponentDef } from '../core/CustomComponent';
-import { buildComponent, describeComponent, isOverridable } from '../elab/describe';
+import { buildComponent, describeComponent, isOverridable, kindOf, restoreModelCard } from '../elab/describe';
+import { asQuantityDevice } from '../elab/quantity';
 import { CIRCUIT_SCHEMA, type CircuitDoc } from './types';
 import { docDiagnostic, type DocCode } from './errors';
 
@@ -40,14 +41,19 @@ export type CircuitDocValidation =
 const ID_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const AUTO_NET_RE = /^n\d+$/;
 const PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
+/** '<id>.<quantity>': a device quantity of a semiconductor ('Q1.ic', 'Q1.vbe', 'M1.vgs', 'D1.p'…); checked against the rebuilt device. */
+const QUANTITY_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.([a-z][a-z0-9]*)$/;
 /** '<id>.<pin>': a pin of a logic IC or primitive (e.g. 'U1.1Y', 'U1.pin6', 'G1.q'); the pin itself is checked at elaboration. */
 const PIN_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(.+)$/;
 const LANGUAGE_RE = /^[a-z][a-z0-9+#.-]*$/;
 const MAX_DIAGNOSTICS = 50;
 
-const TOP_KEYS = ['schema', 'name', 'meta', 'components', 'nets', 'assertions', 'overrides', 'sources', 'layout'];
+const TOP_KEYS = ['schema', 'name', 'meta', 'components', 'nets', 'assertions', 'overrides', 'ratings', 'sources', 'layout'];
+const RATINGS_KEYS = ['enabled', 'derate', 'pd', 'ignore'];
+/** Types that may carry a `modelCard` (built with <Type>.fromModel). */
+const MODEL_CARD_TYPES = ['Diode', 'LED', 'NPN', 'PNP', 'NMOS', 'PMOS'];
 const META_KEYS = ['title', 'description', 'author'];
-const COMPONENT_KEYS = ['id', 'type', 'params', 'pins', 'free', 'at'];
+const COMPONENT_KEYS = ['id', 'type', 'params', 'pins', 'free', 'modelCard', 'at'];
 const ASSERTION_KEYS = ['id', 'stage', 'probe', 'check', 'at', 'ref', 'tran', 'dc', 'ac'];
 const SCALAR_OPS = ['within', 'closeTo', 'above', 'below'];
 const STAGE_OPS: Record<string, string[]> = {
@@ -267,6 +273,10 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
           else if (f.scale === 'log' && isNum(f.min) && f.min <= 0) c.add('T010', `${p}/free/min`, 'log scale needs min > 0', [id]);
         }
       }
+      if (comp.modelCard !== undefined) {
+        if (typeof comp.modelCard !== 'string' || comp.modelCard.trim() === '') c.add('T010', `${p}/modelCard`, 'modelCard must be the non-empty text of a SPICE .model card', [id]);
+        else if (!MODEL_CARD_TYPES.includes(comp.type)) c.add('T010', `${p}/modelCard`, `modelCard is only valid on ${MODEL_CARD_TYPES.join(', ')} (got ${comp.type})`, [id]);
+      }
       if (comp.at !== undefined && typeof comp.at !== 'string') c.add('T010', `${p}/at`, 'at must be a string', [id]);
       comps.push({ id, type: comp.type, obj: comp, path: p });
     });
@@ -286,7 +296,7 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
     const pin = probe.match(PIN_PROBE_RE);
     if (pin && ids.has(pin[1])) return;
     if (probe !== 'gnd' && !declaredNets.has(probe)) {
-      c.add('T010', path, `probe '${probe}' must be '<id>.i', '<id>.v', '<id>.<pin>' or a net listed in "nets"`);
+      c.add('T010', path, `probe '${probe}' must be '<id>.i', '<id>.v', a device quantity '<id>.<q>' (e.g. 'Q1.ic', 'M1.vgs', 'D1.p'), '<id>.<pin>' or a net listed in "nets"`);
     }
   };
   const assertionIds = new Set<string>();
@@ -330,6 +340,29 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
       for (const [k, v] of Object.entries(value.overrides)) {
         if (!ids.has(k)) c.add('T010', `/overrides/${k}`, `override for unknown component '${k}'`);
         if (!isNum(v)) c.add('T010', `/overrides/${k}`, 'override values must be finite numbers');
+      }
+    }
+  }
+
+  // ── ratings (tb.ratings settings) ──
+  if (value.ratings !== undefined) {
+    const r = value.ratings;
+    if (!isObj(r)) c.add('T010', '/ratings', 'ratings must be an object { enabled?, derate?, pd?, ignore? }');
+    else {
+      unknownKeys(c, r, RATINGS_KEYS, '/ratings');
+      if (r.enabled !== undefined && typeof r.enabled !== 'boolean') c.add('T010', '/ratings/enabled', 'enabled must be true or false');
+      if (r.derate !== undefined && (!isNum(r.derate) || r.derate <= 0 || r.derate > 1)) c.add('T010', '/ratings/derate', 'derate must be a number in (0, 1] (e.g. 0.8 = keep 20 % margin)');
+      if (r.pd !== undefined && r.pd !== 'average' && r.pd !== 'peak') c.add('T010', '/ratings/pd', "pd must be 'average' or 'peak'");
+      if (r.ignore !== undefined) {
+        if (!Array.isArray(r.ignore)) c.add('T010', '/ratings/ignore', 'ignore must be an array of component ids');
+        else {
+          const seen = new Set<string>();
+          r.ignore.forEach((x, i) => {
+            if (typeof x !== 'string' || !ids.has(x)) c.add('T010', `/ratings/ignore/${i}`, `ignore lists unknown component ${JSON.stringify(x)}`);
+            else if (seen.has(x)) c.add('T010', `/ratings/ignore/${i}`, `duplicate id '${x}'`);
+            else seen.add(x);
+          });
+        }
       }
     }
   }
@@ -402,6 +435,7 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
     c.add('T010', '', err instanceof Error ? err.message : String(err));
     return { ok: false, diagnostics: c.diagnostics };
   }
+  const builtById = new Map<string, Component>();
   for (const { id, type, obj, path } of comps) {
     let built: Component;
     try {
@@ -428,7 +462,35 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
     if (obj.free !== undefined && !isOverridable(built)) {
       c.add('T014', `${path}/free`, `${type} ${id} has no sweepable scalar value, so it cannot be a free parameter`, [id]);
     }
+    if (typeof obj.modelCard === 'string') {
+      const params = obj.params as Obj;
+      if (params.part !== undefined) {
+        c.add('T014', `${path}/modelCard`, `component ${id}: a catalog part (params.part) carries no modelCard`, [id]);
+      } else {
+        const name = restoreModelCard(built, obj.modelCard);
+        if (name !== params.model) {
+          c.add('T014', `${path}/modelCard`, `component ${id}: modelCard names model ${JSON.stringify(name ?? null)} but params.model is ${JSON.stringify(params.model ?? null)}`, [id]);
+        }
+      }
+    }
+    builtById.set(id, built);
   }
+  // Device-quantity probes ('Q1.ic', 'M1.vgs', 'D1.p'…): the rebuilt device must expose the quantity.
+  const quantityOk = (probe: unknown, path: string): void => {
+    const m = typeof probe === 'string' ? probe.match(QUANTITY_PROBE_RE) : null;
+    if (!m) return;
+    const built = builtById.get(m[1]);
+    const dev = built && asQuantityDevice(built);
+    if (!dev) return; // '.i'/'.v' readouts and IC / logic pins are checked at elaboration
+    const available = dev.probeQuantities();
+    if (!available.includes(m[2])) {
+      c.add('T010', path, `probe '${probe}': ${kindOf(built!)} '${m[1]}' has no quantity '${m[2]}' (available: ${available.map(q => `'${m[1]}.${q}'`).join(', ')})`);
+    }
+  };
+  (value.assertions as Obj[]).forEach((a, i) => {
+    quantityOk(a.probe, `/assertions/${i}/probe`);
+    if (a.ref !== undefined) quantityOk(a.ref, `/assertions/${i}/ref`);
+  });
   for (const a of value.assertions as Obj[]) {
     const dc = a.dc as Obj | undefined;
     const id = dc && ((dc.source ?? dc.param) as string);

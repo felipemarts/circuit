@@ -6,14 +6,17 @@ import type { StageOutcome } from './op';
 import type { AssertionResult, AssertionSpec, Diagnostic, LogicCapture, TranConfig, TranRunTelemetry } from '../schema/types';
 import { isLogicCheck } from '../elab/logic';
 import { evaluateLogicCheck } from '../mixed/measure';
+import { evaluateTranRatings, ratingProbes } from './ratings';
 
-const COMPONENT_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
+import { COMPONENT_PROBE_RE, asQuantityDevice } from '../elab/quantity';
 
 /** Probe expression → engine probe spec (component quantity or named net). */
 export function probeSpecFor(elab: Elaboration, expr: string): ProbeSpec {
   const m = expr.match(COMPONENT_PROBE_RE);
   if (m) {
-    return { label: expr, color: '#000', component: elab.components.get(m[1])!, type: m[2] === 'i' ? 'current' : 'voltage' };
+    const component = elab.components.get(m[1])!;
+    if (asQuantityDevice(component)) return { label: expr, color: '#000', component, type: 'voltage', quantity: m[2] };
+    return { label: expr, color: '#000', component, type: m[2] === 'i' ? 'current' : 'voltage' };
   }
   return { label: expr, color: '#000', node: (elab.netNode.get(expr) ?? elab.mixed?.pinNode(expr))!, type: 'voltage' };
 }
@@ -60,13 +63,17 @@ export function runTran(elab: Elaboration): StageOutcome {
   const mixedDiags: Diagnostic[] = [];
   const seenDiags = new Set<string>();
   const captures: LogicCapture[] = [];
+  // Datasheet ratings of Part() devices: their quantities ride along in every analog run.
+  const ratingRuns: { label: string; waveforms: Map<string, Waveform> }[] = [];
+  const extraProbes = ratingProbes(elab, 'tran');
 
   for (const key of [...groups.keys()].sort()) {
     const { config, assertions: all } = groups.get(key)!;
     const assertions = all.filter(a => !isLogicCheck(a.check));
     const logicAssertions = all.filter(a => isLogicCheck(a.check));
     const probeExprs = [...new Set(assertions.map(a => a.probe))].sort();
-    const specs = probeExprs.map(expr => probeSpecFor(elab, expr));
+    const simulated = [...new Set([...probeExprs, ...extraProbes])].sort();
+    const specs = simulated.map(expr => probeSpecFor(elab, expr));
 
     let waveforms: Map<string, Waveform> = new Map();
     mixed?.controller.setTimeScale(config.tstop);
@@ -158,6 +165,7 @@ export function runTran(elab: Elaboration): StageOutcome {
       }
     }
 
+    if (extraProbes.length > 0 && !mixed?.digitalOnly) ratingRuns.push({ label: configLabel(config), waveforms });
     for (const expr of probeExprs) {
       const wf = waveforms.get(expr)!;
       finalValues[`${expr}@${configLabel(config)}`] = wf.y[wf.y.length - 1];
@@ -190,7 +198,8 @@ export function runTran(elab: Elaboration): StageOutcome {
 
   // Assertion results in declaration order, independent of group order.
   results.sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
-  const failed = results.some(r => r.verdict === 'fail');
+  const ratings = evaluateTranRatings(elab, ratingRuns);
+  const failed = results.some(r => r.verdict === 'fail') || ratings.some(r => r.verdict === 'fail');
   const mixedError = mixedDiags.some(d => d.severity === 'error');
   const totals = runs.reduce(
     (acc, r) => ({
@@ -215,6 +224,7 @@ export function runTran(elab: Elaboration): StageOutcome {
       },
       assertions: results,
       ...(captures.length > 0 ? { logic: captures } : {}),
+      ...(ratings.length > 0 ? { ratings } : {}),
     },
     diagnostics: mixedDiags,
   };

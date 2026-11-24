@@ -1,6 +1,6 @@
 /** Circuit document `circuitsvibe-circuit/1` and share links — browser-safe. */
 export { CIRCUIT_SCHEMA } from './types';
-export type { CircuitDoc, CircuitMeta, CircuitComponent, CircuitSource, CircuitLayout, ComponentPlacement, WireHint } from './types';
+export type { CircuitDoc, CircuitMeta, CircuitRatings, CircuitComponent, CircuitSource, CircuitLayout, ComponentPlacement, WireHint } from './types';
 export { canonicalJson } from './canonical';
 export { toCircuitDoc, benchFromDoc, canonicalizeDoc, stripLocations } from './convert';
 export type { DocBenchDescriptor, ToCircuitDocOptions } from './convert';

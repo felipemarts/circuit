@@ -1,12 +1,13 @@
 import { elaborate, type BenchDescriptor, type TB } from '../elab/bench';
-import { buildComponent, kindOf } from '../elab/describe';
+import { buildComponent, kindOf, restoreModelCard } from '../elab/describe';
 import { isLogicCheck } from '../elab/logic';
 import type { Component } from '../core/Component';
 import type { ComponentDef } from '../core/CustomComponent';
 import type { Pin } from '../core/Pin';
 import type { AssertionSpec, Diagnostic, ParamValue, ScalarCheck } from '../schema/types';
 import { canonicalJson } from './canonical';
-import { CIRCUIT_SCHEMA, type CircuitDoc, type CircuitMeta } from './types';
+import { CIRCUIT_SCHEMA, type CircuitDoc, type CircuitMeta, type CircuitRatings } from './types';
+import type { RatingOptions } from '../verify/ratings';
 import { CircuitDocError, docDiagnostic } from './errors';
 import { normalizeDefinitions, validateCircuitDoc, type ComponentDefinitions } from './validate';
 
@@ -105,14 +106,19 @@ export function toCircuitDoc(
   }
 
   const keepAt = options.locations !== false;
-  const components = elab.netlist.components.map(c => ({
-    id: c.id,
-    type: c.type,
-    params: clone(c.params) as Record<string, ParamValue>,
-    pins: { ...c.pins },
-    ...(c.free ? { free: { ...c.free } } : {}),
-    ...(keepAt && c.at ? { at: c.at } : {}),
-  }));
+  const components = elab.netlist.components.map(c => {
+    const modelCard = (elab.components.get(c.id) as { modelCard?: unknown }).modelCard;
+    return {
+      id: c.id,
+      type: c.type,
+      params: clone(c.params) as Record<string, ParamValue>,
+      pins: { ...c.pins },
+      ...(c.free ? { free: { ...c.free } } : {}),
+      ...(typeof modelCard === 'string' ? { modelCard } : {}),
+      ...(keepAt && c.at ? { at: c.at } : {}),
+    };
+  });
+  const ratings = ratingsField(elab.ratingOptions);
   const nets = [...elab.netNode.keys()].filter(n => n !== 'gnd' && !AUTO_NET_RE.test(n)).sort();
   const assertions = elab.assertions.map(a => {
     const copy = clone(a) as AssertionSpec;
@@ -130,16 +136,29 @@ export function toCircuitDoc(
     ...(nets.length > 0 ? { nets } : {}),
     assertions,
     ...(Object.keys(overrides).length > 0 ? { overrides: { ...overrides } } : {}),
+    ...(ratings ? { ratings } : {}),
     ...(carried?.sources ? { sources: clone(carried.sources) } : {}),
     ...(carried?.layout ? { layout: clone(carried.layout) } : {}),
   };
   return canonicalizeDoc(doc);
 }
 
+/** tb.ratings(...) settings as a document field: only the non-default keys, undefined when all are defaults. */
+function ratingsField(o: RatingOptions | undefined): CircuitRatings | undefined {
+  if (!o) return undefined;
+  const r: CircuitRatings = {};
+  if (!o.enabled) r.enabled = false;
+  if (o.derate !== 1) r.derate = o.derate;
+  if (o.pd !== 'average') r.pd = o.pd;
+  if (o.ignore.length > 0) r.ignore = [...o.ignore];
+  return Object.keys(r).length > 0 ? r : undefined;
+}
+
 /**
  * Rebuild a BenchDescriptor from a circuit document: components through
  * `buildComponent`, wiring from `pins`, `nets` as tb.name, `free` as
- * tb.param, and every assertion replayed through the bench DSL (so the DSL's
+ * tb.param, `ratings` as tb.ratings, `modelCard` re-read for its lint
+ * diagnostics, and every assertion replayed through the bench DSL (so the DSL's
  * own checks apply and ids/locations come from the document). Throws
  * CircuitDocError (T010–T014) when the document is invalid.
  *
@@ -155,7 +174,9 @@ export function benchFromDoc(input: unknown, opts: { definitions?: ComponentDefi
   const build = (tb: TB): void => {
     const comps = new Map<string, Component>();
     for (const c of doc.components) {
-      const added = tb.add(c.id, buildComponent(c.type, clone(c.params), defs));
+      const built = buildComponent(c.type, clone(c.params), defs);
+      if (c.modelCard !== undefined) restoreModelCard(built, c.modelCard);
+      const added = tb.add(c.id, built);
       tb._locOf.set(c.id, c.at);
       comps.set(c.id, added);
     }
@@ -178,6 +199,7 @@ export function benchFromDoc(input: unknown, opts: { definitions?: ComponentDefi
       tb._namedNets[tb._namedNets.length - 1].at = undefined;
     }
     for (const c of doc.components) if (c.free) tb.param(c.id, c.free);
+    if (doc.ratings) tb.ratings(clone(doc.ratings));
     for (const a of doc.assertions) {
       const before = tb._assertions.length;
       replayAssertion(tb, a);

@@ -53,17 +53,52 @@ export const COMPONENT_CATALOG: CatalogEntry[] = [
   },
   {
     type: 'Diode',
-    example: `tb.add('D1', new Diode({ Is: 1e-14, n: 1 }))`,
+    example: `tb.add('D1', new Diode({ Is: '2.5n', n: 1.75, Rs: 0.5, Cjo: '4p', Tt: '20n', BV: 100 }))  |  Diode.fromModel('.model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p M=0.4 TT=20n BV=100 IBV=100u)')  |  Part('1N4148')`,
     pins: `'anode', 'cathode'`,
-    value: 'Shockley params {Is, n, Vt}; nonlinear (Newton-Raphson with pn-junction limiting)',
-    dc: 'needs series resistance or NR may not converge (S201); AC model: junction conductance at the operating point',
+    value: 'SPICE level-1 diode (generic, free params, case-insensitive): Is, n, Rs (internal node), Cjo/Vj/M/Fc (depletion), Tt (diffusion), BV/IBV/Nbv (breakdown: Zener at Vz=BV, Iz=IBV); pn-junction limiting incl. breakdown',
+    dc: 'needs series resistance or NR may not converge (S201); AC: gd + jω(Cj + Tt·gd); probes D1.i, D1.v, D1.p',
   },
   {
     type: 'LED',
     example: `tb.add('D1', new LED())`,
     pins: `'anode', 'cathode'`,
-    value: 'Diode with LED-ish defaults (~2 V forward drop at mA currents)',
+    value: "Diode with LED-ish defaults (Is=1e-20, n=2: ~2 V at mA currents); accepts Diode params; real LEDs: Part('LED-RED-5MM'), Part('LED-GREEN-5MM')",
     dc: 'ALWAYS use a series resistor; probe D1.i for the operating current',
+  },
+  {
+    type: 'NPN',
+    example: `tb.add('Q1', new NPN({ bf: 100, is: '1e-14', vaf: 100 }))  |  NPN.fromModel('.model Q2N3904 NPN(IS=6.734f BF=416.4 VAF=74.03 ...)')  |  Part('2N3904')`,
+    pins: `'c', 'b', 'e' (aliases 'collector', 'base', 'emitter')`,
+    value: 'Gummel-Poon subset, case-insensitive params: Is Bf Nf Vaf Ikf Ise Ne Br Nr Var Ikr Isc Nc Rb Re Rc Cje Vje Mje Cjc Vjc Mjc Tf Tr Fc (Ebers-Moll when only Is/Bf/Br are set; Vaf/Var/Ikf/Ikr 0 = infinite)',
+    dc: 'drive the base through a resistor (F109 otherwise); pnjlim on both junctions; probes Q1.ic Q1.ib Q1.ie (into the pins) Q1.vbe Q1.vce Q1.vbc Q1.p; Q1.i = ic, Q1.v = vce',
+  },
+  {
+    type: 'PNP',
+    example: `tb.add('Q2', new PNP({ bf: 100 }))  |  Part('2N3906')`,
+    pins: `'c', 'b', 'e'`,
+    value: 'same parameters as NPN; every voltage and current mirrored (emitter at the positive side, ic < 0 when on)',
+    dc: 'emitter to the most positive rail (F110 flags one tied to the lowest potential)',
+  },
+  {
+    type: 'NMOS',
+    example: `tb.add('M1', new NMOS({ vto: 2, kp: '50m', lambda: 0.01 }))  |  NMOS.fromModel('.model M1 NMOS(LEVEL=1 VTO=1 KP=2m)', { W: '10u', L: '1u' })  |  Part('2N7000')`,
+    pins: `'d', 'g', 's' (aliases 'drain', 'gate', 'source'); with bulkPin: true also 'b'`,
+    value: 'Level 1 (Shichman-Hodges): Vto Kp Lambda Gamma Phi Rd Rs W L Ld Cgso Cgdo Cgbo Cbd Cbs Is Pb Mj Fc; lumped W = L = 1 (Kp = beta); bodyDiode: { Is, n, Rs, ... } for power parts',
+    dc: 'gate is insulated: give it a DC path (F108 otherwise); fetlim/limvds/pnjlim; probes M1.id M1.ig M1.is M1.vgs M1.vds M1.vbs M1.p; M1.i = id, M1.v = vds',
+  },
+  {
+    type: 'PMOS',
+    example: `tb.add('M2', new PMOS({ vto: -2, kp: '20m' }))  |  Part('IRF9540N')`,
+    pins: `'d', 'g', 's'`,
+    value: 'same parameters as NMOS; enhancement PMOS has Vto < 0; source to the most positive rail',
+    dc: 'conducts when Vgs < Vto (gate below the source)',
+  },
+  {
+    type: 'Part',
+    example: `tb.add('Q1', Part('2N3904'))  |  Part('IRLZ44N')  |  Part('1N4733A')  |  Part('LED-RED-5MM')  |  Part('74HC04')`,
+    pins: 'those of the device it returns (Diode/LED/NPN/PNP/NMOS/PMOS); logic ICs / NE555: datasheet pin names or numbers (see their entries)',
+    value: 'one factory for every REAL catalog part (logic ICs / NE555 are listed below with their own entries). A semiconductor part: model card from the catalog (published or ESTIMATED — see circuitsvibe catalog <id>) plus datasheet absolute maximum ratings; netlist params carry part: <id>',
+    dc: 'ratings are checked after op, dc and tran (R401 voltage, R402 current, R403 pulsed current, R404 power → exit 1); tb.ratings({ derate: 0.8 }) / tb.ratings(false)',
   },
   {
     type: 'Switch',
@@ -87,6 +122,19 @@ export const GRAMMAR_NOTES = `PROBES (every stage)
   '<id>.i'   current through component <id>          e.g. 'D1.i'
   '<id>.v'   voltage across component <id>           e.g. 'R1.v'
   '<net>'    voltage of a net named via tb.name(...)  e.g. 'out'
+  device quantities: Diode/LED .i .v .p · NPN/PNP .ic .ib .ie (into the pins) .vbe .vbc .vce .vcb .veb .p
+                     (.i = ic, .v = vce) · NMOS/PMOS .id .ig .is .vgs .vds .vgd .vbs .p (.i = id, .v = vds)
+
+RATINGS  Part('<id>') semiconductors are checked against their datasheet absolute maximum ratings
+  after op, dc and tran (mixed-signal transients too): stages.<stage>.ratings[] (separate from assertions), codes
+  R401 voltage · R402 continuous current · R403 pulsed/surge current · R404 power; exit 1.
+  op = value, dc = peak over the sweep, tran = peak (voltages, currents) or window average
+  (continuous currents that have a pulsed rating; Pd). tb.ratings({ derate: 0.8, pd: 'peak',
+  ignore: ['Q1'] }) or tb.ratings(false). Logic ICs check their own drive limits instead (D511).
+
+MODELS   Diode/LED/NPN/PNP/NMOS/PMOS.fromModel('.model <name> <type>(<p>=<v> ...)'): SPICE suffixes
+  case-insensitive (M = milli, MEG = mega, MIL), '+' continuation lines, parentheses optional;
+  T005 unknown param (warning) · T006 unsupported type/LEVEL · T007 malformed · T008 not modeled (warning)
 
 VALUES  numbers or unit strings: '4.7k' '10m' '2u' '1M' '1e-6' (m=milli, M=mega)
 

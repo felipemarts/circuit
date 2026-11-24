@@ -61,6 +61,34 @@
         "type": "number"
       }
     },
+    "ratings": {
+      "description": "Datasheet-rating check settings (tb.ratings) when they differ from the defaults { enabled: true, derate: 1, pd: 'average', ignore: [] }; only non-default keys are written. ignore lists component ids (checked by validateCircuitDoc).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "derate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "pd": {
+          "enum": [
+            "average",
+            "peak"
+          ]
+        },
+        "ignore": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      }
+    },
     "sources": {
       "description": "Embedded text files (reserved for VHDL / firmware sources). Carried verbatim; not executed by circuitsvibe-circuit/1 readers.",
       "type": "array",
@@ -180,6 +208,11 @@
               ]
             }
           }
+        },
+        "modelCard": {
+          "description": "Verbatim SPICE .model card of a Diode/LED/NPN/PNP/NMOS/PMOS built with fromModel(card); re-read on load for its lint diagnostics (T005-T008). Electrical values come from params, whose model must name the same card.",
+          "type": "string",
+          "minLength": 1
         },
         "at": {
           "type": "string"
@@ -825,7 +858,7 @@
         "probe": {
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\..+)?$",
-          "description": "'<id>.i' / '<id>.v', '<id>.<pin>' (a logic IC or primitive pin, e.g. 'U1.1Y'), or a named net"
+          "description": "'<id>.i' / '<id>.v', a semiconductor device quantity '<id>.<q>' (e.g. 'Q1.ic', 'Q1.vbe', 'M1.vgs', 'D1.p'; circuitsvibe catalog <type> lists them), '<id>.<pin>' (a logic IC or primitive pin, e.g. 'U1.1Y'), or a named net"
         },
         "at": {
           "type": "string"

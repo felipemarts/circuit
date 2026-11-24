@@ -159,6 +159,14 @@ $ circuitsvibe catalog                                 # component datasheet for
   NE555 from the parts catalog (pins, VIL/VIH or VT+/VT−, Rout, tpd per supply, ratings →
   D508–D514), generic logic primitives, `tb.expect.logic`, bench-level digital lint
   F130–F138, logic capture in the RunRecord and `--vcd`.
+- ✅ Semiconductors: SPICE level-1 diode (Rs on an internal node, depletion + diffusion
+  charge, Zener breakdown with limiting), Gummel-Poon BJT subset (Ebers-Moll as the
+  zero-parameter limit), Level-1 MOSFET with body effect, gate capacitances and body diode;
+  DC/AC/transient stamps through one polarity-normalized device core; SPICE `.model`
+  cards (T005–T008).
+- ✅ Real parts: `Part('2N3904')` from the cited catalog (src/parts) — model card plus
+  datasheet absolute maximum ratings, checked automatically after op/dc/tran (R401–R404,
+  exit 1) and reported apart from the bench's assertions; semiconductor lint F107–F110.
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap
@@ -171,7 +179,7 @@ $ circuitsvibe catalog                                 # component datasheet for
 | v0.5 | `circuitsvibe optimize` (Nelder-Mead over the ladder as an objective function) — gmin/source stepping already shipped | the agent never picks a resistor by hand again |
 | v0.6 | UI = RunRecord viewer: assertion chips on the schematic, bands on the oscilloscope, ledger timeline | human and agent see the same artifact |
 | v0.7 | SPICE export + ngspice cross-check in CI with a tolerance table (ordering by ref in the matrix already shipped); sparse LU once benches pass ~500 nodes | public numerical credibility |
-| v0.8 | Level-1 MOSFET, Ebers-Moll BJT, behavioral sources; op-amp macro-model | unlocks real specs |
+| v0.8 | ~~Level-1 MOSFET, Gummel-Poon BJT, real parts with ratings~~ (done), behavioral sources; op-amp macro-model | unlocks real specs |
 | v1.0 | **CircuitBench**: public eval of "iterations-to-green" per model, tasks with hidden assertions; freeze of the `circuitsvibe-run/1.0` schema | the standard wins because agents provably converge on it |
 
 Sequencing rules (from the architecture-panel judges): the terminal loop stands on its own
@@ -214,6 +222,25 @@ no benchmark claim beyond what the component library covers.
   `defineComponent` parts are code and are refused (T013) rather than half-serialized.
 - **Share links live in the URL fragment** (`#c=1.` + base64url of deflate-raw canonical JSON),
   like excalidraw: no server sees or stores a circuit. Warn above 8 KiB, refuse above 2 MiB.
+- **Datasheet ratings are spec failures, not structural errors** — a part over its absolute
+  maximum rating is a valid circuit with an unmet (real) spec: exit 1, like an assertion,
+  with `confidence: verified` because the stress was simulated. Ratings live in
+  `stages.<stage>.ratings`, never mixed with the author's assertions, so the agent can tell
+  "my spec" from "the part's spec". Transient continuous-current and Pd checks use the
+  window average when the datasheet has a pulsed companion rating (or Pd, a thermal rating);
+  the instantaneous peak otherwise.
+- **Generic vs real parts are explicit** — `new NPN({ bf })` has free parameters and no
+  ratings; `Part(id)` is a real part and records `part: id` in the netlist (rebuilt from the
+  catalog). Estimated (fitted) model cards say so in `circuitsvibe catalog`.
+- **One `Part()` for every real part** — `Part(id, opts?)` (src/elab/part.ts) walks a chain of
+  family resolvers (logic ICs / NE555 from src/mixed, semiconductors from
+  src/components/Part.ts); each returns `undefined` for ids it does not own, and an unknown id
+  lists every family's simulatable ids. A new family (op-amps next) is one line in
+  `PART_RESOLVERS`. Rebuilds stay per family: ICs by their catalog-id netlist type,
+  semiconductors by their `part` param.
+- **Internal device nodes and the co-simulation hook are independent** — series-resistance
+  nodes are numbered after the nets, in component order, when the system is built; the
+  co-simulation hook only reads net nodes, so both keep the deterministic ordering.
 - **Locations are cwd-relative with forward slashes** — RunRecords are identical across
   machines and operating systems.
 - **Mixed-signal = one MNA system + one event kernel, coupled through a hook** —

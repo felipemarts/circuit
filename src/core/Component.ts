@@ -71,6 +71,19 @@ export abstract class Component {
 
   assignVSourceIndices(_startIndex: number): void {}
 
+  // --- Internal nodes (series resistances of semiconductor models) ---
+
+  /**
+   * Number of internal node unknowns this element needs (e.g. the node
+   * between a diode's series resistance and its junction). The engine numbers
+   * them after the circuit's nets, in component order, so they behave like
+   * any other node (KCL row, vntol convergence, gmin stepping shunt).
+   */
+  getInternalNodeCount(): number { return 0; }
+
+  /** Receive the node index of the first internal node (the rest follow consecutively). */
+  assignInternalNodes(_firstNodeIndex: number): void {}
+
   // --- Transient protocol ---
 
   /** Next source corner strictly after `t` that the stepper must land on (Infinity: none). */

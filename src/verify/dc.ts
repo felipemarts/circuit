@@ -6,6 +6,7 @@ import { solverDiagnostic } from './solverDiag';
 import { probeSpecFor } from './tran';
 import { runLint } from './lint';
 import type { StageOutcome } from './op';
+import { evaluateDcRatings, ratingProbes } from './ratings';
 import type { AssertionResult, AssertionSpec, DcSweepConfig, Diagnostic } from '../schema/types';
 
 export interface SweepCurve {
@@ -150,16 +151,19 @@ export function runDc(elab: Elaboration): StageOutcome {
   let points = 0;
   let aidedPoints = 0;
   let allLinear = true;
+  const extraProbes = ratingProbes(elab, 'dc');
+  const sweeps: { label: string; x: number[]; values: Record<string, number[]> }[] = [];
   for (const key of [...groups.keys()].sort()) {
     const { config, assertions } = groups.get(key)!;
     const probeExprs = [...new Set(assertions.map(a => a.probe))].sort();
-    const outcome = runSweep(elab, config, probeExprs);
+    const outcome = runSweep(elab, config, [...new Set([...probeExprs, ...extraProbes])].sort());
     if (!outcome.ok) return { stage: { verdict: 'error' }, diagnostics: [outcome.diagnostic] };
     const { curve } = outcome;
     iterations += curve.iterations;
     points += curve.x.length;
     aidedPoints += curve.aidedPoints;
     allLinear = allLinear && curve.linear;
+    if (extraProbes.length > 0) sweeps.push({ label: `${config.source ?? config.param}: ${config.from} → ${config.to} (${config.points} points)`, x: curve.x, values: curve.values });
     for (const spec of assertions) {
       const out = evaluateDcCheck(spec.check, curve.x, curve.values[spec.probe]);
       const result: AssertionResult = {
@@ -182,7 +186,8 @@ export function runDc(elab: Elaboration): StageOutcome {
     }
   }
   results.sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
-  const failed = results.some(r => r.verdict === 'fail');
+  const ratings = evaluateDcRatings(elab, sweeps);
+  const failed = results.some(r => r.verdict === 'fail') || ratings.some(r => r.verdict === 'fail');
   return {
     stage: {
       verdict: failed ? 'fail' : 'pass',
@@ -193,6 +198,7 @@ export function runDc(elab: Elaboration): StageOutcome {
         ...(aidedPoints > 0 ? { aidedPoints } : {}),
       },
       assertions: results,
+      ...(ratings.length > 0 ? { ratings } : {}),
     },
     diagnostics: [],
   };

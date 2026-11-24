@@ -42,6 +42,16 @@ export { Capacitor } from './components/Capacitor';
 export { Inductor } from './components/Inductor';
 export { Diode } from './components/Diode';
 export { LED } from './components/LED';
+export { NPN, PNP, BJT } from './components/BJT';
+export type { BjtParams, GummelPoonPoint } from './components/BJT';
+export { NMOS, PMOS, MOSFET } from './components/MOSFET';
+export type { MosfetParams, MosfetInstance, Level1Point } from './components/MOSFET';
+export type { DiodeParams } from './components/Diode';
+export { semiPart, semiPartIds, partModelInfo, partUnsupportedReason } from './components/Part';
+export type { PartDevice, PartModelInfo } from './components/Part';
+export { parseSpiceModel, parseSpiceNumber } from './components/semi/spiceModel';
+export type { ParsedModel, ModelDiagnostic } from './components/semi/spiceModel';
+export { findPart, PARTS } from './parts';
 export { Switch } from './components/Switch';
 export { Button } from './components/Button';
 export type { SourceOptions, AcStimulus } from './components/source';
@@ -59,9 +69,10 @@ export type {
 export { waveformValue, waveformNextBreakpoint } from './components/waveforms';
 export { pnjlim, fetlim, limvds, junctionVcrit } from './solver/limiting';
 
-// Mixed-signal: real logic ICs + NE555 (Part), generic logic primitives, logic assertions.
-export { Part } from './elab/part';
-export type { PartOptions } from './elab/part';
+// Real parts: one Part() over every family (logic ICs + NE555, semiconductors; src/elab/part.ts).
+// Mixed-signal: generic logic primitives, logic assertions.
+export { Part, PART_RESOLVERS, partIds } from './elab/part';
+export type { PartOptions, PartResolver } from './elab/part';
 export { icPart, icPartIds } from './mixed/part';
 export {
   LogicIC,

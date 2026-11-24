@@ -54,6 +54,7 @@ No unit strings (`'4.7k'` is a DSL convenience, not part of the document).
 | `nets` | no | user-named nets, ascending — the names probes may cite |
 | `assertions` | yes | array of assertions in declaration order (may be empty) |
 | `overrides` | no | `{ id: number }` — `--set` values applied when the document was made |
+| `ratings` | no | `{ enabled?, derate?, pd?, ignore? }` — `tb.ratings(...)` settings, only when not the defaults |
 | `sources` | no | embedded text files `[{ path, language, text }]`, ascending `path` |
 | `layout` | no | viewer placement hints; never affects simulation |
 
@@ -67,10 +68,11 @@ Same shape as `RunRecord.netlist.components[]`:
 | Field | Meaning |
 |-------|---------|
 | `id` | `/^[A-Za-z][A-Za-z0-9_]*$/`, unique; the name in every diagnostic, probe and override |
-| `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `Switch`, `Button`) or the name of a custom definition supplied by the reader (T012 otherwise) |
+| `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `NPN`, `PNP`, `NMOS`, `PMOS`, `Switch`, `Button`, a logic IC / NE555 catalog id such as `74HC04`, a logic primitive such as `Nand`) or the name of a custom definition supplied by the reader (T012 otherwise) |
 | `params` | the component configuration, exactly as in the RunRecord netlist (see below) |
 | `pins` | `{ pinName: netName }` with **every** canonical pin of the type, and only those (T014) |
 | `free` | optional `{ min, max, scale: "lin" \| "log" }` — a `tb.param` sweep range (verified hints) |
+| `modelCard` | optional verbatim SPICE `.model` card of a `Diode` / `LED` / `NPN` / `PNP` / `NMOS` / `PMOS` built with `<Type>.fromModel(card)` (see below) |
 | `at` | optional origin `file:line` of the `tb.add` call; informational, dropped from share links |
 
 `params` per type:
@@ -82,10 +84,23 @@ Same shape as `RunRecord.netlist.components[]`:
 | `Inductor` | `{ l }` | `1`, `2` |
 | `VoltageSource` | `{ v, sin? \| pulse? \| pwl? \| pwm?, ac?: { mag, phase } }` | `+`, `-` |
 | `CurrentSource` | `{ i, …same waveform/ac keys }` | `+`, `-` |
-| `Diode` | `{ Is, n, Vt }` | `anode`, `cathode` |
-| `LED` | `{ Is, n, Vt }` — fixed model; values other than the defaults are refused (T014) | `anode`, `cathode` |
+| `Diode` | `{ Is, n, Vt, …every SPICE parameter that differs from its default (Rs, Cjo, Vj, M, Tt, BV, IBV…), model?, part? }` | `anode`, `cathode` |
+| `LED` | same as `Diode` (LED defaults `Is` = 1e-20, `n` = 2) | `anode`, `cathode` |
+| `NPN` / `PNP` | `{ …Gummel-Poon parameters that differ from their defaults (bf, vaf, ikf, rb, cje, tf…), model?, part? }` | `c`, `b`, `e` |
+| `NMOS` / `PMOS` | `{ …Level-1 parameters that differ from their defaults (vto, kp, lambda, rd, cgso…, bulkPin, bodyDiode), model?, part? }` | `d`, `g`, `s` (+ `b` with `bulkPin: true`) |
+| `74HC04`, `NE555`, … | the IC options that differ from the defaults (`corner`, `clamp`); the type is the catalog id | datasheet pin names (`1A`, `1Y`, `VCC`, `GND`, …) |
+| `Nand`, `DFF`, `Clock`, … | the primitive's options (`inputs`, `delay`, `family`, `vcc`, …) | as in the bench DSL (`a`, `b`, `y`, `clk`, `q`, …) |
 | `Switch` | `{ closed }` (boolean) | `com`, `a`, `b` |
 | `Button` | `{ pressed }` (boolean) | `1`, `2` |
+
+Semiconductors: `part: "<id>"` marks a catalog part (`Part('2N3904')`); the reader rebuilds
+it from its own catalog and the other params must match what that part describes (T014
+otherwise). `model: "<name>"` names the `.model` card a device was built from; such a
+component also carries `modelCard`, the verbatim card text. The reader re-reads the card
+only to reproduce its lint diagnostics (T005–T008, e.g. an unknown parameter or an
+unsupported LEVEL); the electrical values are those of `params` (which already hold the
+card's values and any instance overrides such as `W`/`L`). `modelCard` must name the same
+model as `params.model` and is refused on catalog parts and other types.
 
 Waveforms: `sin: { offset, amplitude, freq, delay, damping, phase }`,
 `pulse: { v1, v2, td, tr, tf, pw, per }`, `pwl: { points: [[t, v], …], repeat }`,
@@ -113,14 +128,19 @@ Exactly `AssertionSpec` from the RunRecord (`docs/DIAGNOSTICS.md`):
 
 - `stage`: `op`, `dc`, `ac` or `tran`; the matching config is required (`dc`, `ac`, `tran`)
   and the others are forbidden. `ref` only on `ac`.
-- `probe` / `ref`: `'<id>.i'`, `'<id>.v'`, a name listed in `nets`, or `gnd`.
+- `probe` / `ref`: `'<id>.i'`, `'<id>.v'`, a semiconductor device quantity `'<id>.<q>'`
+  (`'Q1.ic'`, `'Q1.vbe'`, `'M1.vgs'`, `'D1.p'`… — the quantity must be one the rebuilt device
+  exposes, T010 otherwise), a logic IC / primitive pin `'<id>.<pin>'` (`'U1.1Y'`, checked at
+  elaboration), a name listed in `nets`, or `gnd`.
 - `check` by stage — op: `within {min,max}`, `closeTo {value,tol}`, `above {value}`,
   `below {value}`; dc: `at {x,check}`, `slopeAt {x,check}`, `monotonic {direction}`,
   `crosses {level, min?, max?}`; ac: `gainAt {f,check}`, `phaseAt {f,check}`,
   `bandwidth3dB {check}`, `unityGainFrequency {check}`, `phaseMargin {check}` (`check` is a
   scalar check); tran: `settleWithin {target,tol,by}`, `neverExceed {value}`,
   `stayAbove {value,from?}`, `stayBelow {value,from?}`, `rippleBelow {amplitude,from?}`,
-  `finalCloseTo {value,tol}`.
+  `finalCloseTo {value,tol}`, and the logic checks `logicAt {t,value}`,
+  `logicEdges {edge,from?,to?,count?,min?,max?}`, `logicFrequency {value,tol,from?,to?}`,
+  `logicDutyCycle {value,tol,from?,to?}`, `logicStable {from,to,value?}` (value: 0, 1, "X", "Z").
 - configs — `tran: { tstop, dt, maxStep?, minStep?, method?: "trap"|"be", ic?: "zero"|"op", reltol? }`,
   `dc: { source | param, from, to, points }`, `ac: { from, to, pointsPerDecade }`.
 
@@ -134,6 +154,20 @@ Component `params` **already contain** the overridden values; `overrides` only r
 which values were set, so `verify file.circuit.json` reports the same `overrides` as
 `verify bench.ts --set …` did. Re-applying them is idempotent. `--set` on a document merges
 over them.
+
+### `ratings`
+
+The bench's `tb.ratings(...)` settings for the datasheet absolute-maximum checks of
+`Part()` semiconductors (R401–R404), written only when they differ from the defaults and
+with only the non-default keys: `enabled: false` (`tb.ratings(false)`), `derate` (0 < d ≤ 1),
+`pd: "peak"`, `ignore: [ids]` (ascending, unique, existing component ids). Absent = defaults
+(`{ enabled: true, derate: 1, pd: "average", ignore: [] }`). Replayed as `tb.ratings(...)`, so
+the document's RunRecord — `stages.<stage>.ratings[]` included — is byte-identical to the
+bench's.
+
+```json
+"ratings": { "derate": 0.8, "ignore": ["D1"] }
+```
 
 ### `sources[]` (reserved slot)
 

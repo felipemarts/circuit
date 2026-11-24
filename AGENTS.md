@@ -83,10 +83,48 @@ export default bench('rc-led', (tb) => {
 | Inductor | `new Inductor('10m')` | `'1'`, `'2'` | short (0 V) at DC, jωL in AC |
 | VoltageSource | `new VoltageSource(5)` or `new VoltageSource({ ... })` | `'+'`, `'-'` | DC, waveforms, AC stimulus — see Sources |
 | CurrentSource | `new CurrentSource('1m')` or `({ ... })` | `'+'`, `'-'` | pushes its current out of `+` into the circuit; same options |
-| Diode | `new Diode({ Is: 1e-14, n: 1 })` | `'anode'`, `'cathode'` | Shockley model; AC: junction conductance at the operating point |
-| LED | `new LED()` | `'anode'`, `'cathode'` | ~2 V forward drop; always add a series resistor |
+| Diode | `new Diode({ Is: 1e-14, n: 1, Rs: 0.5, Cjo: '4p', Tt: '5n', BV: 5.1, IBV: '49m' })` | `'anode'`, `'cathode'` | SPICE level 1: Rs, junction + diffusion charge, breakdown (Zener: BV = Vz at IBV = Izt) |
+| LED | `new LED()` | `'anode'`, `'cathode'` | ~2 V forward drop; always add a series resistor; accepts Diode params |
+| NPN / PNP | `new NPN({ bf: 100, vaf: 100 })` | `'c'`, `'b'`, `'e'` | Gummel-Poon subset (Ebers-Moll with defaults); drive the base through a resistor |
+| NMOS / PMOS | `new NMOS({ vto: 2, kp: '50m', lambda: 0.01 })` | `'d'`, `'g'`, `'s'` (+ `'b'` with `bulkPin: true`) | Level 1; gate needs a DC path; PMOS: `vto < 0` |
+| Part | `Part('2N3904')`, `Part('IRLZ44N')`, `Part('1N4733A')`, `Part('74HC04')` | the device's | one factory for every REAL part: semiconductors (catalog model + datasheet ratings checked automatically) and logic ICs / NE555 (see below) |
 | Switch | `new Switch(false)` | `'com'`, `'a'`, `'b'` | SPDT: false → com–a, true → com–b |
 | Button | `new Button(false)` | `'1'`, `'2'` | conducts while pressed |
+
+### Semiconductors: generic devices vs real parts
+
+Two kinds, never mixed up:
+
+- **Generic / simulated** — `new Diode({...})`, `new NPN({...})`, `new PNP({...})`,
+  `new NMOS({...})`, `new PMOS({...})`: free SPICE parameters, **no ratings**. Parameter
+  names are case-insensitive (`bf`, `Bf`, `BF`) and accept units (`'50m'`, `'4p'`); a
+  misspelled name throws. `npx circuitsvibe catalog NPN` prints every parameter with its
+  default and unit. From a SPICE card: `Diode.fromModel('.model D1N4148 D(IS=2.52n RS=0.568 …)')`,
+  `NPN.fromModel(…)`, `NMOS.fromModel(card, { W: '10u', L: '1u' })` (LEVEL=1 only).
+- **Real catalog parts** — `Part('2N3904')` returns the configured device (NPN here) with the
+  catalog's model card **and** its datasheet absolute maximum ratings. `npx circuitsvibe catalog`
+  lists every part (published vs ESTIMATED model); `npx circuitsvibe catalog 2N3904` shows
+  pins, model card, ignored parameters, ratings with units and citations, and datasheet
+  characteristics to compare with.
+
+Device probes: `Q1.ic` `Q1.ib` `Q1.ie` (currents INTO the pins, SPICE convention), `Q1.vbe`
+`Q1.vce` `Q1.vbc` `Q1.p` (power) · `M1.id` `M1.vgs` `M1.vds` `M1.p` · `D1.i` `D1.v` `D1.p`.
+`.i`/`.v` are the main channel (ic/vce, id/vds).
+
+### Datasheet ratings (real parts)
+
+After op, dc and tran every `Part()` is checked against its absolute maximum ratings —
+R401 voltage (Vceo, Vcbo, Vebo, Vds, ±Vgs, VR) · R402 continuous current (IcMax, Id25, IF) ·
+R403 pulsed current (IcPeak, IdPulsed, IFP, IFSM; tran) · R404 power (Pd). Results are in
+`stages.<stage>.ratings[]`, **separate from your assertions**; a violation is exit **1**
+(valid circuit, over-stressed part) with `confidence: "verified"` (simulated) and the
+datasheet citation. op = the value, dc = the peak over the sweep, tran = the peak (voltages;
+currents without a pulsed rating) or the window average (continuous currents with a pulsed
+rating, and Pd). With `tb.param`, the verified hint also keeps ratings in range.
+`tb.ratings({ derate: 0.8 })` keeps 20 % margin; `tb.ratings(false)` disables the checks.
+Ratings run after mixed-signal transients too: a 74HC04 driving a `Part('2N3904')` reports
+`stages.tran.logic[]` and `stages.tran.ratings[]` together; an IC output over its own limit
+is D511, not R40x.
 
 Custom parts: `defineComponent({ name, pins, params, stamp, ac? })` (see the README). Use
 `ctx.stampCapacitance(a, b, C)` for internal capacitors (integrated like built-ins) and
@@ -121,7 +159,8 @@ export default bench('blink', (tb) => {
 });
 ```
 
-- **`Part(id, { corner?: 'typ' | 'worst', clamp?: boolean })`** — `u1.pin('1A')`, `u1.pin(1)`,
+- **`Part(id, { corner?: 'typ' | 'worst', clamp?: boolean })`** (options are for ICs; a
+  semiconductor `Part()` takes none) — `u1.pin('1A')`, `u1.pin(1)`,
   `u1.pin('~OE')`, `u1.pin('CARRY OUT')` (case, spaces, `_` ignored). Active-low pins start
   with `~`. `npx circuitsvibe catalog 74HC14` prints the pinout with numbers, the levels, Rout
   and tpd per VCC, and the datasheet citations.
@@ -183,6 +222,9 @@ new VoltageSource({ pwm: { low: 0, high: 5, freq: '10k', duty: '25%', rise: '100
 
 - `'<id>.i'` — current through a component (e.g. `'D1.i'`)
 - `'<id>.v'` — voltage across a component (e.g. `'R1.v'`)
+- `'<id>.<q>'` — a semiconductor device quantity (`'Q1.ic'`, `'Q1.vce'`, `'M1.vgs'`, `'D1.p'`;
+  see Device probes above)
+- `'<id>.<pin>'` — voltage of a logic IC / primitive pin (`'U1.1Y'`, `'U1.pin6'`)
 - `'<net>'` — voltage of a net named with `tb.name`
 
 ### Assertions
@@ -244,7 +286,7 @@ npx circuitsvibe export <bench.ts> -o x.circuit.json   # language-neutral circui
 npx circuitsvibe verify x.circuit.json --json # a document verifies exactly like its bench
 npx circuitsvibe log show <runId>
 npx circuitsvibe explain F101                # physics + fixes for a code
-npx circuitsvibe catalog [type] [--json]     # components, ICs (pins, levels per VCC), probe/assertion grammar
+npx circuitsvibe catalog [type|part] [--json] # components, logic ICs (pins, levels per VCC), real parts (catalog 2N3904: pins, model, ratings), grammar
 npx circuitsvibe agents                      # print this playbook
 ```
 
@@ -252,26 +294,7 @@ npx circuitsvibe agents                      # print this playbook
 
 | Code | Meaning | Usual fix |
 |------|---------|-----------|
-| F101 | net has no DC path to ground | add a bleed resistor to ground or rewire |
-| F103 | component not connected to the grounded circuit | wire it in or remove it |
-| F104 | ideal voltage source shorted / in a source loop (inductors count at DC) | remove the loop, add series resistance |
-| F105 | diode/LED clamped directly across a source | add a series resistor |
-| F106 | dangling pin (warning) | connect it or remove the part |
-| S101 | singular system lint didn't catch | report it; simplify the topology |
-| S201 | Newton-Raphson did not converge at DC (after gmin and source stepping) — names the culprit | add series resistance, check values |
-| S202 | Newton-Raphson did not converge at a transient step, even after cutting the step — culprit + time | soften the edge (tr/tf), add series resistance |
-| S203 | transient step collapsed below the minimum step — reactive culprit + time | check time constants, shorten tstop or lower maxStep/minStep |
-| S204 | a component has no AC small-signal model | add `ac(ctx)` to its `defineComponent` |
 | A301 | assertion failed (`measured`, `margin`, maybe `hint` or `note`) | apply a verified hint or change values |
-| T001 / T002 | the bench threw / a stage crashed | fix the bench code (T002: report it) |
-| T003 / T004 | AC assertions without an `ac` stimulus / with several stimuli and no `ref` | add `ac: 1` to the input source / pass `{ ref }` |
-| T010–T014 | invalid circuit document (structure, schema version, unknown type, custom part, bad component) | re-export with `circuitsvibe export`; T013: custom parts cannot be shared |
-| T015–T018 | share link too large / malformed / unknown encoding / long (warning) | send the `.circuit.json` instead; re-copy the full link |
-| F130–F134 | digital lint: floating input, multiple drivers, shorted outputs, zero-delay loop, undriven clock | wire / drive the pin, use a TriBuf or a gate |
-| F135 | IC VCC/GND pin unconnected | wire the supply pins |
-| F136 | two logic outputs on one analog net | one driver per net, or tri-states |
-| F137 | logic input floating at the analog level (warning: unused gate) | drive it or tie it to a rail |
-| F138 | logic output tied to ground / a source / a rail | disconnect it (tie unused INPUTS) |
 | D501–D507 | digital runtime: contention, setup/hold (D502/D503 with `time`), delta limit, X controls | fix timing / drivers |
 | D508 | input between VIL and VIH (op, or longer than the max input transition time) | valid level, faster edge, Schmitt input (74HC14) |
 | D509 | supply outside the recommended range (error above the absolute max) | power within range |
@@ -280,6 +303,32 @@ npx circuitsvibe agents                      # print this playbook
 | D512 (warning) | X logic value driving an analog net | fix the upstream X |
 | D513 | input clamp diode overcurrent (input beyond the rails) | series resistor |
 | D514 (warning) | no DC logic state (oscillator) | assert in tran, not op |
+| F101 | net has no DC path to ground | add a bleed resistor to ground or rewire |
+| F103 | component not connected to the grounded circuit | wire it in or remove it |
+| F104 | ideal voltage source shorted / in a source loop (inductors count at DC) | remove the loop, add series resistance |
+| F105 | diode/LED clamped directly across a source | add a series resistor |
+| F106 | dangling pin (warning) | connect it or remove the part |
+| F107 | BJT base with no DC bias (warning) | add a base divider / base resistor |
+| F108 | MOSFET gate with no DC path (only a capacitor, or open) | gate-source pull-down or a resistor from the driver |
+| F109 | BJT junction clamped by an ideal source (no base resistor) | add a base resistor |
+| F110 | P-type at the lowest / N-type at the highest rail (warning) | move it to the other rail or use the complementary device |
+| F130–F134 | digital lint: floating input, multiple drivers, shorted outputs, zero-delay loop, undriven clock | wire / drive the pin, use a TriBuf or a gate |
+| F135 | IC VCC/GND pin unconnected | wire the supply pins |
+| F136 | two logic outputs on one analog net | one driver per net, or tri-states |
+| F137 | logic input floating at the analog level (warning: unused gate) | drive it or tie it to a rail |
+| F138 | logic output tied to ground / a source / a rail | disconnect it (tie unused INPUTS) |
+| R401–R404 | a `Part()` exceeds a datasheet voltage / current / pulsed-current / power rating (exit 1) | apply the verified fix, reduce the stress or pick a stronger part |
+| S101 | singular system lint didn't catch | report it; simplify the topology |
+| S201 | Newton-Raphson did not converge at DC (after gmin and source stepping) — names the culprit | add series resistance, check values |
+| S202 | Newton-Raphson did not converge at a transient step, even after cutting the step — culprit + time | soften the edge (tr/tf), add series resistance |
+| S203 | transient step collapsed below the minimum step — reactive culprit + time | check time constants, shorten tstop or lower maxStep/minStep |
+| S204 | a component has no AC small-signal model | add `ac(ctx)` to its `defineComponent` |
+| T001 / T002 | the bench threw / a stage crashed | fix the bench code (T002: report it) |
+| T003 / T004 | AC assertions without an `ac` stimulus / with several stimuli and no `ref` | add `ac: 1` to the input source / pass `{ ref }` |
+| T005 / T008 | `.model` param unknown / known but not modeled (warnings) | fix the spelling; expect differences |
+| T006 / T007 | `.model` unsupported type or LEVEL / malformed (exit 3) | use a supported card or a `Part()` |
+| T010–T014 | invalid circuit document (structure, schema version, unknown type, custom part, bad component) | re-export with `circuitsvibe export`; T013: custom parts cannot be shared |
+| T015–T018 | share link too large / malformed / unknown encoding / long (warning) | send the `.circuit.json` instead; re-copy the full link |
 
 When plain Newton fails at DC, the solver retries with gmin stepping and then source
 stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.
@@ -310,5 +359,16 @@ stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.
   frequencies with `{ from }` past the start-up (the first 555 period is longer).
 - The NE555 period also depends on the discharge transistor: with a small R1 the
   discharge node sits at VCC·Ron/(R1+Ron) (≈ 90 mV at 1 kΩ, 5 V) and the period grows a few %.
-- Not implemented yet (don't use): BJTs, MOSFETs, op-amps, microcontrollers in benches,
-  noise analysis.
+- Always drive a BJT base through a resistor (F109) and give every MOSFET gate a DC path
+  (F108). PNP/PMOS go on the high side (emitter/source to the positive rail), NPN/NMOS on
+  the low side.
+- `Q1.ie` is the current INTO the emitter: negative for an NPN that is on.
+- Generic `new NPN({...})` has no ratings — only `Part('…')` devices are checked against a
+  datasheet. A catalog model marked ESTIMATED (`circuitsvibe catalog <id>`) is a fit: its
+  numbers can be off (e.g. 2N7000 Rds(on) at 4.5 V: 3.0 Ω vs 1.8 Ω typical).
+- Pd of TO-220 parts (IRLZ44N 110 W) is rated with the case at 25 °C (ideal heatsink); free
+  air is far lower — derate with `tb.ratings({ derate })` when there is no heatsink.
+- Not modeled: temperature, junction self-heating, BJT base-resistance modulation and
+  excess phase, MOSFET Meyer intrinsic capacitances (Level-1 lumped gate capacitances only),
+  MOSFET levels above 1, JFETs, Darlingtons as catalog parts.
+- Not implemented yet (don't use): op-amps, microcontrollers in benches, noise analysis.

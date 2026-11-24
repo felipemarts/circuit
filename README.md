@@ -95,7 +95,7 @@ circuitsvibe share <bench.ts | x.circuit.json> [--base-url URL] [--json]   share
 circuitsvibe open <link> [-o x.circuit.json]                      link → circuit document
 circuitsvibe log list [--json] | log show <runId>
 circuitsvibe explain <code>
-circuitsvibe catalog [type] [--json]
+circuitsvibe catalog [type|part] [--json]   generic types + real parts; one type or part in detail
 circuitsvibe agents
 circuitsvibe version
 ```
@@ -148,9 +148,19 @@ The package is ESM with type declarations. The library entry is browser-safe (no
 ## Components
 
 Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN, PULSE, PWL, PWM,
-AC stimulus), Diode (Shockley, pn-junction limiting), LED, Switch (SPDT), Button, logic ICs and
-the NE555 (`Part('74HC04')`, pins by datasheet name or number), generic logic primitives
+AC stimulus), Diode (SPICE level 1: Rs, junction/diffusion charge, breakdown), LED, NPN/PNP
+(Gummel-Poon), NMOS/PMOS (Level 1), Switch (SPDT), Button, real catalog parts through one
+`Part(id)` — logic ICs and the NE555 (`Part('74HC04')`, pins by datasheet name or number) and
+semiconductors (`Part('2N3904')`, datasheet ratings checked) — generic logic primitives
 (`Nand`, `DFF`, `Counter`, `Clock`, …), plus custom components through `defineComponent`:
+
+```ts
+const u1 = tb.add('U1', Part('74HC04'));          // logic IC: datasheet pins, levels, drive
+const q1 = tb.add('Q1', Part('2N3904'));          // real part: catalog model + datasheet ratings
+const m1 = tb.add('M1', new NMOS({ vto: 2, kp: '50m' }));          // generic: free parameters
+const d1 = tb.add('D1', Diode.fromModel('.model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p TT=20n)'));
+tb.ratings({ derate: 0.8 });                     // check real parts against 80 % of their abs-max
+```
 
 ```ts
 new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2m' } });
@@ -191,12 +201,12 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | DC sweep | ✅ source DC value or component value, curve assertions, `circuitsvibe sweep` |
 | AC small-signal | ✅ complex MNA around the operating point, gain/phase/bandwidth/unity-gain/phase-margin |
 | Sources | ✅ DC, SIN, PULSE, PWL, PWM (voltage and current), AC stimulus |
-| Semiconductors | ✅ Diode, LED · ❌ BJT, MOSFET, JFET |
+| Semiconductors | ✅ Diode (Rs, junction/diffusion charge, Zener breakdown), LED, BJT NPN/PNP (Gummel-Poon subset), MOSFET N/P (Level 1, body diode), SPICE `.model` cards · ❌ JFET, MOSFET levels > 1, temperature |
 | Op-amps, comparators | ❌ |
 | Digital logic, mixed-signal | ✅ event-driven logic co-simulated with the transient: real ICs `Part('74HC00' / '74HC04' / '74HC14' / '74HC74' / '74HC595' / '74HCT04' / 'CD4017' / 'CD4011' / 'NE555')` with datasheet pins, levels, drive and tpd per VCC; generic logic primitives; `tb.expect.logic(...)`; logic capture + `--vcd` |
 | Microcontrollers | ❌ |
 | Noise, distortion, pole-zero analysis | ❌ |
-| Real-part catalog with datasheet ratings | ❌ |
+| Real-part catalog with datasheet ratings | ✅ `Part('2N3904')` etc. (diodes, LEDs, Zeners, BJTs, MOSFETs); absolute-max ratings checked after op/dc/tran, mixed-signal transients included (R401–R404); logic ICs / NE555 go through the same `Part()` (row above) · op-amps/MCUs are catalog data only |
 | SPICE netlist import/export | ❌ |
 | Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer support in progress |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |

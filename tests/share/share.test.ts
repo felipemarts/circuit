@@ -271,7 +271,8 @@ describe('validateCircuitDoc', () => {
     };
     expect(edit(d => (d.components[0].type = 'Transistor'))).toEqual(['T012']);
     expect(edit(d => (d.components[1].params = {}))).toEqual(['T014']); // Resistor needs r
-    expect(edit(d => (d.components[0].params.Is = 1e-18))).toEqual(['T014']); // LED model is fixed
+    expect(edit(d => (d.components[0].params.part = 'NOPE'))).toEqual(['T014']); // not a catalog part
+    expect(edit(d => (d.components[0].params.Is = 'x'))).toEqual(['T014']); // LED params are numbers
     expect(edit(d => (d.components[1].params.tolerance = 0.05))).toEqual(['T014']); // unknown param
     expect(edit(d => delete d.components[1].pins['2'])).toEqual(['T014']); // every pin listed
     expect(edit(d => (d.components[2].pins = { '1': 'n1', '2': 'gnd' }))).toEqual(['T014', 'T014', 'T014', 'T014']); // aliases refused

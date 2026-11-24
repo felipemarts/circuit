@@ -15,6 +15,9 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `F130`–`F139` | digital lint (pre-simulation) | digital netlist structure (F130–F134, src/digital) and bench-level mixed-signal structure (F135–F139, src/mixed) |
 | `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (D501–D507, src/digital); analog↔digital bridges: levels, supplies, drive (D508–D549, src/mixed) |
 | `F14x` | firmware lint (pre-simulation) | MCU firmware source mistakes (F140–F149) |
+| `F107`–`F119` | semiconductor lint (pre-solver) | transistor bias/drive topology (F107–F110 active) |
+| `R401`–`R409` | datasheet ratings (after op, dc, tran) | a catalog `Part()` exceeds an absolute maximum rating (R401–R404 active; R41x reserved for MCU pins) |
+| `T005`–`T009` | tooling: `.model` cards | SPICE model card problems (T005–T008 active) |
 | `M6xx` | MCU runtime | firmware execution on a simulated microcontroller (M601–M649) |
 | `V701`–`V749` | VHDL compile / elaboration (pre-simulation) | syntax, unsupported constructs, types, hierarchy (src/vhdl) |
 | `V750`–`V799` | VHDL runtime | errors raised by compiled VHDL processes while simulating (src/vhdl) |
@@ -23,21 +26,56 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 
 | Code | Slug | Severity | When it fires |
 |--------|------|-----------|----------------|
+| `A301` | assertion-failed | fail | assertion failed — carries measured, expected, margin, and a verified hint when `tb.param` is present |
+| `D501` | drive-contention | error | strong 0 and strong 1 on one net at runtime — net is X; carries the drivers on each side and the time |
+| `D502` | setup-violation | error | data changed less than the setup time before the active edge — carries element, pin, time, measured and margin; outputs X (configurable) |
+| `D503` | hold-violation | error | data changed less than the hold time after the active edge — same evidence as D502 |
+| `D504` | delta-cycle-limit | error | zero-delay activity did not settle within maxDeltaCycles at one time point; that time point's remaining events are dropped |
+| `D505` | drive-in-past | error | external drive() scheduled before the current time — applied at the current time instead |
+| `D506` | unknown-control | warning | clock edge through X/Z or unknown async set/reset/latch enable that would change state — outputs X |
+| `D507` | weak-contention | warning | pull-up and pull-down are the only drivers of a net — net is X |
+| `D508` | input-forbidden-zone | error | non-Schmitt input between VIL and VIH (at its supply): at the operating point, or in the transient longer than the datasheet max input transition time — carries `vil`, `vih`, `supply`, dwell and `time` |
+| `D509` | supply-out-of-range | error / warning | IC supply outside the recommended range (warning) or beyond the absolute maximum / reversed (error) — carries `supply`, `recommended`, `time` |
+| `D510` | ic-unpowered | error / warning | supply below half the minimum operating voltage: warning at the operating point; error when never powered during the transient or browned out (with `time`) |
+| `D511` | output-overcurrent | error | output pin current above the absolute maximum (or CD4000B 100 mW/output); names the opposing driver when two outputs fight on one net — carries `current`, `limit`, `time` |
+| `D512` | unknown-output | warning | an X logic value drives an analog net (output stage modeled half-on, mid-rail) |
+| `D513` | input-clamp-overcurrent | error | input driven beyond its rails: protection-diode current above \|IIK\| max |
+| `D514` | no-static-logic-state | warning | no consistent DC logic state (oscillator): the op is reported with the outputs of the last settle pass |
 | `F101` | floating-net | error | net with no DC path to ground (isolated by a capacitor/current source) |
 | `F103` | unreached-component | error | component (or island) with no connection to the grounded circuit — would be silently ignored by the solver |
 | `F104` | voltage-source-short / voltage-source-loop | error | ideal source shorted, or a loop of ideal sources (an inductor counts as a 0 V source in DC) |
 | `F105` | source-clamped-diode | error | forward-biased diode/LED clamped directly across an ideal source with no series resistance |
 | `F106` | dangling-pin | warning | pin with no connection at all |
+| `F107` | bjt-base-floating | warning | BJT base net reaches only capacitors / other bases: no DC bias, cutoff at DC |
+| `F108` | mosfet-gate-floating | error | MOSFET gate with no DC path (driven only through a capacitor, or open) — replaces F101 for that island |
+| `F109` | bjt-junction-clamped | error | BJT base-emitter/base-collector junction forward-clamped by ideal sources (no base resistor); fires when the model's own estimate exceeds 100 A (Rb/Re bound it) |
+| `F110` | reversed-polarity | warning | PNP/enhancement PMOS with emitter/source pinned at the lowest potential (or NPN/NMOS at the highest) in a resistive circuit with ground-referenced sources: it never conducts forward |
+| `F130` | floating-input | error | digital input pin on a net with no driver (no output, Const/Pull, or declared input) — simulates as X |
+| `F131` | multiple-drivers | error | push-pull digital output shares its net with another non-weak driver (output, tri-state, external input) |
+| `F132` | output-short | error | two outputs of the same digital part on one net (e.g. q tied to qn) |
+| `F133` | zero-delay-loop | error | combinational feedback loop whose elements all have zero delay — carries the loop path |
+| `F134` | unconnected-clock | error | clock pin of an edge-triggered element on an undriven net |
+| `F135` | ic-supply-unconnected | error | an IC's VCC (VDD) or GND (VSS) pin is unconnected, or both are on the same net |
+| `F136` | outputs-tied | error | two logic outputs (at least one push-pull) on one analog net — contention through the analog net |
+| `F137` | floating-logic-input | error / warning | logic input on an analog net with nothing that sets its voltage (only inputs/capacitors); warning for inputs of an unused section (its outputs open) |
+| `F138` | output-on-rail | error | logic output tied to ground, an IC supply rail or an ideal voltage source |
+| `R401` | voltage-rating-exceeded | fail | a `Part()` exceeds Vceo/Vcbo/Vebo, Vds/±Vgs or VR/VRRM (in `stages.<stage>.ratings`, exit 1) |
+| `R402` | current-rating-exceeded | fail | continuous current over IcMax/IbMax, Id25 or IF/IFAV |
+| `R403` | pulsed-current-rating-exceeded | fail | transient peak over IcPeak, IdPulsed, IFP or IFSM |
+| `R404` | power-rating-exceeded | fail | dissipation over Pd (op/dc value; tran: window average, or peak with `tb.ratings({ pd: 'peak' })`) |
 | `S101` | unsolvable-system | error | singular matrix that lint did not model (rare; please report) |
 | `S201` | nr-nonconvergence | error | NR did not converge at the DC point (op, a DC-sweep point, or the AC operating point) after plain Newton, gmin stepping and source stepping — carries the offending component, ΔV, oscillation history, `attempts`, and the sweep point when in the dc stage |
 | `S202` | nr-nonconvergence | error | NR did not converge at a transient step even after cutting the step (by 8, retried with BE) below the minimum — carries the culprit, `time` and the last `step` |
 | `S203` | timestep-too-small | error | the truncation-error control had to shrink the transient step below `minStep` (default maxStep·1e-9) or exhausted the step budget — carries the reactive culprit (capacitor/inductor) and `time` |
 | `S204` | no-ac-model | error | the AC stage found a component without a small-signal model (a `defineComponent` part with no `ac(ctx)`) — names the components |
-| `A301` | assertion-failed | fail | assertion failed — carries measured, expected, margin, and a verified hint when `tb.param` is present |
 | `T001` | bench-error | error | the bench itself threw an exception during elaboration |
 | `T002` | stage-crash | error | a stage (op/dc/ac/tran) crashed after elaboration — platform bug; the RunRecord is still emitted (exit 3) |
 | `T003` | no-ac-stimulus | error | AC assertions but no source has an `ac` stimulus (exit 3) |
 | `T004` | ambiguous-ac-reference | error | several sources have an `ac` stimulus and an AC probe has no `ref` (exit 3) |
+| `T005` | model-unknown-param | warning | `.model` card parameter unknown for the device type — ignored |
+| `T006` | model-unsupported | error | `.model` type not D/NPN/PNP/NMOS/PMOS, LEVEL ≠ 1, or card type ≠ the fromModel used (exit 3, nothing simulated) |
+| `T007` | model-parse-error | error | malformed `.model` card or value out of range (exit 3) |
+| `T008` | model-param-not-modeled | warning | known SPICE parameter this simulator does not model (IRB, RBM, XTF, XCJC, ISR…) — ignored |
 | `T010` | invalid-circuit-document | error | a circuit document (`.circuit.json` or share-link payload) is not JSON, misses/mistypes a field, has an unknown field, or has a dangling reference — `evidence.path` is the JSON pointer (exit 3) |
 | `T011` | unsupported-circuit-schema | error | the document's `schema` is a `circuitsvibe-circuit` version this release does not read (exit 3) |
 | `T012` | unknown-component-type | error | a document component type is not built-in and no definition was supplied (exit 3) |
@@ -47,18 +85,6 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `T016` | malformed-share-link | error | no `#c=` payload, not `<version>.<base64url>`, bad base64url, not deflate-raw, not UTF-8 JSON (exit 3) |
 | `T017` | unsupported-share-encoding | error | share payload encoding version other than `1` (exit 3) |
 | `T018` | long-share-link | warning | share link longer than 8 KiB — valid, but some chat apps truncate long links (`warnings[]` of `share --json`) |
-| `F130` | floating-input | error | digital input pin on a net with no driver (no output, Const/Pull, or declared input) — simulates as X |
-| `F131` | multiple-drivers | error | push-pull digital output shares its net with another non-weak driver (output, tri-state, external input) |
-| `F132` | output-short | error | two outputs of the same digital part on one net (e.g. q tied to qn) |
-| `F133` | zero-delay-loop | error | combinational feedback loop whose elements all have zero delay — carries the loop path |
-| `F134` | unconnected-clock | error | clock pin of an edge-triggered element on an undriven net |
-| `D501` | drive-contention | error | strong 0 and strong 1 on one net at runtime — net is X; carries the drivers on each side and the time |
-| `D502` | setup-violation | error | data changed less than the setup time before the active edge — carries element, pin, time, measured and margin; outputs X (configurable) |
-| `D503` | hold-violation | error | data changed less than the hold time after the active edge — same evidence as D502 |
-| `D504` | delta-cycle-limit | error | zero-delay activity did not settle within maxDeltaCycles at one time point; that time point's remaining events are dropped |
-| `D505` | drive-in-past | error | external drive() scheduled before the current time — applied at the current time instead |
-| `D506` | unknown-control | warning | clock edge through X/Z or unknown async set/reset/latch enable that would change state — outputs X |
-| `D507` | weak-contention | warning | pull-up and pull-down are the only drivers of a net — net is X |
 | `V701` | vhdl-syntax-error | error | VHDL text does not follow the grammar — exact line:col, what was expected and found; first error per design unit |
 | `V702` | vhdl-lexical-error | error | invalid character, unterminated string, number glued to its unit (`10ns`), bad based literal or identifier |
 | `V703` | vhdl-unsupported | error | valid VHDL outside the supported subset (`wait for`, file I/O, records, functions, packages, while loops, …) — names the construct and lists what is supported |
@@ -88,17 +114,6 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `V753` | vhdl-metavalue | warning | numeric_std arithmetic/comparison/to_integer on X/U/Z/W/- bits (result X / false / 0); suppressed at power-on |
 | `V754` | vhdl-division-by-zero | error | runtime `/`, `mod` or `rem` by zero |
 | `V755` | vhdl-encoded-unknown | warning | integer/enum/boolean signal read X/Z bits from its nets (e.g. undriven integer input port) |
-| `F135` | ic-supply-unconnected | error | an IC's VCC (VDD) or GND (VSS) pin is unconnected, or both are on the same net |
-| `F136` | outputs-tied | error | two logic outputs (at least one push-pull) on one analog net — contention through the analog net |
-| `F137` | floating-logic-input | error / warning | logic input on an analog net with nothing that sets its voltage (only inputs/capacitors); warning for inputs of an unused section (its outputs open) |
-| `F138` | output-on-rail | error | logic output tied to ground, an IC supply rail or an ideal voltage source |
-| `D508` | input-forbidden-zone | error | non-Schmitt input between VIL and VIH (at its supply): at the operating point, or in the transient longer than the datasheet max input transition time — carries `vil`, `vih`, `supply`, dwell and `time` |
-| `D509` | supply-out-of-range | error / warning | IC supply outside the recommended range (warning) or beyond the absolute maximum / reversed (error) — carries `supply`, `recommended`, `time` |
-| `D510` | ic-unpowered | error / warning | supply below half the minimum operating voltage: warning at the operating point; error when never powered during the transient or browned out (with `time`) |
-| `D511` | output-overcurrent | error | output pin current above the absolute maximum (or CD4000B 100 mW/output); names the opposing driver when two outputs fight on one net — carries `current`, `limit`, `time` |
-| `D512` | unknown-output | warning | an X logic value drives an analog net (output stage modeled half-on, mid-rail) |
-| `D513` | input-clamp-overcurrent | error | input driven beyond its rails: protection-diode current above \|IIK\| max |
-| `D514` | no-static-logic-state | warning | no consistent DC logic state (oscillator): the op is reported with the outputs of the last settle pass |
 
 Semantic notes:
 - Lint **always runs** (even with `--stage op`): solving a circuit that lint would reject
@@ -121,6 +136,58 @@ Mixed-signal notes:
   therefore point at the IC.
 - Codes D515–D549 are reserved for the mixed-signal runtime, F139 for bench-level digital lint.
 
+## Datasheet ratings (R401–R404)
+
+Catalog parts (`Part('2N3904')`, `Part('IRLZ44N')`, `Part('1N4148')`, `Part('LED-RED-5MM')`…)
+are checked against their datasheet **absolute maximum ratings** after the op, dc and tran
+stages. Generic devices (`new NPN({ bf: 100 })`) have free parameters and no ratings.
+
+- **Where**: `stages.<op|dc|tran>.ratings[]` — the real-part spec, kept apart from
+  `stages.<stage>.assertions[]` (the spec the bench author wrote). Passing checks are
+  listed too (with `utilization` and `margin`), so the tightest rating is visible.
+- **Verdict**: any violation fails the stage — `verdict: "fail"`, exit **1** (the circuit is
+  valid, the real part would be over-stressed), `firstFailure` = the R code when no
+  assertion failed first. Later stages are skipped (`reason: "op datasheet ratings exceeded"`).
+- **What is compared** (magnitudes in the rated sense): op — the operating-point value;
+  dc — the largest value over the sweep, with its sweep `x`; tran — voltages: the
+  instantaneous peak with its `time` and `tFirstViolation`; continuous currents: the
+  instantaneous peak, or, when the datasheet also prints a pulsed/surge rating (IcPeak,
+  IdPulsed, IFP, IFSM), the **time average over the window** `[0, tstop]` while the peak is
+  checked against the pulsed rating (R403); Pd: the window average (steady-state thermal
+  rating), or the instantaneous peak with `tb.ratings({ pd: 'peak' })`.
+- **Checked ratings**: BJT Vceo (base open — the conservative rating), Vcbo, Vebo, IcMax,
+  IbMax, IcPeak, Pd · MOSFET Vds, ±Vgs, Id25, IdPulsed, Pd · diode/LED/Zener VR (dc stages)
+  or VRRM (tran), IF/IFAV, IFP/IFSM, Pd. Junction temperature is not simulated.
+- **Options**: `tb.ratings({ derate: 0.8 })` compares against 80 % of every limit,
+  `{ pd: 'peak' }`, `{ ignore: ['Q1'] }`, `tb.ratings(false)` disables the checks. A circuit
+  document carries non-default settings in its top-level `ratings` field (docs/CIRCUIT-FORMAT.md).
+- **Mixed-signal benches**: ratings are evaluated on co-simulated transients too (a 74HC04
+  driving a `Part('2N3904')` reports `stages.tran.logic[]` and `stages.tran.ratings[]` side by
+  side). Logic ICs are not R40x-rated: an IC output over its absolute maximum current stays
+  `D511`; the semiconductors it drives get R401–R404.
+- **Hints**: when tb.param is declared and the op stage fails, the verified hint keeps every
+  op rating within limits too; it is attached as `hint` and as a `verified` fix.
+- **Confidence**: `confidence: "verified"` — the value was simulated. `modelEstimated: true`
+  says the part's model card is a fit (see `circuitsvibe catalog <id>`).
+
+```jsonc
+"ratings": [{
+  "code": "R402", "slug": "current-rating-exceeded", "verdict": "fail",
+  "component": "D1", "part": "LED-RED-5MM", "rating": "IF",
+  "description": "continuous forward current", "quantity": "D1.i", "measure": "value",
+  "limit": 0.03, "allowed": 0.03, "unit": "A", "value": 0.063469, "utilization": 2.116, "margin": -0.033469,
+  "source": "Kingbright, DSAF2433 / 1101005271-02, Rev. V.9A, 08/05/2020", "url": "https://…",
+  "modelEstimated": true, "confidence": "verified",
+  "message": "D1 (LED-RED-5MM) continuous forward current is 63.469mA — exceeds the absolute maximum IF = 30mA (2.12×)",
+  "note": "absolute maximum ratings must never be exceeded; …",
+  "fixes": [{ "kind": "set-param", "confidence": "verified", "detail": "R1 in [122.677, 569.418] keeps every rating and op assertion within limits (simulated) — try --set R1=264.3" }, …],
+  "at": "bench/broken/led-rating-overcurrent.bench.ts:13",
+  "hint": { "kind": "verified-param-range", "param": "R1", … }
+}]
+// tran entries add "time", "tFirstViolation" (peak) or "window" (average) and "config";
+// dc entries add "x" and "config"; "derate" appears when tb.ratings({ derate }) is set.
+```
+
 ## MCU codes (firmware runtime and firmware lint)
 
 Emitted by the microcontroller runtime (`src/mcu/`). Payloads are plain data: `code`, `slug`,
@@ -130,6 +197,16 @@ Emitted by the microcontroller runtime (`src/mcu/`). Payloads are plain data: `c
 
 | Code | Slug | Severity | When it fires |
 |--------|------|-----------|----------------|
+| `F140` | delay-not-awaited | error | `delay()` call not awaited (static) |
+| `F141` | missing-entry-points | error / warning | `setup()`/`loop()` not exported (error if neither) |
+| `F142` | sync-busy-wait | error | `while` polling an input/millis without any `await` |
+| `F143` | no-pwm-on-pin | error | `analogWrite()` on a literal non-PWM pin |
+| `F144` | pin-capability | error | literal pin missing on the part, without ADC, or input-only used as output |
+| `F145` | not-an-interrupt | error | `attachInterrupt(<pin number>, …)` instead of `digitalPinToInterrupt(pin)` |
+| `F146` | unsupported-api | error | Arduino API the simulator does not provide (pulseIn, Wire, SPI, EEPROM…) |
+| `F147` | host-api | error | wall-clock/host APIs in firmware (Date, setTimeout, Math.random…) |
+| `F148` | serial-not-begun | warning | Serial output but no `Serial.begin()` anywhere |
+| `F149` | write-without-pinmode | warning | `digitalWrite()` to a pin never set to OUTPUT |
 | `M601` | firmware-exception | error | firmware (setup/loop/ISR/timer callback) threw — `at` is the throwing firmware line, `time` the sim time; MCU halts |
 | `M602` | busy-loop | error | more than `maxOpsPerYield` API calls / loop iterations without yielding (synchronous polling loop); MCU halts |
 | `M603` | zero-time-loop | error | more than `maxEventsPerInstant` events at one instant (`await delay(0)` loop, edge storm); MCU halts |
@@ -151,16 +228,6 @@ Emitted by the microcontroller runtime (`src/mcu/`). Payloads are plain data: `c
 | `M619` | invalid-argument | error | argument out of domain (negative delay, unknown mode, non-function handler…) |
 | `M620` | value-clamped | warning | value clamped/truncated (`analogWrite` outside 0..255, fractional `delay`) |
 | `M621` | timer-pwm-conflict | warning | Timer1 API used together with PWM on its pins (Uno D9/D10) |
-| `F140` | delay-not-awaited | error | `delay()` call not awaited (static) |
-| `F141` | missing-entry-points | error / warning | `setup()`/`loop()` not exported (error if neither) |
-| `F142` | sync-busy-wait | error | `while` polling an input/millis without any `await` |
-| `F143` | no-pwm-on-pin | error | `analogWrite()` on a literal non-PWM pin |
-| `F144` | pin-capability | error | literal pin missing on the part, without ADC, or input-only used as output |
-| `F145` | not-an-interrupt | error | `attachInterrupt(<pin number>, …)` instead of `digitalPinToInterrupt(pin)` |
-| `F146` | unsupported-api | error | Arduino API the simulator does not provide (pulseIn, Wire, SPI, EEPROM…) |
-| `F147` | host-api | error | wall-clock/host APIs in firmware (Date, setTimeout, Math.random…) |
-| `F148` | serial-not-begun | warning | Serial output but no `Serial.begin()` anywhere |
-| `F149` | write-without-pinmode | warning | `digitalWrite()` to a pin never set to OUTPUT |
 
 Codes M622–M649 are reserved for the MCU runtime. Pin current ratings (R41x) belong to the
 integration and use the limits exposed in the MCU profiles.
@@ -275,6 +342,10 @@ transient configuration:
 when the logic value is X/Z; `tFirstViolation` for `toBeStable`. The tran run telemetry adds
 `eventCuts` (steps cut back to a threshold crossing) and `digitalEvents`.
 
+Semiconductor params list every model parameter that differs from its SPICE default
+(Diode/LED always carry `Is`, `n`, `Vt`); a catalog part adds `part: "<id>"` and
+`buildComponent` rebuilds it from the catalog; a `.model` device adds `model: "<name>"` (a circuit document also carries the card text as `modelCard`, so its T005–T008 diagnostics are reproduced from the document).
+
 Netlist `params` are plain JSON and complete enough to rebuild the component
 (`buildComponent(type, params)`): sources carry their waveform and AC stimulus, e.g.
 `{ "v": 0, "pulse": { "v1": 0, "v2": 5, "td": 0, "tr": 1e-6, "tf": 1e-6, "pw": 0.001, "per": 0.002 }, "ac": { "mag": 1, "phase": 0 } }`.
@@ -319,6 +390,10 @@ Format and encoding: [CIRCUIT-FORMAT.md](CIRCUIT-FORMAT.md).
 ```
 '<id>.i'    current through the component  e.g.: 'D1.i'
 '<id>.v'    voltage across the component   e.g.: 'R1.v'
+'<id>.<q>'  device quantity of a semiconductor (every stage):
+              Diode/LED  i v p
+              NPN/PNP    ic ib ie (into the pins) vbe vbc vce vcb veb p   (i = ic, v = vce)
+              NMOS/PMOS  id ig is [ib] vgs vds vgd vbs p                 (i = id, v = vds)
 '<net>'     voltage of a net named via tb.name(...)   (every stage)
 '<id>.<pin>'  voltage of an IC pin ('U1.1Y', 'U1.~1Q', 'U1.pin6') or of a bridged primitive pin (op, tran)
 ```
