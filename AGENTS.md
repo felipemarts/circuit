@@ -90,6 +90,9 @@ export default bench('rc-led', (tb) => {
 | Part | `Part('2N3904')`, `Part('IRLZ44N')`, `Part('1N4733A')`, `Part('74HC04')` | the device's | one factory for every REAL part: semiconductors (catalog model + datasheet ratings checked automatically) and logic ICs / NE555 (see below) |
 | Switch | `new Switch(false)` | `'com'`, `'a'`, `'b'` | SPDT: false → com–a, true → com–b |
 | Button | `new Button(false)` | `'1'`, `'2'` | conducts while pressed |
+| IdealOpAmp | `new IdealOpAmp()` | `'inp'`, `'inn'`, `'out'`, optional `'v+'`, `'v-'` | VCVS, gain 1e6; both supply pins wired = output clamped to the rails |
+| OpAmp | `new OpAmp({ gbw: '1M', sr: '1M' })` or `Part('LM358')` | `'inp'`, `'inn'`, `'out'`, `'v+'`, `'v-'` | macro model; supply pins REQUIRED |
+| Comparator | `new Comparator()` or `Part('LM393')` | `'inp'`, `'inn'`, `'out'`, `'v+'`, `'v-'` (+ `'emit'` on LM311) | open collector: add a pull-up resistor on `'out'` |
 
 ### Semiconductors: generic devices vs real parts
 
@@ -196,6 +199,39 @@ Logic probes: a `tb.name`d net (pure-digital, or analog with a logic pin on it),
 `tb.expect.op('U1.1Y')` is that pin's voltage. The RunRecord carries the logic-analyzer data
 in `stages.tran.logic[]` (value-change lists of every probed and named logic signal);
 `circuitsvibe verify x.bench.ts --vcd out.vcd` writes it as VCD.
+
+### Op-amps and comparators
+
+```ts
+import { bench, VoltageSource, Resistor, Part, OpAmp, IdealOpAmp, Comparator } from 'circuitsvibe';
+
+const u1 = tb.add('U1', Part('LM358'));            // ONE channel of the dual; one Part() per channel
+u1.pin('v+').connect(vcc.pin('+'));               // supply pins are required on OpAmp/Comparator/Part()
+u1.pin('v-').connect(tb.gnd);                     // single supply: v- on gnd
+vin.pin('+').connect(u1.pin('inp'));              // inputs are 'inp' (+) and 'inn' (−), NOT '+'/'-'
+r2.pin('1').connect(u1.pin('inn'));               // feedback goes to 'inn'
+r2.pin('2').connect(u1.pin('out'));
+tb.expect.op('U1.v').toBeWithin(2.4, 2.6);         // U1.v = V(out); U1.i = output current (+ = sourcing)
+```
+
+- Real parts (the same single `Part()`): `Part('LM358' | 'LM741' | 'TL072' | 'MCP6002' | 'NE5532')` (op-amps) and
+  `Part('LM393' | 'LM311')` (comparators). Parameters come from the datasheet data;
+  `npx circuitsvibe catalog LM358` shows them, the package pin numbers, the assumptions and
+  the datasheet. Package pin numbers are documentation: always connect by pin NAME.
+- `new OpAmp({ aol, gbw, sr, fp2, vos, ib, ios, swingHigh, swingLow, rout, iscSource,
+  iscSink, iq })`: dominant pole, slew rate, output swing relative to the rails (limited by
+  the actual supply), output resistance, smooth short-circuit current limit, offset, bias
+  currents, quiescent current. Works in op/dc/ac/tran; in AC a saturated output has no gain.
+- `new IdealOpAmp({ gain })`: no rails (leave `v+`/`v-` open) or rail-clamped (wire both).
+- Comparators: output LOW (sinking) when V(inp) < V(inn); otherwise off, the pull-up sets
+  the high level (it may be above the comparator supply). Response time grows as the
+  overdrive shrinks (LM393: 1.3 µs at 5 mV, 0.3 µs for a big step). Hysteresis = external
+  resistors (Schmitt trigger: feedback resistor from `out` to `inp`). LM311: wire `'emit'`
+  (usually to gnd).
+- Datasheet checks of `Part()` amplifiers at the operating point land in
+  `stages.op.ratings` (R420–R425: supply over max, differential input, output at its current
+  limit, input common-mode range, input beyond the rails, supply below minimum); a violation
+  fails the op stage, exit 1. docs/OPAMPS.md has the equations and the model-vs-datasheet table.
 
 ### Sources
 
@@ -312,12 +348,18 @@ npx circuitsvibe agents                      # print this playbook
 | F108 | MOSFET gate with no DC path (only a capacitor, or open) | gate-source pull-down or a resistor from the driver |
 | F109 | BJT junction clamped by an ideal source (no base resistor) | add a base resistor |
 | F110 | P-type at the lowest / N-type at the highest rail (warning) | move it to the other rail or use the complementary device |
+| F120 | op-amp/comparator supply pin open (IdealOpAmp: only one of two) | wire `v+` and `v-` (single supply: `v-` to gnd) |
+| F121 | op-amp/comparator input with no DC path | bias resistor from the input to gnd/reference, or close the feedback |
+| F122 | op-amp feedback only to `inp` (warning) | move the feedback to `inn`; for a Schmitt trigger use a Comparator |
+| F123 | IdealOpAmp output on gnd / across an ideal source | remove the short or use OpAmp (current limit) |
+| F124 | comparator output with no pull-up (warning) | pull-up resistor from `out` to the logic supply |
 | F130–F134 | digital lint: floating input, multiple drivers, shorted outputs, zero-delay loop, undriven clock | wire / drive the pin, use a TriBuf or a gate |
 | F135 | IC VCC/GND pin unconnected | wire the supply pins |
 | F136 | two logic outputs on one analog net | one driver per net, or tri-states |
 | F137 | logic input floating at the analog level (warning: unused gate) | drive it or tie it to a rail |
 | F138 | logic output tied to ground / a source / a rail | disconnect it (tie unused INPUTS) |
 | R401–R404 | a `Part()` exceeds a datasheet voltage / current / pulsed-current / power rating (exit 1) | apply the verified fix, reduce the stress or pick a stronger part |
+| R420–R425 | `Part()` amplifier outside its datasheet ratings at the op point (`stages.op.ratings`, exit 1) | lower the supply, limit inputs/load, or pick another part |
 | S101 | singular system lint didn't catch | report it; simplify the topology |
 | S201 | Newton-Raphson did not converge at DC (after gmin and source stepping) — names the culprit | add series resistance, check values |
 | S202 | Newton-Raphson did not converge at a transient step, even after cutting the step — culprit + time | soften the edge (tr/tf), add series resistance |
@@ -371,4 +413,11 @@ stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.
 - Not modeled: temperature, junction self-heating, BJT base-resistance modulation and
   excess phase, MOSFET Meyer intrinsic capacitances (Level-1 lumped gate capacitances only),
   MOSFET levels above 1, JFETs, Darlingtons as catalog parts.
-- Not implemented yet (don't use): op-amps, microcontrollers in benches, noise analysis.
+- Op-amp inputs are `'inp'`/`'inn'`; `'+'`/`'-'` are source pins. A macro-model op-amp
+  or comparator without `v+`/`v-` wired is F120; its output can never pass the rails minus
+  the part's swing (an LM358 on 5 V tops out near 3.5 V — use MCP6002 for rail-to-rail).
+- An AC-coupled op-amp input needs a bias resistor (F121); an LM358 input must stay below
+  V+ − 1.5 V (R423); big feedback resistors turn bias current into offset (Ib·R).
+- Comparators are open collector: no pull-up, no high level (F124). Positive feedback on an
+  OpAmp (F122) makes the DC solver land on the unstable equilibrium — check it in tran.
+- Not implemented yet (don't use): microcontrollers in benches, noise analysis.

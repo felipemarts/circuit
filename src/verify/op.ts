@@ -12,6 +12,18 @@ import type {
 } from '../schema/types';
 import type { DCResult } from '../analysis/DCAnalysis';
 import { attachRatingHint, evaluateOpRatings, ratingChecks } from './ratings';
+import { evaluateAmplifierOpRatings } from '../opamps/ratings';
+import type { DCResult as SolvedDc } from '../analysis/DCAnalysis';
+
+/**
+ * Every datasheet rating of the operating point: semiconductor Part()s (R401–R404,
+ * src/verify/ratings.ts) and op-amp / comparator Part()s (R420–R425,
+ * src/opamps/ratings.ts), in component-id order (stable within a component).
+ */
+function opRatings(el: Elaboration, dc: SolvedDc) {
+  const all = [...evaluateOpRatings(el, p => resolveOpProbe(el, dc, p)), ...evaluateAmplifierOpRatings(el)];
+  return all.map((r, i) => ({ r, i })).sort((a, b) => (a.r.component < b.r.component ? -1 : a.r.component > b.r.component ? 1 : a.i - b.i)).map(x => x.r);
+}
 
 export { solverDiagnostic, opSolverRecord } from './solverDiag';
 
@@ -95,7 +107,7 @@ function computeVerifiedHint(elab: Elaboration, opAssertions: AssertionSpec[], w
         if (runLint(el).some(d => d.severity === 'error')) return false;
         const dc = el.circuit.analyze('dc');
         if (!evaluateOpAssertions(el, dc, opAssertions).every(r => r.verdict === 'pass')) return false;
-        return !withRatings || evaluateOpRatings(el, p => resolveOpProbe(el, dc, p)).every(r => r.verdict === 'pass');
+        return !withRatings || opRatings(el, dc).every(r => r.verdict === 'pass');
       } catch {
         return false; // non-convergent or invalid sample
       }
@@ -153,11 +165,11 @@ export function runOp(elab: Elaboration, opts: { hints: boolean }): StageOutcome
 
   const assertions = evaluateOpAssertions(elab, dc, opAssertions);
   const failed = assertions.filter(a => a.verdict === 'fail');
-  const ratings = evaluateOpRatings(elab, p => resolveOpProbe(elab, dc, p));
+  const ratings = opRatings(elab, dc);
   const ratingFailed = ratings.some(r => r.verdict === 'fail');
   if ((failed.length > 0 || ratingFailed) && opts.hints && elab.params.size > 0) {
     // With catalog parts the hint must keep them within their ratings too.
-    const hint = computeVerifiedHint(elab, opAssertions, ratingChecks(elab, 'op').length > 0);
+    const hint = computeVerifiedHint(elab, opAssertions, ratingChecks(elab, 'op').length > 0 || ratings.length > 0);
     if (hint) {
       for (const a of failed) a.hint = hint;
       attachRatingHint(ratings, hint);

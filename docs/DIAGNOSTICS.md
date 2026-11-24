@@ -12,6 +12,8 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `S2xx` | nonlinear solver, transient stepping, AC models | Newton-Raphson, timestep control, small-signal models |
 | `A3xx` | assertions | spec not met |
 | `T0xx` | tooling | bench authoring error (T001–T009), circuit documents and share links (T010–T029) |
+| `F120`–`F129` | op-amp / comparator lint (pre-solver) | amplifier wiring: supply, input bias paths, feedback polarity, ideal output, pull-ups (src/opamps) |
+| `R420`–`R429` | op-amp / comparator ratings (op stage) | datasheet checks of `Part()` amplifiers at the operating point, in `stages.op.ratings` (src/opamps) |
 | `F130`–`F139` | digital lint (pre-simulation) | digital netlist structure (F130–F134, src/digital) and bench-level mixed-signal structure (F135–F139, src/mixed) |
 | `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (D501–D507, src/digital); analog↔digital bridges: levels, supplies, drive (D508–D549, src/mixed) |
 | `F14x` | firmware lint (pre-simulation) | MCU firmware source mistakes (F140–F149) |
@@ -50,6 +52,11 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `F108` | mosfet-gate-floating | error | MOSFET gate with no DC path (driven only through a capacitor, or open) — replaces F101 for that island |
 | `F109` | bjt-junction-clamped | error | BJT base-emitter/base-collector junction forward-clamped by ideal sources (no base resistor); fires when the model's own estimate exceeds 100 A (Rb/Re bound it) |
 | `F110` | reversed-polarity | warning | PNP/enhancement PMOS with emitter/source pinned at the lowest potential (or NPN/NMOS at the highest) in a resistive circuit with ground-referenced sources: it never conducts forward |
+| `F120` | opamp-supply-unconnected | error | `OpAmp`/`Comparator`/`Part()` supply pin `v+` or `v-` open, or both on one net; an `IdealOpAmp` with only one of the two connected |
+| `F121` | opamp-input-no-dc-path | error | an op-amp/comparator input on a net with no DC path (replaces F101 for that island; e.g. AC-coupled input without a bias resistor) |
+| `F122` | opamp-positive-feedback | warning | the passive network from an op-amp output reaches `inp` but not `inn` (positive feedback only; the DC solution is the unstable equilibrium) |
+| `F123` | ideal-opamp-output-forced | error | an `IdealOpAmp` output on gnd, across an ideal voltage source (through sources/inductors) or tied to another ideal output |
+| `F124` | open-collector-no-pullup | warning | a comparator output whose DC network (not through gnd or the comparator) reaches no source or op-amp output — nothing pulls it high |
 | `F130` | floating-input | error | digital input pin on a net with no driver (no output, Const/Pull, or declared input) — simulates as X |
 | `F131` | multiple-drivers | error | push-pull digital output shares its net with another non-weak driver (output, tri-state, external input) |
 | `F132` | output-short | error | two outputs of the same digital part on one net (e.g. q tied to qn) |
@@ -114,6 +121,19 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `V753` | vhdl-metavalue | warning | numeric_std arithmetic/comparison/to_integer on X/U/Z/W/- bits (result X / false / 0); suppressed at power-on |
 | `V754` | vhdl-division-by-zero | error | runtime `/`, `mod` or `rem` by zero |
 | `V755` | vhdl-encoded-unknown | warning | integer/enum/boolean signal read X/Z bits from its nets (e.g. undriven integer input port) |
+
+Op-amp / comparator ratings (`stages.op.ratings[]`, `RatingResult`: `value`, `limit`,
+`utilization`, `margin`, citation; a failing one fails the op stage → exit 1). Checked for
+`Part()` amplifiers at the DC operating point only:
+
+| Code | Slug | When it fails |
+|--------|------|----------------|
+| `R420` | opamp-supply-over-max | V(v+) − V(v-) above `ratings.supplyMax` |
+| `R421` | opamp-differential-input-over-max | \|V(inp) − V(inn)\| above `ratings.differentialInputMax` |
+| `R422` | opamp-output-current-limit | op-amp output current ≥ 90 % of the model's short-circuit current (shorted/overloaded output) |
+| `R423` | opamp-input-common-mode | an input outside the input common-mode range (comparators: both inputs); `value`/`limit` are distances from the opposite rail |
+| `R424` | opamp-input-over-max | an input beyond the rail-relative absolute-maximum input voltage |
+| `R425` | opamp-supply-below-min | supply below `characteristics.supply.single.min` (`value` = required minimum, `limit` = actual supply) |
 
 Semantic notes:
 - Lint **always runs** (even with `--stage op`): solving a circuit that lint would reject

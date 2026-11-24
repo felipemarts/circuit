@@ -51,11 +51,13 @@ describe('unified Part()', () => {
     expect((Part('2N3904') as { kind?: string }).kind).toBe('NPN');
     expect((Part('IRLZ44N') as { kind?: string }).kind).toBe('NMOS');
     expect((Part('LED-RED-5MM') as { kind?: string }).kind).toBe('LED');
-    expect(PART_RESOLVERS.map(r => r.family)).toEqual(['logic ICs / timers', 'semiconductors']);
+    expect(PART_RESOLVERS.map(r => r.family)).toEqual(['logic ICs / timers', 'op-amps / comparators', 'semiconductors']);
+    expect((Part('LM358') as { kind?: string }).kind).toBe('OpAmp');
+    expect((Part('LM393') as { kind?: string }).kind).toBe('Comparator');
   });
 
   it('lists every family in the unknown-part error and refuses IC options on semiconductors', () => {
-    expect(() => Part('NOPE123')).toThrow(/unknown part\. Simulatable catalog parts: logic ICs \/ timers: .*74HC04.*; semiconductors: .*2N3904/);
+    expect(() => Part('NOPE123')).toThrow(/unknown part \(no such part in the catalog\)\. Simulatable catalog parts: logic ICs \/ timers: .*74HC04.*; op-amps \/ comparators: .*LM358.*; semiconductors: .*2N3904/);
     expect(() => Part('2N3904', { corner: 'worst' })).toThrow(/apply to logic ICs only/);
     expect(() => Part('')).toThrow(/expected a catalog part id/);
   });

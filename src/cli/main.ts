@@ -500,7 +500,12 @@ function catalog(flags: Flags): number {
   }
   for (const e of entries) {
     const details = (e.details ?? []).map(d => `\n  ${d}`).join('');
-    console.log(`${e.type}\n  example: ${e.example}\n  pins:    ${e.pins}\n  value:   ${e.value}\n  dc:      ${e.dc}${details}`);
+    const extra = [
+      ...(e.params ? [`  model:   ${JSON.stringify(e.params)}`] : []),
+      ...(e.notes ?? []).map(n => `  note:    ${n}`),
+      ...(e.source ? [`  source:  ${e.source}`] : []),
+    ].map(l => `\n${l}`).join('');
+    console.log(`${e.type}\n  example: ${e.example}\n  pins:    ${e.pins}\n  value:   ${e.value}\n  dc:      ${e.dc}${details}${extra}`);
     const params = SEMI_PARAMS[e.type];
     if (params && type) {
       console.log(`  params (case-insensitive · default · unit):`);

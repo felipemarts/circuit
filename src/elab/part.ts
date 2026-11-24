@@ -5,6 +5,7 @@
  *   u1.pin('1A').connect(...);  u1.pin(14).connect(vcc);   // datasheet names or numbers
  *   const q1 = tb.add('Q1', Part('2N3904'));               // semiconductor (src/components/Part.ts)
  *   q1.pin('b').connect(...);                              // generic device pins, datasheet ratings checked
+ *   const u2 = tb.add('U2', Part('LM358'));                // op-amp / comparator (src/opamps), one channel
  *
  * One entry point, a chain of family resolvers. Each resolver returns the
  * component for ids it handles, `undefined` for ids it does not know (the
@@ -12,25 +13,27 @@
  * simulate (e.g. a Darlington with no single-transistor model). When no
  * resolver takes the id, the error lists every simulatable id per family.
  *
- * ADDING A FAMILY (e.g. the op-amp branch's `opampPart(id)`): import it and
- * add ONE line to PART_RESOLVERS below —
+ * ADDING A FAMILY: import its resolver and add ONE line to PART_RESOLVERS
+ * below — the op-amp family went in exactly that way:
  *
- *   { family: 'op-amps', resolve: opampPart, ids: opampPartIds },
+ *   { family: 'op-amps / comparators', resolve: (id, opts) => noOptions(id, opts, opampPart(id)), ids: () => [...AMPLIFIER_PART_IDS] },
  *
  * Order matters only for ids two families could both claim (none today);
  * keep the most specific family first. The rebuild side is unaffected:
  * `buildComponent` rebuilds ICs by their catalog-id type and semiconductors
- * by their `part` param, so a new family registers its own rebuild there.
+ * by their `part` param, op-amps by their OpAmp/Comparator type (with `part`), so a
+ * new family registers its own rebuild there.
  */
 import type { Component } from '../core/Component';
 import { icPart, icPartIds } from '../mixed/part';
 import type { IcOptions } from '../mixed/device';
 import { semiPart, semiPartIds, partUnsupportedReason } from '../components/Part';
 import { findPart } from '../parts';
+import { opampPart, AMPLIFIER_PART_IDS } from '../opamps/parts';
 
 /**
  * Options of `Part()`. Logic ICs / timers take `{ corner, clamp }`;
- * semiconductor parts take none (their model card and ratings come from the catalog).
+ * semiconductor and op-amp / comparator parts take none (their model and ratings come from the catalog).
  */
 export type PartOptions = IcOptions;
 
@@ -47,7 +50,7 @@ export interface PartResolver {
 const noOptions = (id: string, opts: PartOptions, dev: Component | undefined): Component | undefined => {
   const keys = Object.keys(opts ?? {});
   if (dev && keys.length > 0) {
-    throw new Error(`Part('${id}'): options { ${keys.join(', ')} } apply to logic ICs only; a semiconductor part takes no options (its model card and ratings come from the catalog)`);
+    throw new Error(`Part('${id}'): options { ${keys.join(', ')} } apply to logic ICs only; this part takes no options (its model and ratings come from the catalog)`);
   }
   return dev;
 };
@@ -55,6 +58,7 @@ const noOptions = (id: string, opts: PartOptions, dev: Component | undefined): C
 /** The dispatch chain — add a family with one line here. */
 export const PART_RESOLVERS: readonly PartResolver[] = [
   { family: 'logic ICs / timers', resolve: icPart, ids: icPartIds },
+  { family: 'op-amps / comparators', resolve: (id, opts) => noOptions(id, opts, opampPart(id)), ids: () => [...AMPLIFIER_PART_IDS] },
   { family: 'semiconductors', resolve: (id, opts) => noOptions(id, opts, semiPart(id)), ids: semiPartIds },
 ];
 
@@ -68,7 +72,7 @@ export function Part(id: string, opts: PartOptions = {}): Component {
   }
   const known = PART_RESOLVERS.map(r => `${r.family}: ${r.ids().join(', ')}`).join('; ');
   const entry = findPart(id);
-  const reason = entry ? (partUnsupportedReason(entry) ?? `${entry.id} (${entry.category}) has no simulation model yet`) : 'unknown part';
+  const reason = entry ? (partUnsupportedReason(entry) ?? `${entry.id} (${entry.category}) has no simulation model yet`) : 'unknown part (no such part in the catalog)';
   throw new Error(`Part('${id}'): ${reason}. Simulatable catalog parts: ${known} (circuitsvibe catalog lists them all)`);
 }
 

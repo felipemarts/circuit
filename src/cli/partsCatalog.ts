@@ -10,6 +10,7 @@ import { partModelInfo, partUnsupportedReason } from '../components/Part';
 import { BJT_PARAMS, DIODE_PARAMS, MOSFET_PARAMS, type ParamDef } from '../components/semi/params';
 import { formatEng } from '../elab/units';
 import { icPart } from '../mixed/part';
+import { opampPart } from '../opamps/parts';
 
 export interface ParamDoc {
   name: string;
@@ -51,7 +52,7 @@ export interface PartSummary {
   description: string;
   /** How to instantiate it, or null when it cannot be simulated. */
   construct: string | null;
-  /** Simulated device type (Diode/LED/NPN/PNP/NMOS/PMOS), 'IC' for a logic IC / NE555 (mixed-signal), null when data only. */
+  /** Simulated device type (Diode/LED/NPN/PNP/NMOS/PMOS, OpAmp/Comparator), 'IC' for a logic IC / NE555 (mixed-signal), null when data only. */
   device: string | null;
   modelEstimated: boolean | null;
   reason?: string;
@@ -61,6 +62,9 @@ export function partSummaries(): PartSummary[] {
   return PARTS.map(p => {
     // Logic ICs / NE555 are simulated by the mixed-signal family of Part() (src/mixed).
     if (icPart(p.id)) return { id: p.id, category: p.category, description: p.description, construct: `Part('${p.id}')`, device: 'IC', modelEstimated: null };
+    // Op-amps / comparators: behavioural macro model fitted to the datasheet (src/opamps).
+    const amp = opampPart(p.id) as { kind?: string } | undefined;
+    if (amp) return { id: p.id, category: p.category, description: p.description, construct: `Part('${p.id}')`, device: amp.kind ?? 'OpAmp', modelEstimated: true };
     const reason = partUnsupportedReason(p);
     if (reason) return { id: p.id, category: p.category, description: p.description, construct: null, device: null, modelEstimated: null, reason };
     const info = partModelInfo(p);
@@ -238,9 +242,9 @@ export function renderPartDetail(d: PartDetail): string {
 }
 
 export function renderPartList(list: PartSummary[]): string {
-  const L: string[] = ['REAL PARTS (src/parts catalog; one Part(id) for all — semiconductors: datasheet ratings checked automatically; logic ICs: datasheet levels, drive and timing, co-simulated — circuitsvibe catalog <id> for details)'];
+  const L: string[] = ['REAL PARTS (src/parts catalog; one Part(id) for all — semiconductors and op-amps: datasheet ratings checked automatically; logic ICs: datasheet levels, drive and timing, co-simulated — circuitsvibe catalog <id> for details)'];
   for (const p of list) {
-    const use = p.device === 'IC' ? `${p.construct!.padEnd(22)} IC, mixed-signal (datasheet pins, levels, drive, timing)` : p.construct ? `${p.construct.padEnd(22)} ${p.device}${p.modelEstimated ? ', model ESTIMATED' : ', published model'}` : p.category === 'diode' || p.category === 'bjt' || p.category === 'mosfet' ? `(data only) ${p.reason?.split(':')[0].split(' — ')[0] ?? ''}` : '(data only — no device model yet)';
+    const use = p.device === 'OpAmp' || p.device === 'Comparator' ? `${p.construct!.padEnd(22)} ${p.device}, macro model from the datasheet (ratings R420–R425 at op)` : p.device === 'IC' ? `${p.construct!.padEnd(22)} IC, mixed-signal (datasheet pins, levels, drive, timing)` : p.construct ? `${p.construct.padEnd(22)} ${p.device}${p.modelEstimated ? ', model ESTIMATED' : ', published model'}` : p.category === 'diode' || p.category === 'bjt' || p.category === 'mosfet' ? `(data only) ${p.reason?.split(':')[0].split(' — ')[0] ?? ''}` : '(data only — no device model yet)';
     L.push(`  ${p.id.padEnd(15)} ${p.category.padEnd(10)} ${use}`);
   }
   return L.join('\n');

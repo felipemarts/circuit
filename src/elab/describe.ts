@@ -16,6 +16,7 @@ import { CustomComponent, type ComponentDef } from '../core/CustomComponent';
 import type { SourceOptions } from '../components/source';
 import type { ParamValue } from '../schema/types';
 import { buildMixedComponent } from '../mixed/device';
+import { buildAmplifier, describeAmplifier } from '../opamps/describe';
 
 export interface ComponentInfo {
   type: string;
@@ -33,6 +34,8 @@ export function kindOf(comp: Component): string {
 
 /** Canonical type name + electrical params, for the netlist document. */
 export function describeComponent(comp: Component): ComponentInfo {
+  const amplifier = describeAmplifier(comp);
+  if (amplifier) return amplifier;
   switch (kindOf(comp)) {
     case 'LED':
     case 'Diode':
@@ -157,6 +160,8 @@ export function buildComponent(
     if (typeof v !== 'number') throw new Error(`${type}: param '${key}' must be a number`);
     return v;
   };
+  const amplifier = buildAmplifier(type, params);
+  if (amplifier) return amplifier;
   switch (type) {
     case 'Resistor':
       return new Resistor(n('r'));

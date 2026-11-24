@@ -3,6 +3,7 @@ import type { Diagnostic } from '../schema/types';
 import { conductsAtDC, isDCVoltageSourceEdge, describeComponent } from '../elab/describe';
 import type { Component } from '../core/Component';
 import { lintSemiconductors, modelDiagnostics } from './lintSemis';
+import { amplifierDcGroups, amplifierInputRefs, floatingInputDiagnostic, isOptionalOpenPin, lintAmplifiers } from '../opamps/lint';
 
 /**
  * L0 — structural lint. Pure graph analysis over the elaborated netlist,
@@ -26,9 +27,15 @@ export function runLint(elab: Elaboration): Diagnostic[] {
     const analog = nets.filter(n => !mixed.pureNets.has(n));
     return isLogicPrimitive(id) ? [...new Set([...analog, 'gnd'])] : analog;
   };
-  // Nets a component connects at DC: a MOSFET gate is insulated (its own group).
+  // Nets a component connects at DC: none for a part that blocks DC (capacitor,
+  // current source); only the output for op-amps and comparators (inputs and
+  // supply pins carry no DC path); drain/source/bulk for a MOSFET (the gate is
+  // insulated); every pin otherwise.
   const dcGroupsOf = (id: string): string[][] => {
     const c = byId.get(id)!;
+    const amp = amplifierDcGroups(c);
+    if (amp) return amp;
+    if (!conductsAtDC(compOf(id))) return [];
     if (c.type === 'NMOS' || c.type === 'PMOS') {
       return [[...new Set([c.pins['d'], c.pins['s'], ...(c.pins['b'] ? [c.pins['b']] : [])])]];
     }
@@ -94,28 +101,30 @@ export function runLint(elab: Elaboration): Diagnostic[] {
   const reachedComps = all.comps;
 
   // ── F101: nets with no DC path to ground (islands isolated by caps/current sources) ──
-  const dc = { nets: new Set<string>(['gnd']) };
-  {
+  const dc = (() => {
+    const nets = new Set<string>(['gnd']);
     let changed = true;
     while (changed) {
       changed = false;
       for (const id of ids) {
-        if (!reachedComps.has(id) || !conductsAtDC(compOf(id))) continue;
-        for (const group of dcGroupsOf(id)) {
-          if (!group.some(n => dc.nets.has(n))) continue;
-          for (const n of group) {
-            if (!dc.nets.has(n)) {
-              dc.nets.add(n);
-              changed = true;
-            }
+        if (!reachedComps.has(id)) continue;
+        for (const g of dcGroupsOf(id)) {
+          if (g.some(n => nets.has(n)) && g.some(n => !nets.has(n))) {
+            for (const n of g) nets.add(n);
+            changed = true;
           }
         }
       }
     }
-  }
+    return { nets };
+  })();
   const reachedNets = new Set<string>(['gnd']);
   for (const id of reachedComps) for (const n of netsOf(id)) reachedNets.add(n);
-  const floating = [...reachedNets].filter(n => !dc.nets.has(n)).sort();
+  // An IdealOpAmp's unused supply pins (both open) are not floating nets.
+  const optionalOpen = new Set(
+    doc.components.flatMap(c => Object.entries(c.pins).filter(([pin]) => isOptionalOpenPin(c, pin, doc.nets)).map(([, net]) => net)),
+  );
+  const floating = [...reachedNets].filter(n => !dc.nets.has(n) && !optionalOpen.has(n)).sort();
 
   if (floating.length > 0) {
     // Group floating nets into islands via components whose nets are all floating.
@@ -130,9 +139,8 @@ export function runLint(elab: Elaboration): Diagnostic[] {
       // Group only through DC-conducting parts: a capacitor bridging two
       // floating nets does NOT make them one DC island, and merging them
       // would produce a single diagnostic whose one fix can't fix both.
-      if (!conductsAtDC(compOf(id))) continue;
-      for (const group of dcGroupsOf(id)) {
-        const cNets = group.filter(n => parent.has(n));
+      for (const g of dcGroupsOf(id)) {
+        const cNets = g.filter(n => parent.has(n));
         for (let i = 1; i < cNets.length; i++) {
           const a = find(cNets[0]);
           const b = find(cNets[i]);
@@ -177,6 +185,11 @@ rg.pin('2').connect(/* ${mos[0]}'s source net */);`,
           ],
           at: elab.locOf.get(mos[0]),
         });
+        continue;
+      }
+      const ampInputs = amplifierInputRefs(elab, pins);
+      if (ampInputs.length > 0) {
+        diagnostics.push(floatingInputDiagnostic(elab, nets, pins, ampInputs));
         continue;
       }
       diagnostics.push({
@@ -350,7 +363,7 @@ rg.pin('2').connect(/* ${mos[0]}'s source net */);`,
     // IC / logic pins are checked by the mixed-signal lint (F135, F137): open outputs are fine.
     if (mixed?.devices.has(comp.id)) continue;
     const dangling = Object.entries(comp.pins)
-      .filter(([, net]) => net !== 'gnd' && (doc.nets[net] ?? []).length === 1)
+      .filter(([pin, net]) => net !== 'gnd' && (doc.nets[net] ?? []).length === 1 && !isOptionalOpenPin(comp, pin, doc.nets))
       .map(([pin]) => pin)
       .sort();
     if (dangling.length > 0) {
@@ -371,6 +384,8 @@ rg.pin('2').connect(/* ${mos[0]}'s source net */);`,
   }
 
   diagnostics.push(...lintSemiconductors(elab, reachedComps));
+  // ── F120–F124: op-amps and comparators ──
+  diagnostics.push(...lintAmplifiers(elab, reachedComps));
   if (mixed) diagnostics.push(...mixed.lint);
   return diagnostics;
 }

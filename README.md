@@ -149,13 +149,16 @@ The package is ESM with type declarations. The library entry is browser-safe (no
 
 Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN, PULSE, PWL, PWM,
 AC stimulus), Diode (SPICE level 1: Rs, junction/diffusion charge, breakdown), LED, NPN/PNP
-(Gummel-Poon), NMOS/PMOS (Level 1), Switch (SPDT), Button, real catalog parts through one
-`Part(id)` — logic ICs and the NE555 (`Part('74HC04')`, pins by datasheet name or number) and
-semiconductors (`Part('2N3904')`, datasheet ratings checked) — generic logic primitives
-(`Nand`, `DFF`, `Counter`, `Clock`, …), plus custom components through `defineComponent`:
+(Gummel-Poon), NMOS/PMOS (Level 1), Switch (SPDT), Button, op-amps (`IdealOpAmp`,
+macro-model `OpAmp`) and open-collector `Comparator`, real catalog parts through one
+`Part(id)` — logic ICs and the NE555 (`Part('74HC04')`, pins by datasheet name or number),
+op-amps and comparators (`Part('LM358')`, docs/OPAMPS.md) and semiconductors
+(`Part('2N3904')`, datasheet ratings checked) — generic logic primitives (`Nand`, `DFF`,
+`Counter`, `Clock`, …), plus custom components through `defineComponent`:
 
 ```ts
 const u1 = tb.add('U1', Part('74HC04'));          // logic IC: datasheet pins, levels, drive
+const u2 = tb.add('U2', Part('LM358'));           // op-amp: one channel, pins inp/inn/out/v+/v-
 const q1 = tb.add('Q1', Part('2N3904'));          // real part: catalog model + datasheet ratings
 const m1 = tb.add('M1', new NMOS({ vto: 2, kp: '50m' }));          // generic: free parameters
 const d1 = tb.add('D1', Diode.fromModel('.model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p TT=20n)'));
@@ -202,11 +205,11 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | AC small-signal | ✅ complex MNA around the operating point, gain/phase/bandwidth/unity-gain/phase-margin |
 | Sources | ✅ DC, SIN, PULSE, PWL, PWM (voltage and current), AC stimulus |
 | Semiconductors | ✅ Diode (Rs, junction/diffusion charge, Zener breakdown), LED, BJT NPN/PNP (Gummel-Poon subset), MOSFET N/P (Level 1, body diode), SPICE `.model` cards · ❌ JFET, MOSFET levels > 1, temperature |
-| Op-amps, comparators | ❌ |
+| Op-amps, comparators | ✅ `IdealOpAmp`, `OpAmp` macro model (Aol, GBW, 2nd pole, slew, swing, current limit, Vos/Ib), open-collector `Comparator`; `Part('LM358')`, LM741, TL072, MCP6002, NE5532, LM393, LM311 from datasheet data — [docs/OPAMPS.md](docs/OPAMPS.md) |
 | Digital logic, mixed-signal | ✅ event-driven logic co-simulated with the transient: real ICs `Part('74HC00' / '74HC04' / '74HC14' / '74HC74' / '74HC595' / '74HCT04' / 'CD4017' / 'CD4011' / 'NE555')` with datasheet pins, levels, drive and tpd per VCC; generic logic primitives; `tb.expect.logic(...)`; logic capture + `--vcd` |
 | Microcontrollers | ❌ |
 | Noise, distortion, pole-zero analysis | ❌ |
-| Real-part catalog with datasheet ratings | ✅ `Part('2N3904')` etc. (diodes, LEDs, Zeners, BJTs, MOSFETs); absolute-max ratings checked after op/dc/tran, mixed-signal transients included (R401–R404); logic ICs / NE555 go through the same `Part()` (row above) · op-amps/MCUs are catalog data only |
+| Real-part catalog with datasheet ratings | ✅ one `Part()` for every simulated family (data for every family in docs/PARTS.md): semiconductors (diodes, LEDs, Zeners, BJTs, MOSFETs) checked after op/dc/tran, mixed-signal transients included (R401–R404); op-amps/comparators checked at the op point (R420–R425); logic ICs / NE555 (row above) · MCUs are catalog data only |
 | SPICE netlist import/export | ❌ |
 | Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer support in progress |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
@@ -237,6 +240,7 @@ src/
 ├── elab/       bench DSL, units, canonical netlist + hash, source locations
 ├── doc/        circuit document (circuitsvibe-circuit/1), validation, share links
 ├── verify/     lint, op, dc, ac, tran stages, measurements, diagnostic registry
+├── opamps/     IdealOpAmp, OpAmp, Comparator, real-part mapping, F12x lint, R42x ratings
 ├── schema/     RunRecord types, version identity
 ├── report/     human renderer
 ├── cli/        CLI commands, bench loader, init

@@ -54,6 +54,8 @@ export type { ParsedModel, ModelDiagnostic } from './components/semi/spiceModel'
 export { findPart, PARTS } from './parts';
 export { Switch } from './components/Switch';
 export { Button } from './components/Button';
+export { IdealOpAmp, OpAmp, Comparator, OPAMP_DEFAULTS, COMPARATOR_DEFAULTS, opampPart, opampPartParams, comparatorPartParams } from './opamps';
+export type { IdealOpAmpParams, OpAmpParams, ComparatorParams } from './opamps';
 export type { SourceOptions, AcStimulus } from './components/source';
 export type {
   WaveformSpec,

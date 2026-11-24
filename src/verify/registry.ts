@@ -13,7 +13,9 @@
  *   M6xx  MCU / firmware runtime (M601–M649)
  *   F14x  firmware lint (F140–F149)
  *   F107–F110 semiconductor lint · R401–R404 datasheet ratings · T005–T008 .model cards
+ *   F120–F124 op-amp / comparator lint · R420–R425 op-amp / comparator ratings
  */
+import { AMPLIFIER_DIAGNOSTIC_DOCS } from '../opamps/registry';
 
 export interface DiagnosticDoc {
   code: string;
@@ -1417,6 +1419,8 @@ run in the effect it describes. Temperature-only (EG, XTI, XTB, TNOM…) and
 noise-only (KF, AF) parameters have no effect at the nominal temperature and
 are accepted silently.`,
   },
+  // ── op-amps and comparators (src/opamps): F120–F124 lint, R420–R425 datasheet checks ──
+  ...AMPLIFIER_DIAGNOSTIC_DOCS,
 ];
 
 export function findDiagnosticDoc(code: string): DiagnosticDoc | undefined {

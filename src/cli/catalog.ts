@@ -4,6 +4,7 @@
  */
 
 import { mixedCatalog, MIXED_GRAMMAR_NOTES } from '../mixed/catalog';
+import { AMPLIFIER_CATALOG } from '../opamps/catalog';
 
 export interface CatalogEntry {
   type: string;
@@ -13,6 +14,10 @@ export interface CatalogEntry {
   dc: string;
   /** Extra datasheet-derived lines (logic ICs: levels per VCC, drive, tpd, citations). */
   details?: string[];
+  /** Real parts: model parameters, how they were derived, and the datasheet. */
+  params?: Record<string, number | string | boolean>;
+  notes?: string[];
+  source?: string;
 }
 
 export const COMPONENT_CATALOG: CatalogEntry[] = [
@@ -116,6 +121,8 @@ export const COMPONENT_CATALOG: CatalogEntry[] = [
   },
   // Logic ICs, NE555 and generic logic primitives (src/mixed).
   ...mixedCatalog(),
+  // Op-amps and comparators (IdealOpAmp, OpAmp, Comparator) and the real parts behind Part('LM358')…
+  ...AMPLIFIER_CATALOG,
 ];
 
 export const GRAMMAR_NOTES = `PROBES (every stage)
@@ -166,4 +173,11 @@ SIZING DELEGATION  tb.param('R1', {min:'100', max:'10k', scale:'log'})
                      returns a VERIFIED passing range instead of making you guess
 NET NAMES          tb.name('out', r1.pin('2'))  -> probe 'out' in any stage
 
-${MIXED_GRAMMAR_NOTES}`;
+${MIXED_GRAMMAR_NOTES}
+OP-AMPS            pins 'inp' (+), 'inn' (-), 'out', 'v+', 'v-' (supply REQUIRED on OpAmp, Comparator, Part())
+                   tb.add('U1', Part('LM358'))  one channel; also LM741 TL072 MCP6002 NE5532
+                   new OpAmp({ aol, gbw, sr, ... })  |  new IdealOpAmp()  (v+/v- optional: both = rail clamp)
+                   probes: U1.v = V(out), U1.i = output current (+ = sourcing)
+COMPARATORS        Part('LM393') | Part('LM311') (wire 'emit') | new Comparator(): open collector,
+                   output low when V(inp) < V(inn); needs a pull-up; hysteresis = external resistors
+OP-AMP RATINGS     Part() amplifiers: R420-R425 at the op point in stages.op.ratings (fail = exit 1)`;

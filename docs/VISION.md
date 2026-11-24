@@ -167,6 +167,12 @@ $ circuitsvibe catalog                                 # component datasheet for
 - ✅ Real parts: `Part('2N3904')` from the cited catalog (src/parts) — model card plus
   datasheet absolute maximum ratings, checked automatically after op/dc/tran (R401–R404,
   exit 1) and reported apart from the bench's assertions; semiconductor lint F107–F110.
+- ✅ Op-amps and comparators (docs/OPAMPS.md): `IdealOpAmp`, a smooth-limited `OpAmp`
+  macro model (Aol, GBW, optional second pole, slew rate, data output swing, rout,
+  short-circuit current limit, Vos/Ib, quiescent current) and an open-collector
+  `Comparator`, in op/dc/ac/tran; `Part('LM358')` and six more real parts with parameters
+  derived from cited datasheet data; lint F120–F124 and datasheet checks R420–R425 at the
+  operating point.
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap
@@ -179,7 +185,7 @@ $ circuitsvibe catalog                                 # component datasheet for
 | v0.5 | `circuitsvibe optimize` (Nelder-Mead over the ladder as an objective function) — gmin/source stepping already shipped | the agent never picks a resistor by hand again |
 | v0.6 | UI = RunRecord viewer: assertion chips on the schematic, bands on the oscilloscope, ledger timeline | human and agent see the same artifact |
 | v0.7 | SPICE export + ngspice cross-check in CI with a tolerance table (ordering by ref in the matrix already shipped); sparse LU once benches pass ~500 nodes | public numerical credibility |
-| v0.8 | ~~Level-1 MOSFET, Gummel-Poon BJT, real parts with ratings~~ (done), behavioral sources; op-amp macro-model | unlocks real specs |
+| v0.8 | ~~Level-1 MOSFET, Gummel-Poon BJT, real parts with ratings~~ (done), behavioral sources; ~~op-amp macro-model~~ (done) | unlocks real specs |
 | v1.0 | **CircuitBench**: public eval of "iterations-to-green" per model, tasks with hidden assertions; freeze of the `circuitsvibe-run/1.0` schema | the standard wins because agents provably converge on it |
 
 Sequencing rules (from the architecture-panel judges): the terminal loop stands on its own
@@ -233,14 +239,21 @@ no benchmark claim beyond what the component library covers.
   ratings; `Part(id)` is a real part and records `part: id` in the netlist (rebuilt from the
   catalog). Estimated (fitted) model cards say so in `circuitsvibe catalog`.
 - **One `Part()` for every real part** — `Part(id, opts?)` (src/elab/part.ts) walks a chain of
-  family resolvers (logic ICs / NE555 from src/mixed, semiconductors from
-  src/components/Part.ts); each returns `undefined` for ids it does not own, and an unknown id
-  lists every family's simulatable ids. A new family (op-amps next) is one line in
-  `PART_RESOLVERS`. Rebuilds stay per family: ICs by their catalog-id netlist type,
-  semiconductors by their `part` param.
+  family resolvers (logic ICs / NE555 from src/mixed, op-amps / comparators from
+  src/opamps, semiconductors from src/components/Part.ts); each returns `undefined` for ids it
+  does not own, and an unknown id lists every family's simulatable ids. A new family is one
+  line in `PART_RESOLVERS` (the op-amps went in that way). Rebuilds stay per family: ICs by
+  their catalog-id netlist type, op-amps by `OpAmp`/`Comparator` with `part`, semiconductors
+  by their `part` param. Ratings of every family land in `stages.<stage>.ratings[]`.
 - **Internal device nodes and the co-simulation hook are independent** — series-resistance
   nodes are numbered after the nets, in component order, when the system is built; the
   co-simulation hook only reads net nodes, so both keep the deterministic ordering.
+- **Op-amp models are smooth, not switched** — every limit (input stage, output window,
+  current limit, comparator switch) is a tanh/logistic/C1 ramp, with SPICE-style Newton
+  limiting on their arguments; the output window is an anti-windup gate on the gain node
+  rather than a stiff clamp, so saturation neither breaks Newton nor forces tiny transient
+  steps. Real parts are single channels built from catalog data; every value without a
+  datasheet number is a stated assumption shown by `catalog`.
 - **Locations are cwd-relative with forward slashes** — RunRecords are identical across
   machines and operating systems.
 - **Mixed-signal = one MNA system + one event kernel, coupled through a hook** —

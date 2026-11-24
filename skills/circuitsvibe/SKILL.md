@@ -1,6 +1,6 @@
 ---
 name: circuitsvibe
-description: Design, size and verify electronic circuits by writing TypeScript benches and running the circuitsvibe simulator CLI (lint → DC operating point → DC sweep → AC → transient) until it exits 0. Use when asked to design, check, debug or size an analog circuit (resistors, capacitors, inductors, DC/pulse/sine/PWL/PWM sources, diodes, Zeners, LEDs, BJTs, MOSFETs, real catalog parts such as 2N3904/2N7000/1N4148, switches), to verify a circuit against a spec (operating point, transfer curve, frequency response, transient), or when a *.bench.ts file is present.
+description: Design, size and verify electronic circuits by writing TypeScript benches and running the circuitsvibe simulator CLI (lint → DC operating point → DC sweep → AC → transient) until it exits 0. Use when asked to design, check, debug or size an analog circuit (resistors, capacitors, inductors, DC/pulse/sine/PWL/PWM sources, diodes, Zeners, LEDs, BJTs, MOSFETs, op-amps and comparators, logic ICs, real catalog parts such as 2N3904/2N7000/1N4148/LM358/74HC04, switches), to verify a circuit against a spec (operating point, transfer curve, frequency response, transient), or when a *.bench.ts file is present.
 ---
 
 # CircuitsVibe — circuits as code, verified by simulation
@@ -78,16 +78,22 @@ tb.expect.logic('U1.1Y', { tstop: '1m' }).toHaveFrequency('10k', 0.01);   // log
 Supported today: Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN,
 PULSE, PWL, PWM, AC stimulus), Diode (Rs, capacitance, Zener breakdown), LED, NPN/PNP
 (Gummel-Poon), NMOS/PMOS (Level 1), `.model` cards via `Diode/NPN/NMOS.fromModel`, Switch
-(SPDT), Button, custom parts via `defineComponent`; logic ICs and NE555 via `Part(...)`
-(74HC00/04/14/74/595, 74HCT04, CD4017, CD4011, NE555) and generic logic primitives (Nand,
-DFF, Counter, Clock, …) co-simulated with the transient; DC operating point (with gmin/source
-stepping), DC sweep, AC small-signal, adaptive transient. Not yet: op-amps, microcontrollers
-in benches.
+(SPDT), Button, op-amps (`IdealOpAmp`, macro-model `OpAmp`), open-collector `Comparator`,
+custom parts via `defineComponent`; logic ICs and NE555 via `Part(...)` (74HC00/04/14/74/595,
+74HCT04, CD4017, CD4011, NE555) and generic logic primitives (Nand, DFF, Counter, Clock, …)
+co-simulated with the transient; DC operating point (with gmin/source stepping), DC sweep,
+AC small-signal, adaptive transient. Not yet: microcontrollers in benches.
 
-Real parts: one `Part(id)` covers logic ICs (`Part('74HC04')`) and catalog semiconductors.
+Real parts: one `Part(id)` covers logic ICs (`Part('74HC04')`), op-amps / comparators
+(`Part('LM358')`/LM741/TL072/MCP6002/NE5532/LM393/LM311) and catalog semiconductors.
 `tb.add('Q1', Part('2N3904'))` uses the catalog model AND checks the datasheet absolute
 maximum ratings after op/dc/tran (mixed-signal transients included) — violations are
 R401–R404 in `stages.<stage>.ratings` (exit 1, separate from your assertions); an IC output
 over its limit stays D511. Generic `new NPN({ bf: 100 })` has no ratings.
 `npx circuitsvibe catalog 2N3904` shows pins, model (published or ESTIMATED), ratings and
 citations. Probes: `Q1.ic`, `Q1.vce`, `M1.id`, `M1.vgs`, `D1.p`…
+
+Op-amp pins are `'inp'`, `'inn'`, `'out'`, `'v+'`, `'v-'` (supply REQUIRED except on
+IdealOpAmp); comparators are open collector — add a pull-up. `Part()` amplifiers are
+checked against their datasheet ratings at the operating point (`stages.op.ratings`,
+R420–R425, exit 1).

@@ -68,7 +68,7 @@ Same shape as `RunRecord.netlist.components[]`:
 | Field | Meaning |
 |-------|---------|
 | `id` | `/^[A-Za-z][A-Za-z0-9_]*$/`, unique; the name in every diagnostic, probe and override |
-| `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `NPN`, `PNP`, `NMOS`, `PMOS`, `Switch`, `Button`, a logic IC / NE555 catalog id such as `74HC04`, a logic primitive such as `Nand`) or the name of a custom definition supplied by the reader (T012 otherwise) |
+| `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `NPN`, `PNP`, `NMOS`, `PMOS`, `Switch`, `Button`, `IdealOpAmp`, `OpAmp`, `Comparator`, a logic IC / NE555 catalog id such as `74HC04`, a logic primitive such as `Nand`) or the name of a custom definition supplied by the reader (T012 otherwise) |
 | `params` | the component configuration, exactly as in the RunRecord netlist (see below) |
 | `pins` | `{ pinName: netName }` with **every** canonical pin of the type, and only those (T014) |
 | `free` | optional `{ min, max, scale: "lin" \| "log" }` — a `tb.param` sweep range (verified hints) |
@@ -92,6 +92,9 @@ Same shape as `RunRecord.netlist.components[]`:
 | `Nand`, `DFF`, `Clock`, … | the primitive's options (`inputs`, `delay`, `family`, `vcc`, …) | as in the bench DSL (`a`, `b`, `y`, `clk`, `q`, …) |
 | `Switch` | `{ closed }` (boolean) | `com`, `a`, `b` |
 | `Button` | `{ pressed }` (boolean) | `1`, `2` |
+| `IdealOpAmp` | `{ gain }` | `inp`, `inn`, `out`, `v+`, `v-` (supply pins may sit alone on `n<digits>` nets = unused) |
+| `OpAmp` | `{ aol, gbw, sr, fp2, vos, ib, ios, swingHigh, swingLow, rout, iscSource, iscSink, iq, part? }` — `part` (string) names the catalog part of a `Part()` device | `inp`, `inn`, `out`, `v+`, `v-` |
+| `Comparator` | `{ avd, vos, ib, ios, tpdHL, tpdLH, overdrive, tpdFast, vol, iol, isink, gleak, iq, emitterPin?, part? }` | `inp`, `inn`, `out`, `v+`, `v-` (+ `emit` when `emitterPin: true`) |
 
 Semiconductors: `part: "<id>"` marks a catalog part (`Part('2N3904')`); the reader rebuilds
 it from its own catalog and the other params must match what that part describes (T014
