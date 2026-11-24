@@ -1,5 +1,6 @@
 import { Component } from '../core/Component';
 import type { MNAMatrix } from '../solver/MNAMatrix';
+import type { AcLoadContext, Phasor } from '../analysis/context';
 
 const R_CLOSED = 1e-3; // 1 mΩ — effectively a short
 const R_OPEN = 1e12;   // 1 TΩ — effectively an open circuit
@@ -49,7 +50,27 @@ export class Switch extends Component {
     matrix.stampConductance(com, b, g_b);
   }
 
-  readResults(solution: number[], matrix: MNAMatrix): { voltage: number; current: number } {
+  hasAcModel(): boolean {
+    return true;
+  }
+
+  acLoad(ctx: AcLoadContext): void {
+    const com = this.pin('com').node.index;
+    const a = this.pin('a').node.index;
+    const b = this.pin('b').node.index;
+    ctx.matrix.stampAdmittance(com, a, 1 / (this.closed ? R_OPEN : R_CLOSED), 0);
+    ctx.matrix.stampAdmittance(com, b, 1 / (this.closed ? R_CLOSED : R_OPEN), 0);
+  }
+
+  acReadResults(re: ArrayLike<number>, im: ArrayLike<number>): { voltage: Phasor; current: Phasor } {
+    const com = this.pin('com').node.index;
+    const target = this.pin(this.closed ? 'b' : 'a').node.index;
+    const vr = (com > 0 ? re[com - 1] : 0) - (target > 0 ? re[target - 1] : 0);
+    const vi = (com > 0 ? im[com - 1] : 0) - (target > 0 ? im[target - 1] : 0);
+    return { voltage: [vr, vi], current: [vr / R_CLOSED, vi / R_CLOSED] };
+  }
+
+  readResults(solution: ArrayLike<number>, matrix: MNAMatrix): { voltage: number; current: number } {
     const vCom = matrix.getNodeVoltage(solution, this.pin('com').node.index);
     const targetPin = this.closed ? 'b' : 'a';
     const vTarget = matrix.getNodeVoltage(solution, this.pin(targetPin).node.index);

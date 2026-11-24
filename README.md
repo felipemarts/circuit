@@ -4,8 +4,8 @@
 [circuitsvibe.com](https://circuitsvibe.com) · [npm](https://www.npmjs.com/package/circuitsvibe) · MIT
 
 CircuitsVibe is "vitest for circuits". You describe a circuit and its spec in a TypeScript
-*bench*; the CLI lints the topology, solves it (DC operating point, transient), checks the
-assertions and returns a verdict an LLM agent can branch on: an exit code, diagnostics with a
+*bench*; the CLI lints the topology, solves it (DC operating point, DC sweep, AC
+small-signal, transient), checks the assertions and returns a verdict an LLM agent can branch on: an exit code, diagnostics with a
 stable code, a source location and a fix, and **simulation-verified** sizing hints. Pure
 TypeScript, zero runtime dependencies, runs in Node and in the browser.
 
@@ -57,7 +57,9 @@ PASS · exit 0
   the hint lists only values that were simulated and pass.
 - **Exit codes with meaning** — `0` pass · `1` spec not met (adjust values) · `2` invalid circuit
   (fix the structure) · `3` bench/tooling error.
-- **Deterministic** — no timestamps; two runs of the same bench produce byte-identical JSON.
+- **Deterministic** — no timestamps; two runs of the same bench produce byte-identical JSON,
+  and matrix unknowns are ordered by component id / net name, so the same netlist gives the
+  same numbers whatever the declaration order.
 - **History outside the context window** — every run is appended to `.circuitsvibe/runs.jsonl`;
   `circuitsvibe log list` shows what was already tried.
 
@@ -77,12 +79,14 @@ The command is `circuitsvibe` (short alias: `cvibe`).
 
 ```
 circuitsvibe init [name] [--force]        scaffold <name>.bench.ts + AGENTS.md
-circuitsvibe verify <bench.ts> [options]  lint → op → tran
+circuitsvibe verify <bench.ts> [options]  lint → op → dc → ac → tran (fail-fast)
     --json                full RunRecord on stdout
     --set R1=330,V1=5     override component values without editing the file
-    --stage op,tran       run a subset (lint always runs)
+    --stage op,dc,ac,tran run a subset (lint always runs)
     --no-hints            skip verified sizing hints
     --no-ledger           don't append to .circuitsvibe/runs.jsonl
+circuitsvibe sweep <bench.ts> --source V1 --from 0 --to 5 [--points 51 | --step 0.1]
+    [--probe out,R1.i] [--param R1] [--json]   DC transfer table / JSON
 circuitsvibe log list [--json] | log show <runId>
 circuitsvibe explain <code>
 circuitsvibe catalog [type] [--json]
@@ -111,9 +115,14 @@ The package is ESM with type declarations. The library entry is browser-safe (no
 
 ## Components
 
-Resistor, Capacitor, Inductor, VoltageSource (DC, optional sine in transient), CurrentSource,
-Diode (Shockley), LED, Switch (SPDT), Button, plus custom components through
-`defineComponent`:
+Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN, PULSE, PWL, PWM,
+AC stimulus), Diode (Shockley, pn-junction limiting), LED, Switch (SPDT), Button, plus custom
+components through `defineComponent`:
+
+```ts
+new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2m' } });
+new VoltageSource({ dc: 2.5, ac: 1 });   // bias + AC stimulus
+```
 
 ```ts
 import { defineComponent } from 'circuitsvibe';
@@ -123,6 +132,9 @@ const MyResistor = defineComponent({
   pins: ['a', 'b'],
   params: { R: { default: 1000, unit: 'Ω' } },
   stamp(ctx) {
+    ctx.stampResistance('a', 'b', ctx.params.R);
+  },
+  ac(ctx) {                       // optional small-signal model (needed for AC benches)
     ctx.stampResistance('a', 'b', ctx.params.R);
   },
 });
@@ -140,18 +152,21 @@ multi-file code editor for custom components, and projects saved in `localStorag
 
 | Area | Status |
 |------|--------|
-| DC operating point (MNA + Newton-Raphson) | ✅ |
-| Transient | ✅ Backward Euler, **fixed step** (`dt` you choose) |
-| Sources | ✅ DC voltage/current, sine voltage · ❌ PULSE, PWL, PWM |
+| DC operating point (MNA + Newton-Raphson, pn-junction limiting) | ✅ |
+| Convergence aids | ✅ gmin stepping, then source stepping (reported in `stages.op.solver`); transient step cut on Newton failure |
+| Transient | ✅ trapezoidal (BE after t = 0 and every source corner), adaptive LTE-controlled steps, exact breakpoints |
+| DC sweep | ✅ source DC value or component value, curve assertions, `circuitsvibe sweep` |
+| AC small-signal | ✅ complex MNA around the operating point, gain/phase/bandwidth/unity-gain/phase-margin |
+| Sources | ✅ DC, SIN, PULSE, PWL, PWM (voltage and current), AC stimulus |
 | Semiconductors | ✅ Diode, LED · ❌ BJT, MOSFET, JFET |
 | Op-amps, comparators | ❌ |
 | Digital logic, mixed-signal | ❌ |
 | Microcontrollers | ❌ |
-| AC small-signal, DC sweep | ❌ |
-| Convergence aids (gmin/source stepping) | ❌ — non-convergence is reported (S201/S202) with the culprit |
+| Noise, distortion, pole-zero analysis | ❌ |
 | Real-part catalog with datasheet ratings | ❌ |
 | SPICE netlist import/export | ❌ |
-| Determinism | same bench source ⇒ same numbers; ordering of matrix unknowns by ref is not yet implemented |
+| Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
+| Linear solver | dense LU (sub-second at ~200 nodes, see `npm run perf`); no sparse LU yet |
 
 ## Development
 
@@ -166,6 +181,7 @@ npm run cli -- verify bench/led-driver.bench.ts   # CLI from source (no build st
 npm run benches       # every bench in bench/ against its declared expectation
 npm run build:lib     # dist/: index.js, types/, circuitsvibe-standalone.mjs
 npm run smoke:pack    # npm pack → install in temp dirs → npx init/verify
+npm run perf          # solver timings on 50/200/500-node ladders
 npm run build:site    # website into dist-site/
 ```
 
@@ -175,7 +191,7 @@ header comment states the expected code and exit code, which `npm run benches` e
 ```
 src/
 ├── elab/       bench DSL, units, canonical netlist + hash, source locations
-├── verify/     lint, op, tran stages, measurements, diagnostic registry
+├── verify/     lint, op, dc, ac, tran stages, measurements, diagnostic registry
 ├── schema/     RunRecord types, version identity
 ├── report/     human renderer
 ├── cli/        CLI commands, bench loader, init

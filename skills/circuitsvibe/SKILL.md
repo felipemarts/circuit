@@ -1,6 +1,6 @@
 ---
 name: circuitsvibe
-description: Design, size and verify electronic circuits by writing TypeScript benches and running the circuitsvibe simulator CLI (lint → DC operating point → transient) until it exits 0. Use when asked to design, check, debug or size an analog circuit (resistors, capacitors, inductors, sources, diodes, LEDs, switches), to verify a circuit against a spec, or when a *.bench.ts file is present.
+description: Design, size and verify electronic circuits by writing TypeScript benches and running the circuitsvibe simulator CLI (lint → DC operating point → DC sweep → AC → transient) until it exits 0. Use when asked to design, check, debug or size an analog circuit (resistors, capacitors, inductors, DC/pulse/sine/PWL/PWM sources, diodes, LEDs, switches), to verify a circuit against a spec (operating point, transfer curve, frequency response, transient), or when a *.bench.ts file is present.
 ---
 
 # CircuitsVibe — circuits as code, verified by simulation
@@ -52,6 +52,14 @@ export default bench('led-driver', (tb) => {
 });
 ```
 
+Other stages, same pattern (details: `npx circuitsvibe agents`):
+
+```ts
+tb.expect.dc({ source: 'V1', from: 0, to: 5, points: 51 }).probe('out').toBeMonotonic('increasing');
+tb.expect.ac({ from: '10', to: '1M' }).probe('out').gainAt('1k').toBeWithin(-3.1, -2.9); // needs a source with ac: 1
+new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2m' } });  // also sin, pwl, pwm
+```
+
 ## Reference on demand
 
 - `npx circuitsvibe agents` — full playbook: API cheat sheet, units, probes, assertions,
@@ -59,6 +67,8 @@ export default bench('led-driver', (tb) => {
 - `npx circuitsvibe catalog --json` — every component with pins and value semantics.
 - `npx circuitsvibe explain <code>` — physics and fixes for one diagnostic code.
 
-Supported today: Resistor, Capacitor, Inductor, VoltageSource (DC + sine), CurrentSource,
-Diode, LED, Switch (SPDT), Button, custom parts via `defineComponent`. Not yet: transistors,
-op-amps, digital logic, microcontrollers, AC analysis, DC sweep.
+Supported today: Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN,
+PULSE, PWL, PWM, AC stimulus), Diode, LED, Switch (SPDT), Button, custom parts via
+`defineComponent`; DC operating point (with gmin/source stepping), DC sweep, AC
+small-signal, adaptive transient. Not yet: transistors, op-amps, digital logic,
+microcontrollers.

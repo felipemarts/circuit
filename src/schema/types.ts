@@ -13,7 +13,11 @@
  *    identical runs diff clean.
  */
 
-export type StageName = 'lint' | 'op' | 'tran';
+/** Ladder order: lint → op → dc → ac → tran (fail-fast). */
+export type StageName = 'lint' | 'op' | 'dc' | 'ac' | 'tran';
+
+/** Canonical stage order. */
+export const STAGE_ORDER: StageName[] = ['lint', 'op', 'dc', 'ac', 'tran'];
 
 export type Severity = 'error' | 'warning';
 
@@ -50,12 +54,28 @@ export interface Diagnostic {
   at?: string;
 }
 
-/** Serialized check — the closed assertion vocabulary. */
-export type CheckSpec =
+/** A scalar check on one measured number (op values, DC/AC measurements). */
+export type ScalarCheck =
   | { op: 'within'; min: number; max: number }
   | { op: 'closeTo'; value: number; tol: number }
   | { op: 'above'; value: number }
-  | { op: 'below'; value: number }
+  | { op: 'below'; value: number };
+
+/** Serialized check — the closed assertion vocabulary. */
+export type CheckSpec =
+  | ScalarCheck
+  // DC sweep (curve) checks — x is the swept value
+  | { op: 'at'; x: number; check: ScalarCheck }
+  | { op: 'slopeAt'; x: number; check: ScalarCheck }
+  | { op: 'monotonic'; direction: 'increasing' | 'decreasing' }
+  | { op: 'crosses'; level: number; min?: number; max?: number }
+  // AC checks — gain in dB, phase in degrees, frequencies in Hz
+  | { op: 'gainAt'; f: number; check: ScalarCheck }
+  | { op: 'phaseAt'; f: number; check: ScalarCheck }
+  | { op: 'bandwidth3dB'; check: ScalarCheck }
+  | { op: 'unityGainFrequency'; check: ScalarCheck }
+  | { op: 'phaseMargin'; check: ScalarCheck }
+  // Transient (waveform) checks
   | { op: 'settleWithin'; target: number; tol: number; by: number }
   | { op: 'neverExceed'; value: number }
   | { op: 'stayAbove'; value: number; from?: number }
@@ -71,8 +91,52 @@ export interface AssertionSpec {
   check: CheckSpec;
   /** Source location "file:line" of the tb.expect call. */
   at?: string;
+  /** AC only: probe expression the probe is divided by (default: the AC stimulus). */
+  ref?: string;
   /** Transient config this assertion runs under (tran stage only). */
-  tran?: { tstop: number; dt: number };
+  tran?: TranConfig;
+  /** DC sweep this assertion runs under (dc stage only). */
+  dc?: DcSweepConfig;
+  /** AC sweep this assertion runs under (ac stage only). */
+  ac?: AcSweepConfig;
+}
+
+/** Transient analysis settings (all times in seconds). */
+export interface TranConfig {
+  tstop: number;
+  /** Initial step; also the step ceiling unless maxStep is given. */
+  dt: number;
+  maxStep?: number;
+  /** Step floor: a step that must shrink below it fails with S203 (default maxStep·1e-9). */
+  minStep?: number;
+  /** Default 'trap' (BE right after t = 0 and every breakpoint). */
+  method?: 'trap' | 'be';
+  /** 'zero' (default): caps 0 V, inductors 0 A at t = 0; 'op': start from the DC operating point. */
+  ic?: 'zero' | 'op';
+  /** Relative truncation-error tolerance (default 1e-3). */
+  reltol?: number;
+}
+
+/** DC sweep: the DC value of a source (`source`) or the value of a component (`param`). */
+export interface DcSweepConfig {
+  source?: string;
+  param?: string;
+  from: number;
+  to: number;
+  points: number;
+}
+
+/** Logarithmic AC sweep. */
+export interface AcSweepConfig {
+  from: number;
+  to: number;
+  pointsPerDecade: number;
+}
+
+/** AC probe options: the reference the probe is divided by. */
+export interface AcProbeRef {
+  /** Probe expression of the denominator (default: the AC stimulus phasor). */
+  ref?: string;
 }
 
 export interface ParamSpec {
@@ -97,6 +161,8 @@ export interface AssertionResult {
   id: string;
   stage: StageName;
   probe: string;
+  /** AC only: reference probe of the ratio (absent = the stimulus). */
+  ref?: string;
   check: CheckSpec;
   verdict: 'pass' | 'fail';
   measured?: number;
@@ -108,18 +174,26 @@ export interface AssertionResult {
   excerpt?: [number, number][];
   at?: string;
   hint?: VerifiedParamHint;
+  /** Why a measurement could not be made (e.g. no -3 dB crossing inside the sweep). */
+  note?: string;
+  /** Sweep value of the first violation (dc: x, ac: Hz). */
+  xFirstViolation?: number;
 }
 
 export interface NetlistComponent {
   id: string;
   type: string;
-  params: Record<string, number | boolean>;
+  /** Plain-JSON configuration; enough to rebuild an identical component. */
+  params: Record<string, ParamValue>;
   /** pin name -> net name */
   pins: Record<string, string>;
   free?: ParamSpec;
   /** Source location "file:line" of the tb.add call. */
   at?: string;
 }
+
+/** JSON value of a component parameter (numbers, booleans, waveform objects). */
+export type ParamValue = number | boolean | string | ParamValue[] | { [key: string]: ParamValue };
 
 export interface NetlistDoc {
   /** FNV-1a 64-bit hash (hex) of the canonical netlist. Identity, not crypto. */
@@ -134,8 +208,49 @@ export interface StageRecord {
   reason?: string;
   /** Probe values measured in this stage (op: scalars). */
   probes?: Record<string, number>;
-  solver?: { method: 'linear' | 'newton-raphson'; iterations?: number };
+  solver?: SolverRecord;
   assertions?: AssertionResult[];
+}
+
+export interface SolverAttempt {
+  strategy: 'newton' | 'gmin-stepping' | 'source-stepping';
+  iterations: number;
+  converged: boolean;
+  steps?: number;
+}
+
+/** Stage solver telemetry. */
+export interface SolverRecord {
+  method: 'linear' | 'newton-raphson' | 'trap' | 'be' | 'complex-lu';
+  /** Total Newton iterations. */
+  iterations?: number;
+  /** op: convergence aids that had to be used (absent when plain Newton converged). */
+  aids?: ('gmin-stepping' | 'source-stepping')[];
+  /** op: every strategy tried, in order (only when plain Newton failed). */
+  attempts?: SolverAttempt[];
+  /** dc: swept points solved; ac: frequencies solved. */
+  points?: number;
+  /** dc: points that needed convergence aids. */
+  aidedPoints?: number;
+  /** tran: one entry per distinct transient configuration. */
+  runs?: TranRunTelemetry[];
+  /** tran totals over runs. */
+  acceptedSteps?: number;
+  rejectedSteps?: number;
+  minStep?: number;
+}
+
+export interface TranRunTelemetry {
+  config: TranConfig;
+  method: 'trap' | 'be';
+  acceptedSteps: number;
+  rejectedSteps: number;
+  newtonFailures: number;
+  lteRejections: number;
+  minStep: number;
+  maxStepTaken: number;
+  breakpoints: number;
+  newtonIterations: number;
 }
 
 export interface RunRecord {
