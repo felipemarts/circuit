@@ -1503,6 +1503,7 @@ export class Elaborator {
         (ta.k === 'bool' && tb.k === 'bool') ||
         (ta.k === 'int' && tb.k === 'int') ||
         (ta.k === 'time' && tb.k === 'time') ||
+        (ta.k === 'str' && tb.k === 'str' && !ordered) ||
         (ta.k === 'enum' && tb.k === 'enum' && ta.uid === tb.uid);
       if (sameScalar) return this.mk(T_BOOL, { o: 'cmp', f, m: 'n', a: a.ir, b: b.ir, at }, [a, b], e.loc);
       if (ta.k === 'vec' && tb.k === 'vec') {
@@ -1971,7 +1972,11 @@ export class Elaborator {
                 this.err('V711', given.loc ?? g.loc, `generic '${name}' of ${ent.name} is ${typeName(t)}, the value is ${typeName(given.t)}`);
               } else v = given.v;
               if (t.k === 'uvec' && given.t.k === 'vec') gt = { ...given.t, base: t.base };
-            } else v = this.jsGeneric(t, given.v, name, ent, g.loc);
+            } else {
+              v = this.jsGeneric(t, given.v, name, ent, g.loc);
+              // like a string literal in an unconstrained context: index range 0 to n-1
+              if (v instanceof Uint8Array && t.k === 'uvec') gt = { k: 'vec', base: t.base, left: 0, right: v.length - 1, asc: true };
+            }
             if (v !== undefined && t.k === 'int' && ((v as number) < t.lo || (v as number) > t.hi)) {
               this.err('V711', given.loc ?? g.loc, `generic '${name}' = ${v as number} is outside ${typeName(t)}`);
               v = undefined;

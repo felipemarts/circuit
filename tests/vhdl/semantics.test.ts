@@ -445,6 +445,48 @@ end architecture;`,
   });
 });
 
+describe('VHDL-2008 conveniences and small operators', () => {
+  it('reduction operators, sll/srl/rotate, ??, sequential conditional assignment, qualified expressions, to_string', () => {
+    const { u, sim } = build(
+      `${HDR}
+entity t is port (v : in std_logic_vector(3 downto 0); en : in std_logic;
+  r_and, r_or, r_xor, pick : out std_logic; l, r, rl : out std_logic_vector(3 downto 0); k : out unsigned(3 downto 0)); end entity;
+architecture rtl of t is
+begin
+  r_and <= and v;
+  r_or  <= or v;
+  r_xor <= xor v;
+  l  <= v sll 1;
+  r  <= v srl 2;
+  rl <= std_logic_vector(rotate_left(unsigned(v), 1));
+  k  <= unsigned'("1001");
+  process (all)
+  begin
+    pick <= v(0) when ?? en else v(3);
+    if en then
+      report "v=" & to_string(v) severity note;
+    end if;
+  end process;
+end architecture;`,
+      { ports: { v: 'V', en: 'EN' } },
+      c => {
+        [1, 0, 1, 1].forEach((b, i) => c.input(`V[${i}]`, { initial: b as 0 | 1 })); // v = "1101"
+        c.input('EN', { initial: 0 });
+      },
+    );
+    expect([u.read(sim, 'r_and'), u.read(sim, 'r_or'), u.read(sim, 'r_xor')]).toEqual([0, 1, 1]);
+    expect(u.read(sim, 'l')).toBe('1010');
+    expect(u.read(sim, 'r')).toBe('0011');
+    expect(u.read(sim, 'rl')).toBe('1011');
+    expect(u.readNumber(sim, 'k')).toBe(9);
+    expect(u.read(sim, 'pick')).toBe(1); // v(3)
+    sim.drive('EN', 1, '1n').advanceTo('2n');
+    expect(u.read(sim, 'pick')).toBe(1); // v(0)
+    const d = sim.diagnostics();
+    expect(d.map(x => [x.code, x.severity, x.evidence?.message])).toEqual([['V752', 'warning', 'v=1101']]);
+  });
+});
+
 describe('codes of the semantic errors are stable', () => {
   it('assigning an integer to a vector is V705 with a mechanical conversion fix', () => {
     const r = compileVhdl(`${HDR}
