@@ -1,6 +1,6 @@
 import { elaborate, type Elaboration } from '../elab/bench';
-import { ConvergenceError } from '../solver/NewtonRaphson';
 import { evaluateScalarCheck } from './measure';
+import { opSolverRecord, solverDiagnostic } from './solverDiag';
 import { runLint } from './lint';
 import { formatEng } from '../elab/units';
 import type {
@@ -11,6 +11,8 @@ import type {
   VerifiedParamHint,
 } from '../schema/types';
 import type { DCResult } from '../analysis/DCAnalysis';
+
+export { solverDiagnostic, opSolverRecord } from './solverDiag';
 
 export interface StageOutcome {
   stage: StageRecord;
@@ -119,7 +121,6 @@ function computeVerifiedHint(elab: Elaboration, opAssertions: AssertionSpec[]): 
 /** L1 — DC operating point + assertions + verified sizing hints. */
 export function runOp(elab: Elaboration, opts: { hints: boolean }): StageOutcome {
   const opAssertions = elab.assertions.filter(a => a.stage === 'op');
-  const hasNonlinear = [...elab.components.values()].some(c => c.isNonlinear());
 
   let dc: DCResult;
   try {
@@ -151,98 +152,10 @@ export function runOp(elab: Elaboration, opts: { hints: boolean }): StageOutcome
     stage: {
       verdict: failed.length > 0 ? 'fail' : 'pass',
       probes,
-      solver: { method: hasNonlinear ? 'newton-raphson' : 'linear' },
+      solver: opSolverRecord(dc.telemetry),
       assertions,
     },
     diagnostics: [],
   };
 }
 
-/** Cross-bundle-safe ConvergenceError detection (never trust instanceof alone). */
-function isConvergenceError(err: unknown): err is ConvergenceError {
-  return (
-    err instanceof ConvergenceError ||
-    (err instanceof Error && err.name === 'ConvergenceError' && 'telemetry' in err)
-  );
-}
-
-/** Map an engine exception to a stable solver diagnostic. */
-export function solverDiagnostic(elab: Elaboration, err: unknown, stage: 'op' | 'tran'): Diagnostic {
-  if (isConvergenceError(err)) {
-    const worst = err.telemetry.worst;
-    const worstId = worst ? elab.idOf.get(worst.component) : undefined;
-    const history = worst?.history.map(v => Number(v.toPrecision(5))) ?? [];
-    const oscillation = detectOscillation(history);
-    return {
-      code: stage === 'op' ? 'S201' : 'S202',
-      slug: 'nr-nonconvergence',
-      severity: 'error',
-      stage,
-      message: `newton-raphson did not converge after ${err.telemetry.iterations} iterations${
-        worstId ? ` — worst: ${worstId} (ΔV=${formatEng(worst!.deltaV, 'V')})` : ''
-      }`,
-      subject: worstId ? { components: [worstId] } : undefined,
-      note: oscillation
-        ? `${worstId ?? 'the worst component'} oscillates between ${formatEng(oscillation[0], 'V')} and ${formatEng(oscillation[1], 'V')} — typical of a stiff exponential branch (diode/LED) with no series resistance`
-        : 'nonlinear iteration is not settling; a stiff exponential branch or extreme drive is likely',
-      evidence: {
-        iterations: err.telemetry.iterations,
-        ...(worstId ? { worstComponent: worstId, worstDeltaV: worst!.deltaV, voltageHistory: history } : {}),
-      },
-      fixes: [
-        {
-          kind: 'add-component',
-          confidence: 'suggested',
-          detail: `add series resistance in the ${worstId ?? 'nonlinear'} branch (even 1–10 Ω softens the exponential and lets newton-raphson converge)`,
-        },
-        {
-          kind: 'check-values',
-          confidence: 'suggested',
-          detail: 'check source polarity and magnitude driving the nonlinear branch; very large forward or reverse drive slows convergence',
-        },
-      ],
-      at: worstId ? elab.locOf.get(worstId) : undefined,
-    };
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  const nonlinearIds = [...elab.components.entries()]
-    .filter(([, c]) => c.isNonlinear())
-    .map(([id]) => id)
-    .sort();
-  return {
-    code: 'S101',
-    slug: 'unsolvable-system',
-    severity: 'error',
-    stage,
-    message: `the solver could not solve this circuit: ${message}`,
-    note: 'this usually means a topology problem the lint stage did not model; inspect the most recently changed components and nets',
-    evidence: { engineMessage: message },
-    fixes: [
-      {
-        kind: 'rewire',
-        confidence: 'suggested',
-        detail: 'ensure every net has a DC path to ground and no ideal-source loop exists; then re-run',
-      },
-      ...(nonlinearIds.length > 0
-        ? [
-            {
-              kind: 'add-component',
-              confidence: 'suggested' as const,
-              detail: `a nonlinear device driven without series resistance can also produce this — check ${nonlinearIds.join(', ')} for a current-limiting resistor`,
-            },
-          ]
-        : []),
-    ],
-  };
-}
-
-/** a,b,a,b tail pattern in the voltage history → the two levels, else null. */
-function detectOscillation(history: number[]): [number, number] | null {
-  if (history.length < 4) return null;
-  const [d, c, b, a] = [...history].reverse();
-  const eq = (x: number, y: number) => Math.abs(x - y) < 1e-3 + 1e-3 * Math.abs(x);
-  if (eq(a, c) && eq(b, d) && !eq(a, b)) {
-    return a < b ? [a, b] : [b, a];
-  }
-  return null;
-}

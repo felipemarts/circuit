@@ -5,7 +5,7 @@
  *
  *   F1xx  structural lint (pre-solve topology)
  *   S1xx  linear solver
- *   S2xx  nonlinear solver (Newton-Raphson)
+ *   S2xx  nonlinear solver (Newton-Raphson), transient stepping, AC models
  *   A3xx  assertion outcomes
  *   T0xx  tooling / bench authoring
  */
@@ -104,17 +104,63 @@ component (largest voltage delta on the final iteration) and its recent
 voltage history; an a-b-a-b oscillation pattern is typical of a stiff
 exponential branch — a diode or LED driven hard with no series resistance.
 
+Before reporting S201 the solver has already tried, in order: plain Newton
+with SPICE pn-junction voltage limiting, gmin stepping (a shunt conductance
+from every node to ground, relaxed decade by decade from 10 mS to 0) and
+source stepping (every independent source ramped from 0 to its value). The
+diagnostic's evidence.attempts lists each strategy with its iteration count.
+When one of the aids rescues the solve there is no diagnostic: the op stage
+telemetry (stages.op.solver.aids) says which one was needed.
+
+In the dc stage S201 means one sweep point failed; evidence.sweep names the
+swept component and value.
+
 Fixes: add series resistance in the offending branch (even 1–10 ohm helps);
-check source polarity and magnitude. Continuation strategies (gmin/source
-stepping) are on the roadmap and will be applied automatically.`,
+check source polarity and magnitude.`,
   },
   {
     code: 'S202',
     slug: 'nr-nonconvergence',
     title: 'Newton-Raphson did not converge (transient step)',
-    explanation: `Same failure mode as S201, but during a transient timestep. Besides the
-S201 fixes, a smaller dt often helps because the previous timestep's
-solution is then a better starting guess.`,
+    explanation: `Same failure mode as S201, but during a transient timestep. On a Newton
+failure the stepper cuts the step by 8 and retries with Backward Euler;
+S202 is reported only once the step would fall below the minimum step
+(maxStep·1e-9). The message and evidence carry the simulation time and the
+last step tried, plus the worst device.
+
+Besides the S201 fixes: give abrupt source edges a finite rise/fall time
+(tr/tf), since an ideal edge into a stiff nonlinear branch is the usual cause.`,
+  },
+  {
+    code: 'S203',
+    slug: 'timestep-too-small',
+    title: 'transient timestep collapsed below the minimum',
+    explanation: `The adaptive stepper controls the local truncation error of every
+capacitor charge and inductor flux; a step whose error estimate exceeds the
+tolerance is rejected and retried with a smaller step. S203 means the step
+had to shrink below the minimum (maxStep·1e-9), or the step budget ran out,
+while Newton itself converged. The diagnostic names the reactive element
+whose truncation error forced the cuts and the simulation time.
+
+Typical causes: a time constant many orders of magnitude below the
+simulated window (a capacitor charged through a near-zero resistance), or
+an oscillation much faster than the window.
+
+Fixes: add realistic series resistance; shorten tstop; give the bench a
+smaller maxStep (the minimum step scales with it) if the fast dynamics are
+real.`,
+  },
+  {
+    code: 'S204',
+    slug: 'no-ac-model',
+    title: 'component has no AC small-signal model',
+    explanation: `AC analysis linearizes every component around the DC operating point.
+Built-in components all have small-signal models (a diode becomes its
+junction conductance at the operating point). A defineComponent part needs an
+ac(ctx) stamp — ctx.stampConductance / stampCapacitance / stampAdmittance /
+stampTransconductance, with ctx.voltage(pin) returning operating-point
+voltages — or the AC stage refuses to guess and reports S204, naming the
+components.`,
   },
   {
     code: 'A301',
@@ -136,6 +182,25 @@ If no hint is present, the topology itself likely cannot meet the spec.`,
 elaboration. This is a platform bug, not a statement about your circuit —
 the RunRecord is still emitted so nothing is lost. Please report the bench
 file that triggered it.`,
+  },
+  {
+    code: 'T003',
+    slug: 'no-ac-stimulus',
+    title: 'AC assertions but no AC stimulus',
+    explanation: `AC analysis is driven only by sources given an AC magnitude:
+new VoltageSource({ dc: 2.5, ac: 1 }) or { ac: { mag: 1, phase: 0 } }. A DC
+value only sets the operating point. With no stimulus every small-signal
+quantity is 0, so the bench is rejected (exit 3) instead of reporting -inf dB.
+Fix: give the input source an ac value.`,
+  },
+  {
+    code: 'T004',
+    slug: 'ambiguous-ac-reference',
+    title: 'several AC stimuli and no explicit reference',
+    explanation: `gainAt/phaseAt/bandwidth3dB/... measure H = probe / reference. By default
+the reference is THE stimulus phasor, which is only defined with exactly one
+AC source. With several, name the reference probe:
+tb.expect.ac({...}).probe('out', { ref: 'in' }) measures V(out)/V(in).`,
   },
   {
     code: 'T001',

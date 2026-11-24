@@ -6,13 +6,17 @@ import { parseValue } from './units';
 import { fnv1a64 } from './hash';
 import { captureLoc } from './loc';
 import { describeComponent, rebuildWithValue, isOverridable, kindOf } from './describe';
+import { DcExpect, AcExpect, type DcSweepInput, type AcSweepInput } from './expect';
 import type {
+  AcSweepConfig,
   AssertionSpec,
   CheckSpec,
+  DcSweepConfig,
   NetlistComponent,
   NetlistDoc,
   ParamSpec,
   StageName,
+  TranConfig,
 } from '../schema/types';
 
 const ID_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
@@ -138,21 +142,87 @@ export class TB {
   readonly expect = {
     /** DC operating-point assertion on a probe ('R1.i', 'D1.v', or a named net). */
     op: (probe: string): OpExpect => new OpExpect(this, probe),
-    /** Transient assertions; probes are component quantities ('D1.i', 'C1.v'). */
-    tran: (config: { tstop: ValueLike; dt: ValueLike }): TranExpect => new TranExpect(this, config),
+    /** DC sweep of a source's DC value ({ source }) or a component value ({ param }); assertions on the curve. */
+    dc: (config: DcSweepInput): DcExpect => new DcExpect(this, config),
+    /** AC small-signal sweep (log frequency) around the DC operating point. */
+    ac: (config: AcSweepInput): AcExpect => new AcExpect(this, config),
+    /** Transient assertions (adaptive trapezoidal; `dt` is the initial step and the step ceiling). */
+    tran: (config: TranInput): TranExpect => new TranExpect(this, config),
   };
 
   /** @internal */
-  _record(stage: StageName, probe: string, check: CheckSpec, tran?: { tstop: number; dt: number }): void {
+  _record(
+    stage: StageName,
+    probe: string,
+    check: CheckSpec,
+    extra: { tran?: TranConfig; dc?: DcSweepConfig; ac?: AcSweepConfig; ref?: string } = {},
+  ): void {
     this._assertions.push({
       id: `a${this._assertions.length + 1}`,
       stage,
       probe,
       check,
       at: captureLoc(),
-      ...(tran ? { tran } : {}),
+      ...(extra.ref ? { ref: extra.ref } : {}),
+      ...(extra.tran ? { tran: extra.tran } : {}),
+      ...(extra.dc ? { dc: extra.dc } : {}),
+      ...(extra.ac ? { ac: extra.ac } : {}),
     });
   }
+}
+
+/** Transient settings as written in a bench (units strings accepted). */
+export interface TranInput {
+  tstop: ValueLike;
+  /** Initial step and step ceiling (default: initial tstop/1000, ceiling tstop/50). */
+  dt?: ValueLike;
+  /** Step ceiling, overriding dt (lets the stepper grow past dt in quiet stretches). */
+  maxStep?: ValueLike;
+  /** Step floor (default maxStep·1e-9): needing a smaller step is reported as S203. */
+  minStep?: ValueLike;
+  /** 'trap' (default; BE after t = 0 and breakpoints) or 'be'. */
+  method?: 'trap' | 'be';
+  /** 'zero' (default): caps 0 V, inductors 0 A at t = 0; 'op': start from the DC operating point. */
+  ic?: 'zero' | 'op';
+  /** Relative truncation-error tolerance (default 1e-3). */
+  reltol?: number;
+}
+
+export function normalizeTran(config: TranInput): TranConfig {
+  const tstop = parseValue(config.tstop, 'tran tstop');
+  if (!(tstop > 0)) throw new Error(`tran tstop must be > 0, got ${tstop}`);
+  const dtGiven = config.dt !== undefined ? parseValue(config.dt, 'tran dt') : undefined;
+  const maxGiven = config.maxStep !== undefined ? parseValue(config.maxStep, 'tran maxStep') : undefined;
+  if (dtGiven !== undefined && !(dtGiven > 0)) throw new Error(`tran dt must be > 0, got ${dtGiven}`);
+  if (maxGiven !== undefined && !(maxGiven > 0)) throw new Error(`tran maxStep must be > 0, got ${maxGiven}`);
+  const maxStep = Math.min(maxGiven ?? dtGiven ?? tstop / 50, tstop);
+  const dt = Math.min(dtGiven ?? Math.min(maxStep, tstop / 1000), maxStep);
+  if (tstop / maxStep > 5_000_000) {
+    throw new Error(
+      `tran tstop/maxStep = ${Math.round(tstop / maxStep)} steps: too many (max 5,000,000). Increase dt/maxStep or reduce tstop`,
+    );
+  }
+  let minStep: number | undefined;
+  if (config.minStep !== undefined) {
+    minStep = parseValue(config.minStep, 'tran minStep');
+    if (!(minStep > 0 && minStep < maxStep)) throw new Error(`tran minStep must be > 0 and < maxStep (${maxStep}), got ${minStep}`);
+  }
+  const method = config.method ?? 'trap';
+  if (method !== 'trap' && method !== 'be') throw new Error(`tran method must be 'trap' or 'be', got '${method}'`);
+  const ic = config.ic ?? 'zero';
+  if (ic !== 'zero' && ic !== 'op') throw new Error(`tran ic must be 'zero' or 'op', got '${ic}'`);
+  if (config.reltol !== undefined && !(config.reltol > 0 && config.reltol < 1)) {
+    throw new Error(`tran reltol must be in (0, 1), got ${config.reltol}`);
+  }
+  return {
+    tstop,
+    dt,
+    maxStep,
+    ...(minStep !== undefined ? { minStep } : {}),
+    method,
+    ic,
+    ...(config.reltol !== undefined ? { reltol: config.reltol } : {}),
+  };
 }
 
 export class OpExpect {
@@ -189,19 +259,10 @@ export class OpExpect {
 
 export class TranExpect {
   /** @internal */
-  _config: { tstop: number; dt: number };
+  _config: TranConfig;
 
-  constructor(private tb: TB, config: { tstop: ValueLike; dt: ValueLike }) {
-    const tstop = parseValue(config.tstop, 'tran tstop');
-    const dt = parseValue(config.dt, 'tran dt');
-    if (dt <= 0) throw new Error(`tran dt must be > 0, got ${dt}`);
-    if (tstop <= 0) throw new Error(`tran tstop must be > 0, got ${tstop}`);
-    if (tstop / dt > 5_000_000) {
-      throw new Error(
-        `tran tstop/dt = ${Math.round(tstop / dt)} steps: too many (max 5,000,000). Increase dt or reduce tstop`,
-      );
-    }
-    this._config = { tstop, dt };
+  constructor(private tb: TB, config: TranInput) {
+    this._config = normalizeTran(config);
   }
 
   probe(probe: string): TranProbeExpect {
@@ -283,7 +344,7 @@ export class TranProbeExpect {
         `${check.op}: from=${check.from}s leaves no samples inside the simulation window (tstop=${this.parent._config.tstop}s)`,
       );
     }
-    this.tb._record('tran', this.probeExpr, check, this.parent._config);
+    this.tb._record('tran', this.probeExpr, check, { tran: this.parent._config });
   }
 }
 
@@ -480,13 +541,14 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
 
   // Validate probes now that nets are named.
   const knownNets = [...netNode.keys()].filter(n => n === 'gnd' || !/^n\d+$/.test(n));
-  for (const a of tb._assertions) {
-    const m = a.probe.match(COMPONENT_PROBE_RE);
+  const validateProbe = (probe: string, at: string | undefined): void => {
+    const where = at ? ` at ${at}` : '';
+    const m = probe.match(COMPONENT_PROBE_RE);
     if (m) {
       const comp = tb._components.get(m[1]);
       if (!comp) {
         throw new Error(
-          `unknown probe '${a.probe}'${a.at ? ` at ${a.at}` : ''}: no component with id '${m[1]}'. Known ids: ${[...tb._components.keys()].join(', ')}`,
+          `unknown probe '${probe}'${where}: no component with id '${m[1]}'. Known ids: ${[...tb._components.keys()].join(', ')}`,
         );
       }
       // The quantity must actually be exposed — custom components, for one,
@@ -494,27 +556,40 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
       const quantity = m[2] === 'i' ? 'current' : 'voltage';
       if (typeof (comp as unknown as Record<string, unknown>)[quantity] !== 'number') {
         throw new Error(
-          `probe '${a.probe}'${a.at ? ` at ${a.at}` : ''}: ${kindOf(comp)} does not expose ${quantity}. Probe a series Resistor's current or a named net's voltage instead`,
+          `probe '${probe}'${where}: ${kindOf(comp)} does not expose ${quantity}. Probe a series Resistor's current or a named net's voltage instead`,
         );
       }
-      continue;
+      return;
     }
-    if (a.stage === 'op' && netNode.has(a.probe)) {
-      if (/^n\d+$/.test(a.probe)) {
+    if (netNode.has(probe)) {
+      if (/^n\d+$/.test(probe)) {
         throw new Error(
-          `probe '${a.probe}'${a.at ? ` at ${a.at}` : ''}: auto-generated net names are not stable; name the net first with tb.name('${a.probe}', pin)`,
+          `probe '${probe}'${where}: auto-generated net names are not stable; name the net first with tb.name('${probe}', pin)`,
         );
       }
-      continue;
-    }
-    if (a.stage === 'tran') {
-      throw new Error(
-        `unknown tran probe '${a.probe}'${a.at ? ` at ${a.at}` : ''}: transient probes must be component quantities like 'D1.i' or 'C1.v'`,
-      );
+      return;
     }
     throw new Error(
-      `unknown probe '${a.probe}'${a.at ? ` at ${a.at}` : ''}: use '<id>.i' / '<id>.v', or a net named via tb.name(...). Named nets: ${knownNets.join(', ') || '(none)'}`,
+      `unknown probe '${probe}'${where}: use '<id>.i' / '<id>.v', or a net named via tb.name(...). Named nets: ${knownNets.join(', ') || '(none)'}`,
     );
+  };
+  for (const a of tb._assertions) {
+    validateProbe(a.probe, a.at);
+    if (a.ref !== undefined) validateProbe(a.ref, a.at);
+    if (a.dc) {
+      const where = a.at ? ` at ${a.at}` : '';
+      const id = a.dc.source ?? a.dc.param!;
+      const comp = tb._components.get(id);
+      if (!comp) {
+        throw new Error(`tb.expect.dc${where}: no component with id '${id}'. Known ids: ${[...tb._components.keys()].join(', ')}`);
+      }
+      if (a.dc.source !== undefined && !['VoltageSource', 'CurrentSource'].includes(kindOf(comp))) {
+        throw new Error(`tb.expect.dc${where}: source '${id}' is a ${kindOf(comp)}; sweep a VoltageSource/CurrentSource, or use { param: '${id}' } for a component value`);
+      }
+      if (a.dc.param !== undefined && !isOverridable(comp)) {
+        throw new Error(`tb.expect.dc${where}: ${kindOf(comp)} '${id}' has no sweepable scalar value`);
+      }
+    }
   }
 
   // Canonical netlist document.
@@ -542,6 +617,12 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
 
   const idOf = new Map<Component, string>();
   for (const [id, comp] of tb._components) idOf.set(comp, id);
+
+  // Deterministic matrix ordering: components by id, nets by name — the
+  // same netlist yields the same matrix (and numbers) in any declaration order.
+  const nodeKey = new Map<Node, string>();
+  for (const [name, node] of netNode) nodeKey.set(node, name);
+  circuit._ordering = { componentKey: new Map(idOf), nodeKey };
 
   return {
     desc,

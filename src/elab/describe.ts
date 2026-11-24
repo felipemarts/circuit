@@ -4,13 +4,17 @@ import { Capacitor } from '../components/Capacitor';
 import { Inductor } from '../components/Inductor';
 import { VoltageSource } from '../components/VoltageSource';
 import { CurrentSource } from '../components/CurrentSource';
-import type { Diode } from '../components/Diode';
-import type { Switch } from '../components/Switch';
-import type { Button } from '../components/Button';
+import { Diode } from '../components/Diode';
+import { LED } from '../components/LED';
+import { Switch } from '../components/Switch';
+import { Button } from '../components/Button';
+import { CustomComponent, type ComponentDef } from '../core/CustomComponent';
+import type { SourceOptions } from '../components/source';
+import type { ParamValue } from '../schema/types';
 
 export interface ComponentInfo {
   type: string;
-  params: Record<string, number | boolean>;
+  params: Record<string, ParamValue>;
 }
 
 /**
@@ -39,17 +43,10 @@ export function describeComponent(comp: Component): ComponentInfo {
       return { type: 'Capacitor', params: { c: (comp as Capacitor).capacitance } };
     case 'Inductor':
       return { type: 'Inductor', params: { l: (comp as Inductor).inductance } };
-    case 'VoltageSource': {
-      const v = comp as VoltageSource;
-      const params: Record<string, number> = { v: v.declaredVoltage };
-      if (v.frequency > 0) {
-        params.ac = v.acAmplitude;
-        params.f = v.frequency;
-      }
-      return { type: 'VoltageSource', params };
-    }
+    case 'VoltageSource':
+      return { type: 'VoltageSource', params: (comp as VoltageSource).describeParams() as Record<string, ParamValue> };
     case 'CurrentSource':
-      return { type: 'CurrentSource', params: { i: (comp as CurrentSource).currentValue } };
+      return { type: 'CurrentSource', params: (comp as CurrentSource).describeParams() as Record<string, ParamValue> };
     case 'Switch':
       return { type: 'Switch', params: { closed: (comp as Switch).closed } };
     case 'Button':
@@ -82,14 +79,17 @@ export function rebuildWithValue(comp: Component, value: number): Component {
     case 'Inductor':
       return new Inductor(value);
     case 'VoltageSource': {
-      const rebuilt = new VoltageSource(value);
+      // An override sets the DC value; waveform and AC stimulus are kept.
       const original = comp as VoltageSource;
+      const rebuilt = new VoltageSource(sourceOptions(value, original.waveform, original.acStimulus));
       rebuilt.acAmplitude = original.acAmplitude;
       rebuilt.frequency = original.frequency;
       return rebuilt;
     }
-    case 'CurrentSource':
-      return new CurrentSource(value);
+    case 'CurrentSource': {
+      const original = comp as CurrentSource;
+      return new CurrentSource(sourceOptions(value, original.waveform, original.acStimulus));
+    }
     default:
       throw new Error(
         `cannot override '${kindOf(comp)}' with a scalar value; only Resistor, Capacitor, Inductor, VoltageSource and CurrentSource support --set / tb.param overrides`,
@@ -120,4 +120,58 @@ export function conductsAtDC(comp: Component): boolean {
 export function isDCVoltageSourceEdge(comp: Component): boolean {
   const kind = kindOf(comp);
   return kind === 'VoltageSource' || kind === 'Inductor';
+}
+
+function sourceOptions(dc: number, wave: object | null, ac: { mag: number; phase: number } | null): SourceOptions {
+  return { dc, ...(wave ? JSON.parse(JSON.stringify(wave)) : {}), ...(ac ? { ac: { mag: ac.mag, phase: ac.phase } } : {}) };
+}
+
+/**
+ * Rebuild a component from its netlist description (type + params) — the
+ * inverse of describeComponent. Custom components need their definition.
+ */
+export function buildComponent(
+  type: string,
+  params: Record<string, ParamValue>,
+  customDefs: Record<string, ComponentDef> = {},
+): Component {
+  const n = (key: string): number => {
+    const v = params[key];
+    if (typeof v !== 'number') throw new Error(`${type}: param '${key}' must be a number`);
+    return v;
+  };
+  switch (type) {
+    case 'Resistor':
+      return new Resistor(n('r'));
+    case 'Capacitor':
+      return new Capacitor(n('c'));
+    case 'Inductor':
+      return new Inductor(n('l'));
+    case 'VoltageSource':
+    case 'CurrentSource': {
+      const key = type === 'VoltageSource' ? 'v' : 'i';
+      const options: Record<string, unknown> = { dc: n(key) };
+      for (const k of ['sin', 'pulse', 'pwl', 'pwm', 'ac']) {
+        if (params[k] !== undefined) options[k] = JSON.parse(JSON.stringify(params[k]));
+      }
+      return type === 'VoltageSource'
+        ? new VoltageSource(options as SourceOptions)
+        : new CurrentSource(options as SourceOptions);
+    }
+    case 'Diode':
+      return new Diode({ Is: n('Is'), n: n('n'), Vt: n('Vt') });
+    case 'LED':
+      return new LED();
+    case 'Switch':
+      return new Switch(params.closed === true);
+    case 'Button':
+      return new Button(params.pressed === true);
+    default: {
+      const def = customDefs[type];
+      if (!def) throw new Error(`cannot rebuild component type '${type}': unknown type (pass its definition in customDefs)`);
+      const p: Record<string, number> = {};
+      for (const [k, v] of Object.entries(params)) if (typeof v === 'number') p[k] = v;
+      return new CustomComponent(def, p);
+    }
+  }
 }

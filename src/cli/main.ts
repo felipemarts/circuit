@@ -8,13 +8,16 @@ import { COMPONENT_CATALOG, GRAMMAR_NOTES } from './catalog';
 import { CLI, ENGINE, VERSION } from '../schema/version';
 import { init } from './init';
 import AGENTS_MD from '../../AGENTS.md';
-import type { StageName } from '../schema/types';
+import { STAGE_ORDER, type StageName } from '../schema/types';
+import { sweepBench, renderSweepTable } from './sweep';
 
 const USAGE = `${CLI} — circuits as code; simulation is the feedback loop (${ENGINE})
 
 USAGE
   ${CLI} init [name] [--force]        scaffold <name>.bench.ts + AGENTS.md here
-  ${CLI} verify <bench.ts> [options]  run the ladder: lint → op → tran
+  ${CLI} verify <bench.ts> [options]  run the ladder: lint → op → dc → ac → tran
+  ${CLI} sweep <bench.ts> --source V1 --from 0 --to 5 [--points 51 | --step 0.1] [--probe out,R1.i] [--json]
+                                    DC sweep table/JSON (or --param R1 to sweep a component value)
   ${CLI} log list [--json]            list past runs from the ledger (${LEDGER_DIR}/runs.jsonl)
   ${CLI} log show <runId>             full RunRecord of a past run (JSON)
   ${CLI} explain <code>               docs for a diagnostic code, e.g. ${CLI} explain F101
@@ -23,7 +26,7 @@ USAGE
   ${CLI} version                      print the engine version
 
 VERIFY OPTIONS
-  --stage op,tran        run only these stages (lint ALWAYS runs — it gates the solve)
+  --stage op,dc,ac,tran  run only these stages (lint ALWAYS runs — it gates the solve)
   --set R1=330,V1=5      override scalar values without editing the bench
   --json                 emit the full RunRecord as JSON on stdout
   --no-hints             skip verified sizing hints (faster)
@@ -38,6 +41,8 @@ EXIT CODES
 EXAMPLE
   ${CLI} init led-driver && ${CLI} verify led-driver.bench.ts --json`;
 
+const VALUE_OPTIONS = ['--source', '--param', '--from', '--to', '--points', '--step', '--probe'];
+
 interface Flags {
   json: boolean;
   force: boolean;
@@ -45,11 +50,13 @@ interface Flags {
   ledger: boolean;
   stages?: StageName[];
   overrides: Record<string, number>;
+  /** Value options of the sweep command (--source V1 --from 0 ...). */
+  options: Record<string, string>;
   positional: string[];
 }
 
 function parseFlags(args: string[]): Flags {
-  const flags: Flags = { json: false, force: false, hints: true, ledger: true, overrides: {}, positional: [] };
+  const flags: Flags = { json: false, force: false, hints: true, ledger: true, overrides: {}, options: {}, positional: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--json') flags.json = true;
@@ -61,8 +68,8 @@ function parseFlags(args: string[]): Flags {
       if (!value) throw new Error(`--stage needs a value, e.g. --stage lint,op`);
       const stages = value.split(',').map(s => s.trim());
       for (const s of stages) {
-        if (!['lint', 'op', 'tran'].includes(s)) {
-          throw new Error(`unknown stage '${s}': valid stages are lint, op, tran`);
+        if (!(STAGE_ORDER as string[]).includes(s)) {
+          throw new Error(`unknown stage '${s}': valid stages are ${STAGE_ORDER.join(', ')}`);
         }
       }
       flags.stages = stages as StageName[];
@@ -75,6 +82,10 @@ function parseFlags(args: string[]): Flags {
         const id = pair.slice(0, eq).trim();
         flags.overrides[id] = parseValue(pair.slice(eq + 1).trim(), `--set ${id}`);
       }
+    } else if (VALUE_OPTIONS.includes(arg)) {
+      const value = args[++i];
+      if (value === undefined || value.startsWith('--')) throw new Error(`${arg} needs a value`);
+      flags.options[arg.slice(2)] = value;
     } else if (arg.startsWith('--')) {
       throw new Error(`unknown option '${arg}'`);
     } else {
@@ -108,6 +119,8 @@ export async function main(argv: string[]): Promise<number> {
     switch (command) {
       case 'verify':
         return await verify(flags);
+      case 'sweep':
+        return await sweep(flags);
       case 'log':
         return log(flags);
       case 'explain':
@@ -165,6 +178,51 @@ async function verify(flags: Flags): Promise<number> {
     console.log(renderHuman(record));
     if (runId) console.log(`run ${runId} → ${LEDGER_DIR}/runs.jsonl (${CLI} log show ${runId})`);
   }
+  return record.exitCode;
+}
+
+async function sweep(flags: Flags): Promise<number> {
+  const file = flags.positional[0];
+  const o = flags.options;
+  if (!file || (o.source === undefined && o.param === undefined) || o.from === undefined || o.to === undefined) {
+    console.error(`error: sweep needs a bench file, --source <id> (or --param <id>), --from and --to
+
+EXAMPLE
+  ${CLI} sweep divider.bench.ts --source V1 --from 0 --to 5 --points 11 --probe out`);
+    return 3;
+  }
+  let desc;
+  try {
+    desc = await loadBench(file);
+  } catch (err) {
+    console.error(`error: ${err instanceof Error ? err.message : err}`);
+    return 3;
+  }
+  let points: number | undefined;
+  if (o.points !== undefined) {
+    points = Number(o.points);
+    if (!Number.isInteger(points)) {
+      console.error(`error: --points must be an integer, got '${o.points}'`);
+      return 3;
+    }
+  }
+  let record;
+  try {
+    record = sweepBench(desc, {
+      source: o.source,
+      param: o.param,
+      from: o.from,
+      to: o.to,
+      points,
+      step: o.step,
+      probes: o.probe ? o.probe.split(',').map(p => p.trim()).filter(Boolean) : [],
+      overrides: flags.overrides,
+    });
+  } catch (err) {
+    console.error(`error: ${err instanceof Error ? err.message : err}`);
+    return 3;
+  }
+  console.log(flags.json ? JSON.stringify(record, null, 2) : renderSweepTable(record));
   return record.exitCode;
 }
 

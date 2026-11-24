@@ -1,9 +1,12 @@
-import { elaborate, type BenchDescriptor } from '../elab/bench';
+import { elaborate, type BenchDescriptor, type Elaboration } from '../elab/bench';
 import { runLint } from './lint';
 import { runOp } from './op';
 import { runTran } from './tran';
+import { runDc } from './dc';
+import { runAc } from './ac';
+import type { StageOutcome } from './op';
 import { ENGINE, RUN_SCHEMA } from '../schema/version';
-import type { Diagnostic, RunRecord, StageName } from '../schema/types';
+import { STAGE_ORDER, type Diagnostic, type RunRecord, type StageName } from '../schema/types';
 
 export interface LadderOptions {
   /** Stages to run (gating still applies). Default: all. */
@@ -17,7 +20,7 @@ export interface LadderOptions {
 const EMPTY_NETLIST = { hash: '', components: [], nets: {} };
 
 /**
- * The verification ladder: L0 lint → L1 op → L3 tran, fail-fast per stage.
+ * The verification ladder: lint → op → dc → ac → tran, fail-fast per stage.
  *
  * Exit-code contract (RunRecord.exitCode):
  *   0 = requested stages all pass
@@ -26,7 +29,7 @@ const EMPTY_NETLIST = { hash: '', components: [], nets: {} };
  *   3 = tooling error — the bench itself threw (fix the bench code)
  */
 export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunRecord {
-  const requested = opts.stages ?? ['lint', 'op', 'tran'];
+  const requested = opts.stages ?? STAGE_ORDER;
   const overrides = opts.overrides ?? {};
   const record: RunRecord = {
     schema: RUN_SCHEMA,
@@ -40,7 +43,7 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
     exitCode: 0,
   };
 
-  let elab;
+  let elab: Elaboration;
   try {
     elab = elaborate(desc, overrides);
   } catch (err) {
@@ -75,7 +78,7 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
   }
 
   // A stage runner crash is a platform bug: it must still yield a RunRecord.
-  const crashed = (stage: 'op' | 'tran', err: unknown): void => {
+  const crashed = (stage: Exclude<StageName, 'lint'>, err: unknown): void => {
     const message = err instanceof Error ? err.message : String(err);
     record.stages[stage] = { verdict: 'error' };
     record.diagnostics.push({
@@ -108,25 +111,33 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
     }
   }
 
-  // ── L3: tran ──
-  const hasTran = elab.assertions.some(a => a.stage === 'tran');
-  if (requested.includes('tran') && hasTran) {
+  // ── L2: dc sweep · L2b: ac · L3: tran — each runs only when the bench
+  // asserts on it, and each gates the next (fail-fast).
+  const later: [Exclude<StageName, 'lint' | 'op'>, (e: Elaboration) => StageOutcome][] = [
+    ['dc', runDc],
+    ['ac', runAc],
+    ['tran', runTran],
+  ];
+  for (const [stage, run] of later) {
+    if (!requested.includes(stage) || !elab.assertions.some(a => a.stage === stage)) continue;
     if (gate) {
-      record.stages.tran = { verdict: 'skipped', reason: gate };
-    } else {
-      try {
-        const outcome = runTran(elab);
-        record.stages.tran = outcome.stage;
-        record.diagnostics.push(...outcome.diagnostics);
-      } catch (err) {
-        crashed('tran', err);
-      }
+      record.stages[stage] = { verdict: 'skipped', reason: gate };
+      continue;
+    }
+    try {
+      const outcome = run(elab);
+      record.stages[stage] = outcome.stage;
+      record.diagnostics.push(...outcome.diagnostics);
+      if (outcome.stage.verdict === 'error') gate = `${stage} failed`;
+      if (outcome.stage.verdict === 'fail') gate = `${stage} assertions failed`;
+    } catch (err) {
+      crashed(stage, err);
     }
   }
 
   // ── Verdict + exit code ──
   const errorDiag = record.diagnostics.find(d => d.severity === 'error');
-  const failedAssertion = (['op', 'tran'] as const)
+  const failedAssertion = STAGE_ORDER
     .flatMap(s => record.stages[s]?.assertions ?? [])
     .find(a => a.verdict === 'fail');
 
