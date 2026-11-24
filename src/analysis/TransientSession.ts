@@ -1,24 +1,22 @@
 import type { Circuit } from '../core/Circuit';
-import type { Component } from '../core/Component';
-import type { Node } from '../core/Node';
-import { MNAMatrix } from '../solver/MNAMatrix';
-import { NewtonRaphson } from '../solver/NewtonRaphson';
-import type { ProbeSpec } from './TransientAnalysis';
+import { SimulationSystem, TransientEngine } from './engine';
+import { readProbe, type ProbeSpec } from './TransientAnalysis';
 
 /**
  * Stepwise transient simulation. Unlike `TransientAnalysis.run()` which is
  * one-shot, this class keeps state between steps so the UI can drive a
  * continuous simulation (one or many steps per animation frame).
+ *
+ * The constructor solves the DC operating point (component readouts show it
+ * for the first frame), then starts the transient from the zero state —
+ * capacitors at 0 V, inductors at 0 A — like the batch analysis. Steps use
+ * Backward Euler: the user can flip switches between steps, and BE never
+ * rings on such discontinuities.
  */
 export class TransientSession {
-  private circuit: Circuit;
-  private components: Component[];
-  private nodes: Node[];
-  private nodeCount: number;
-  private vsCount: number;
-  private hasNonlinear: boolean;
+  private system: SimulationSystem;
+  private engine: TransientEngine;
   private probeSpecs: ProbeSpec[];
-  private probeNodeIndices: number[];
   private finalized = false;
 
   public time = 0;
@@ -26,135 +24,45 @@ export class TransientSession {
   public probeValues: number[][] = [];
 
   constructor(circuit: Circuit, probeSpecs: ProbeSpec[] = []) {
-    this.circuit = circuit;
     this.probeSpecs = probeSpecs;
-
-    const { components, nodes } = circuit._discoverComponents();
-    if (components.length === 0) throw new Error('No components connected to ground');
-
-    this.components = components;
-    this.nodes = nodes;
-
-    let nodeIndex = 1;
-    for (const node of nodes) {
-      if (node.index !== 0) node.index = nodeIndex++;
+    this.system = new SimulationSystem(circuit);
+    try {
+      // DC operating point for the first frame.
+      const op = this.system.operatingPoint();
+      this.system.publish(op.x);
+      this.engine = new TransientEngine(this.system, 'be', false, 'zero');
+      this.engine.start('zero');
+      // Keep the DC readouts on screen until the first step.
+      this.system.publish(op.x);
+    } catch (err) {
+      this.system.release();
+      throw err;
     }
-    this.nodeCount = nodeIndex;
-
-    // DC operating point
-    let vsCount = 0;
-    for (const comp of components) {
-      const count = comp.getVSourceCount();
-      if (count > 0) {
-        comp.assignVSourceIndices(vsCount);
-        vsCount += count;
-      }
-    }
-
-    this.probeNodeIndices = probeSpecs.map(spec => {
-      const n1 = spec.component ? (spec.component as { _n1Index?: number })._n1Index : undefined;
-      if (typeof n1 === 'number') {
-        return n1;
-      }
-      if (spec.component) {
-        const pins = spec.component.allPins();
-        if (pins.length > 0) return pins[0].node.index;
-      }
-      return 0;
-    });
-
-    this.hasNonlinear = components.some(c => c.isNonlinear());
-    let dcSolution: number[];
-    if (this.hasNonlinear) {
-      dcSolution = NewtonRaphson.solve(this.nodeCount, vsCount, components);
-    } else {
-      const matrix = new MNAMatrix(this.nodeCount, vsCount);
-      for (const comp of components) comp.stamp(matrix);
-      dcSolution = matrix.solve();
-    }
-
-    // Update voltages/currents from DC for the first frame
-    const readMatrix = new MNAMatrix(this.nodeCount, vsCount);
-    for (const comp of components) {
-      const r = comp.readResults(dcSolution, readMatrix);
-      if (r) {
-        comp._setResults(r.voltage, r.current);
-      }
-    }
-
-    // Switch to transient mode
-    for (const comp of components) comp.prepareTransientStep(0);
-
-    let transientVsCount = 0;
-    for (const comp of components) {
-      const count = comp.getVSourceCount();
-      if (count > 0) {
-        comp.assignVSourceIndices(transientVsCount);
-        transientVsCount += count;
-      }
-    }
-    this.vsCount = transientVsCount;
-
     this.probeValues = probeSpecs.map(() => []);
   }
 
-  /** Advance the simulation by one timestep dt. Returns the latest solution. */
+  /** Advance the simulation by one timestep dt. */
   step(dt: number): void {
-    this.time += dt;
+    if (this.finalized) throw new Error('TransientSession.step() called after end()');
+    // Switch/button states may have changed since the last step.
+    this.engine.markDiscontinuity();
+    this.engine.advance(dt, 'be');
+    this.time = this.engine.time;
+    const x = this.engine.x;
 
-    for (const comp of this.components) comp.setTime(this.time);
-    for (const comp of this.components) comp.prepareTransientStep(dt);
-
-    let solution: number[];
-    if (this.hasNonlinear) {
-      solution = NewtonRaphson.solve(this.nodeCount, this.vsCount, this.components);
-    } else {
-      const matrix = new MNAMatrix(this.nodeCount, this.vsCount);
-      for (const comp of this.components) comp.stamp(matrix);
-      solution = matrix.solve();
-    }
-
-    const readMatrix = new MNAMatrix(this.nodeCount, this.vsCount);
-
-    // Probe values
     this.timePoints.push(this.time);
     for (let i = 0; i < this.probeSpecs.length; i++) {
-      const probe = this.probeSpecs[i];
-      if (probe.component) {
-        const r = probe.component.readResults(solution, readMatrix);
-        if (probe.type === 'voltage') {
-          if (r) {
-            this.probeValues[i].push(r.voltage);
-          } else {
-            this.probeValues[i].push(readMatrix.getNodeVoltage(solution, this.probeNodeIndices[i]));
-          }
-        } else {
-          this.probeValues[i].push(r?.current ?? 0);
-        }
-      } else {
-        this.probeValues[i].push(0);
-      }
+      this.probeValues[i].push(readProbe(this.probeSpecs[i], x, this.system.matrix));
     }
-
     // Update each component's voltage/current for live UI display
-    for (const comp of this.components) {
-      const r = comp.readResults(solution, readMatrix);
-      if (r) {
-        comp._setResults(r.voltage, r.current);
-      }
-    }
-
-    // Advance internal state for next step
-    for (const comp of this.components) comp.updateState(solution, readMatrix);
+    this.system.publish(x);
   }
 
   /** Reset components to DC mode and clear node indices. Call once when stopping. */
   end(): void {
     if (this.finalized) return;
     this.finalized = true;
-    for (const comp of this.components) comp.resetToDC();
-    for (const node of this.nodes) {
-      if (node.index !== 0) node.index = -1;
-    }
+    for (const comp of this.system.components) comp.resetToDC();
+    this.system.release();
   }
 }

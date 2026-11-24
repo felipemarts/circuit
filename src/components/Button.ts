@@ -1,5 +1,6 @@
 import { TwoTerminalComponent } from '../core/TwoTerminalComponent';
 import type { MNAMatrix } from '../solver/MNAMatrix';
+import type { AcLoadContext, Phasor } from '../analysis/context';
 
 const R_CLOSED = 1e-3;
 const R_OPEN = 1e12;
@@ -26,7 +27,20 @@ export class Button extends TwoTerminalComponent {
     matrix.stampConductance(this._n1Index, this._n2Index, g);
   }
 
-  readResults(solution: number[], matrix: MNAMatrix): { voltage: number; current: number } {
+  hasAcModel(): boolean {
+    return true;
+  }
+
+  acLoad(ctx: AcLoadContext): void {
+    ctx.matrix.stampAdmittance(this._n1Index, this._n2Index, 1 / this.resistance, 0);
+  }
+
+  acReadResults(re: ArrayLike<number>, im: ArrayLike<number>): { voltage: Phasor; current: Phasor } {
+    const v = this.acVoltage(re, im);
+    return { voltage: v, current: [v[0] / this.resistance, v[1] / this.resistance] };
+  }
+
+  readResults(solution: ArrayLike<number>, matrix: MNAMatrix): { voltage: number; current: number } {
     const v1 = matrix.getNodeVoltage(solution, this._n1Index);
     const v2 = matrix.getNodeVoltage(solution, this._n2Index);
     const voltage = v1 - v2;

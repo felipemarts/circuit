@@ -4,6 +4,7 @@ import { Component } from './Component';
 import { DCAnalysis, type DCResult } from '../analysis/DCAnalysis';
 import { TransientAnalysis, type TransientConfig, type TransientResult, type ProbeSpec } from '../analysis/TransientAnalysis';
 import type { MNAMatrix } from '../solver/MNAMatrix';
+import type { CircuitOrdering } from '../analysis/engine';
 
 class GroundComponent extends Component {
   constructor() {
@@ -17,6 +18,12 @@ export class Circuit {
   private readonly groundNode: Node;
   private readonly _groundPin: Pin;
   private readonly _groundComponent: GroundComponent;
+  /**
+   * @internal Deterministic ordering of matrix unknowns (set by bench
+   * elaboration: components by id, nets by name). Without it the engine uses
+   * discovery order.
+   */
+  _ordering?: CircuitOrdering;
 
   constructor() {
     this._groundComponent = new GroundComponent();

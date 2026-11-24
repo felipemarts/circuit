@@ -1,23 +1,43 @@
 import type { Circuit } from '../core/Circuit';
 import type { Component } from '../core/Component';
-import { MNAMatrix } from '../solver/MNAMatrix';
-import { NewtonRaphson } from '../solver/NewtonRaphson';
+import type { Node } from '../core/Node';
+import type { MNAMatrix } from '../solver/MNAMatrix';
+import { SimulationSystem, TransientEngine, type TranTelemetry } from './engine';
 
 export interface TransientConfig {
+  /** Fixed step (legacy) — or, with `adaptive: true`, the initial step. */
   timeStep: number;
   duration: number;
+  /** Integration method; default 'trap' (BE after t = 0 and after every breakpoint). */
+  method?: 'trap' | 'be';
+  /** Adaptive (LTE-controlled) stepping with breakpoints. Default false: uniform grid k·timeStep. */
+  adaptive?: boolean;
+  /** Adaptive step ceiling (default: timeStep). */
+  maxStep?: number;
+  /** Adaptive step floor (default maxStep·1e-9). */
+  minStep?: number;
+  /** Initial state: 'zero' (default; caps 0 V, inductors 0 A) or 'op' (DC operating point). */
+  ic?: 'zero' | 'op';
+  /** Relative truncation-error tolerance for adaptive stepping (default 1e-3). */
+  reltol?: number;
+  /** @internal test hook */
+  beAfterBreakpoint?: boolean;
 }
 
 export interface ProbeSpec {
   label: string;
   color: string;
   component?: Component;
+  /** Net probe: voltage of this node (takes precedence over `component`). */
+  node?: Node;
   type: 'voltage' | 'current';
 }
 
 export interface TransientResult {
   timePoints: number[];
   probes: { label: string; color: string; values: number[] }[];
+  /** Stepping telemetry (accepted/rejected steps, minimum step, ...). */
+  telemetry?: TranTelemetry;
 }
 
 /** Throws on configs that would hang (timeStep=0), run backwards, or NaN-poison results. */
@@ -28,160 +48,62 @@ export function validateTransientConfig(config: TransientConfig): void {
   if (!Number.isFinite(config.duration) || config.duration <= 0) {
     throw new Error(`invalid transient duration ${config.duration}: must be a finite number > 0`);
   }
+  if (config.maxStep !== undefined && (!Number.isFinite(config.maxStep) || config.maxStep <= 0)) {
+    throw new Error(`invalid transient maxStep ${config.maxStep}: must be a finite number > 0`);
+  }
+}
+
+/** Reads one probe value from a solution (shared by batch and interactive runs). */
+export function readProbe(spec: ProbeSpec, x: ArrayLike<number>, matrix: MNAMatrix): number {
+  if (spec.node) return spec.node.index > 0 ? x[spec.node.index - 1] : 0;
+  if (!spec.component) return 0;
+  const result = spec.component.readResults(x, matrix);
+  if (spec.type === 'voltage') {
+    if (result) return result.voltage;
+    const pins = spec.component.allPins();
+    const idx = pins.length > 0 ? pins[0].node.index : 0;
+    return idx > 0 ? x[idx - 1] : 0;
+  }
+  return result ? result.current : 0;
 }
 
 export class TransientAnalysis {
   run(circuit: Circuit, config: TransientConfig, probeSpecs: ProbeSpec[]): TransientResult {
     validateTransientConfig(config);
-    const { components, nodes } = circuit._discoverComponents();
-
-    if (components.length === 0) {
-      throw new Error('No components connected to ground');
-    }
-
-    // Assign node indices: ground = 0, others = 1..N
-    let nodeIndex = 1;
-    for (const node of nodes) {
-      if (node.index !== 0) {
-        node.index = nodeIndex++;
-      }
-    }
-    const nodeCount = nodeIndex;
-
-    // --- Phase 1: DC operating point ---
-    let vsCount = 0;
-    for (const comp of components) {
-      const count = comp.getVSourceCount();
-      if (count > 0) {
-        comp.assignVSourceIndices(vsCount);
-        vsCount += count;
-      }
-    }
-
-    // Resolve probe node indices now that nodes are assigned.
-    // Structural check, not instanceof: components may come from a different
-    // bundle of this library (CLI vs bench file), where class identities differ.
-    const probeNodeIndices = probeSpecs.map(spec => {
-      const n1 = spec.component ? (spec.component as { _n1Index?: number })._n1Index : undefined;
-      if (typeof n1 === 'number') {
-        return n1;
-      }
-      // For multi-pin components, use first pin
-      if (spec.component) {
-        const pins = spec.component.allPins();
-        if (pins.length > 0) return pins[0].node.index;
-      }
-      return 0;
-    });
-
-    const hasNonlinear = components.some(c => c.isNonlinear());
-    let dcSolution: number[];
-
-    if (hasNonlinear) {
-      dcSolution = NewtonRaphson.solve(nodeCount, vsCount, components);
-    } else {
-      const matrix = new MNAMatrix(nodeCount, vsCount);
-      for (const comp of components) {
-        comp.stamp(matrix);
-      }
-      dcSolution = matrix.solve();
-    }
-
-    // --- Phase 2: Switch to transient mode ---
-    // Each component switches itself to transient mode via prepareTransientStep
-    for (const comp of components) {
-      comp.prepareTransientStep(0); // dt=0 signals "enter transient mode"
-    }
-
-    // Reassign vsource indices for transient (some components like Inductor drop their vsource)
-    let transientVsCount = 0;
-    for (const comp of components) {
-      const count = comp.getVSourceCount();
-      if (count > 0) {
-        comp.assignVSourceIndices(transientVsCount);
-        transientVsCount += count;
-      }
-    }
-
-    // --- Phase 3: Time stepping loop ---
-    const dt = config.timeStep;
-    const numSteps = Math.ceil(config.duration / dt);
+    const system = new SimulationSystem(circuit);
+    const method = config.method ?? 'trap';
+    const adaptive = config.adaptive ?? false;
+    const ic = config.ic ?? 'zero';
+    const engine = new TransientEngine(system, method, adaptive, ic);
     const timePoints: number[] = [];
-    const probeValues: number[][] = probeSpecs.map(() => []);
-
-    for (let step = 0; step <= numSteps; step++) {
-      const t = step * dt;
+    const values: number[][] = probeSpecs.map(() => []);
+    const sink = (t: number, x: Float64Array) => {
       timePoints.push(t);
-
-      // Update time-dependent sources
-      for (const comp of components) {
-        comp.setTime(t);
-      }
-
-      // Set companion model parameters
-      for (const comp of components) {
-        comp.prepareTransientStep(dt);
-      }
-
-      // Build and solve
-      let solution: number[];
-      if (hasNonlinear) {
-        solution = NewtonRaphson.solve(nodeCount, transientVsCount, components);
-      } else {
-        const matrix = new MNAMatrix(nodeCount, transientVsCount);
-        for (const comp of components) {
-          comp.stamp(matrix);
-        }
-        solution = matrix.solve();
-      }
-
-      const readMatrix = new MNAMatrix(nodeCount, transientVsCount);
-
-      // Record probe values
-      for (let i = 0; i < probeSpecs.length; i++) {
-        const probe = probeSpecs[i];
-        if (probe.component) {
-          const result = probe.component.readResults(solution, readMatrix);
-          if (probe.type === 'voltage') {
-            if (result) {
-              probeValues[i].push(result.voltage);
-            } else {
-              const nodeIdx = probeNodeIndices[i];
-              probeValues[i].push(readMatrix.getNodeVoltage(solution, nodeIdx));
-            }
-          } else if (probe.type === 'current') {
-            if (result) {
-              probeValues[i].push(result.current);
-            } else {
-              probeValues[i].push(0);
-            }
-          }
-        }
-      }
-
-      // Update state for next timestep
-      for (const comp of components) {
-        comp.updateState(solution, readMatrix);
-      }
+      for (let i = 0; i < probeSpecs.length; i++) values[i].push(readProbe(probeSpecs[i], x, system.matrix));
+    };
+    const opts = {
+      tstop: config.duration,
+      dt: config.timeStep,
+      maxStep: config.maxStep,
+      minStep: config.minStep,
+      method,
+      adaptive,
+      ic,
+      reltol: config.reltol,
+      beAfterBreakpoint: config.beAfterBreakpoint,
+    };
+    try {
+      if (adaptive) engine.runAdaptive(opts, sink);
+      else engine.runFixed(opts, sink);
+      system.publish(engine.x);
+    } finally {
+      for (const comp of system.components) comp.resetToDC();
+      system.release();
     }
-
-    // Reset components to DC mode
-    for (const comp of components) {
-      comp.resetToDC();
-    }
-
-    // Reset node indices
-    for (const node of nodes) {
-      if (node.index !== 0) node.index = -1;
-    }
-
     return {
       timePoints,
-      probes: probeSpecs.map((spec, i) => ({
-        label: spec.label,
-        color: spec.color,
-        values: probeValues[i],
-      })),
+      probes: probeSpecs.map((spec, i) => ({ label: spec.label, color: spec.color, values: values[i] })),
+      telemetry: engine.telemetry,
     };
   }
 }
