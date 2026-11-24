@@ -123,7 +123,7 @@ export abstract class Component {
   /** @deprecated superseded by acceptStep; never called by the engine. */
   updateState(_solution: ArrayLike<number>, _matrix: MNAMatrix): void {}
 
-  /** @deprecated superseded by load(ctx); never called by the engine. */
+  /** Called with every published solution (operating point, accepted transient point). */
   setOperatingPoint(_solution: ArrayLike<number>, _matrix: MNAMatrix): void {}
 
   /** @deprecated never called by the engine. */

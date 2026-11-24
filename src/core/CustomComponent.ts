@@ -311,7 +311,7 @@ export class CustomComponent extends Component {
     this._lastMatrix = matrix;
   }
 
-  /** @deprecated kept for API compatibility. */
+  /** Remember the published solution (operating point) for ctx.voltage() outside a load. */
   setOperatingPoint(solution: ArrayLike<number>, matrix: MNAMatrix): void {
     this._lastSolution = solution;
     this._lastMatrix = matrix;
@@ -365,15 +365,7 @@ export class CustomComponent extends Component {
     });
   }
 
-  /** Remember the operating point (for AC `voltage(pin)` and legacy readers). */
-  setSolution(solution: ArrayLike<number>, matrix: MNAMatrix): void {
-    this._lastSolution = solution;
-    this._lastMatrix = matrix;
-  }
-
   readResults(solution: ArrayLike<number>, matrix: MNAMatrix): { voltage: number; current: number } | null {
-    this._lastSolution = solution;
-    this._lastMatrix = matrix;
     if (this._def.pins.length >= 2) {
       const v1 = matrix.getNodeVoltage(solution, this.pin(this._def.pins[0]).node.index);
       const v2 = matrix.getNodeVoltage(solution, this.pin(this._def.pins[1]).node.index);

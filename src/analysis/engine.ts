@@ -214,6 +214,7 @@ export class SimulationSystem {
   /** Push solution values into the components' voltage/current readouts. */
   publish(x: ArrayLike<number>): void {
     for (const comp of this.components) {
+      comp.setOperatingPoint(x, this.matrix);
       const r = comp.readResults(x, this.matrix);
       if (r) comp._setResults(r.voltage, r.current);
     }
