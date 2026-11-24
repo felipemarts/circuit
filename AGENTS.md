@@ -33,8 +33,9 @@ single-file build: `node circuitsvibe-standalone.mjs <command>`. Node ≥ 20. No
 7. **Share the result with the user**: after exit 0, run
    `npx circuitsvibe share <name>.bench.ts` (or add `--share` to the passing `verify --json` and
    read `share.url`) and give the user that link. The whole circuit is in the URL fragment
-   (`…/app.html#c=1.…`) — no upload, no server. Opening links in the web app is still being
-   built: until it lands, tell the user the link opens with `npx circuitsvibe open "<link>"`.
+   (`…/app.html#c=1.…`) — no upload, no server. Opening it at circuitsvibe.com shows the
+   schematic, re-runs the same engine in the browser (same verdict, exit code and netlist hash
+   as your CLI run) and shows assertions, ratings, waveforms, Bode/DC plots and logic traces.
    Benches with `defineComponent` parts cannot be shared (T013).
 
 Never invent numbers for sizing: declare the free parameter with `tb.param(...)` and let

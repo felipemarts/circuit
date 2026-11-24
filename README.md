@@ -125,8 +125,11 @@ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…"   # link → d
 
 A share link carries the whole compressed document in the URL fragment —
 `#c=1.<base64url(deflate-raw(canonical JSON))>` — so there is no backend and nothing is
-uploaded. The benches in `bench/` give links of about 340–560 characters. **Opening links in
-the web app is in progress** (the viewer phase); until then `circuitsvibe open` decodes them.
+uploaded. Typical benches give links of a few hundred characters. Opening a link at
+circuitsvibe.com draws the schematic automatically, re-runs the same engine in the browser
+(same verdict, exit code and netlist hash as the CLI) and shows assertions, diagnostics,
+ratings, scope, Bode, DC-sweep and logic-analyzer panels with a live current animation.
+`circuitsvibe open <link>` decodes a link back to the document.
 `defineComponent` parts are code and cannot be shared (T013).
 
 ## Library
@@ -211,7 +214,7 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | Noise, distortion, pole-zero analysis | ❌ |
 | Real-part catalog with datasheet ratings | ✅ one `Part()` for every simulated family (data for every family in docs/PARTS.md): semiconductors (diodes, LEDs, Zeners, BJTs, MOSFETs) checked after op/dc/tran, mixed-signal transients included (R401–R404); op-amps/comparators checked at the op point (R420–R425); logic ICs / NE555 (row above) · MCUs are catalog data only |
 | SPICE netlist import/export | ❌ |
-| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer support in progress |
+| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer opens links and re-simulates in the browser |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
 | Linear solver | dense LU (sub-second at ~200 nodes, see `npm run perf`); no sparse LU yet |
 

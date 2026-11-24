@@ -151,8 +151,10 @@ $ circuitsvibe catalog                                 # component datasheet for
 - ✅ Circuit document `circuitsvibe-circuit/1` (docs/CIRCUIT-FORMAT.md + JSON Schema): the
   language-neutral form of a bench; every bench round-trips to an identical RunRecord.
   `export`, `verify x.circuit.json`, and share links that carry the whole circuit in the URL
-  fragment (`share`, `verify --share`, `open`) — no backend. Opening links in the web app is
-  the viewer phase (in progress).
+  fragment (`share`, `verify --share`, `open`) — no backend.
+- ✅ Share-link viewer (app.html#c=…): automatic schematic layout, the same engine re-run in the
+  browser (Web Worker), assertion chips, diagnostics, ratings, scope with pass/fail bands, Bode,
+  DC-sweep and logic-analyzer panels, live current animation.
 - ✅ Mixed-signal: the event-driven digital engine co-simulates with the adaptive transient
   (digital events and output ramps are breakpoints, steps are cut back to threshold
   crossings, the digital side never runs past accepted analog time); real logic ICs and the

@@ -10,7 +10,7 @@
 ## Tools
 
 - [npm package](https://www.npmjs.com/package/circuitsvibe): `npx circuitsvibe init <name>` scaffolds a passing bench + AGENTS.md; `verify`, `log list`, `explain <code>`, `catalog`.
-- Share links: `npx circuitsvibe share x.bench.ts` (or `verify --share`) prints a URL with the whole circuit in its fragment (`#c=1.…`, no server); `npx circuitsvibe open <link>` decodes one. Opening links in the web app is in progress.
+- Share links: `npx circuitsvibe share x.bench.ts` (or `verify --share`) prints a URL with the whole circuit in its fragment (`#c=1.…`, no server); Opening the link at circuitsvibe.com shows the schematic and re-runs the simulation in the browser (same verdict as the CLI); `npx circuitsvibe open <link>` decodes one.
 - Circuit document: `npx circuitsvibe export x.bench.ts` writes the language-neutral JSON (`circuitsvibe-circuit/1`); `verify x.circuit.json` simulates it like the bench.
 - [circuitsvibe-standalone.mjs](https://circuitsvibe.com/circuitsvibe-standalone.mjs): the whole CLI as one zero-dependency file for offline sandboxes — `node circuitsvibe-standalone.mjs verify x.bench.ts --json`.
 

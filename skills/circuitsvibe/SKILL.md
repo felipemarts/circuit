@@ -29,9 +29,9 @@ were given `circuitsvibe-standalone.mjs`, use `node circuitsvibe-standalone.mjs 
    configuration.
 4. When `--set` values pass, write them into the bench file.
 5. Give the user a link: `npx circuitsvibe share <name>.bench.ts` prints a URL that contains
-   the whole circuit (no server), or use `verify … --json --share` and read `share.url`. The web
-   app cannot open these links yet (in progress); meanwhile `npx circuitsvibe open "<link>"`
-   decodes one back to the circuit document. Links you receive: decode them the same way.
+   the whole circuit (no server), or use `verify … --json --share` and read `share.url`. The link
+   opens at circuitsvibe.com with the schematic, a browser re-run of the simulation and all
+   results. Links you receive: `npx circuitsvibe open "<link>"` decodes one to the document.
 
 Never guess component values: declare `tb.param('R1', { min: '100', max: '10k', scale: 'log' })`
 and let the simulator find the passing range. Only `verified` fixes were simulated.
