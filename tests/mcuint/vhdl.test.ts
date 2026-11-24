@@ -212,3 +212,21 @@ architecture rtl of bidi is begin d <= 'Z'; end architecture;`;
     expect(r.diagnostics[0].message).toMatch(/inout port bit 'd' of U|'U': inout port bit 'd'/);
   });
 });
+
+describe('catalog entries (MCU profiles, board, VhdlBlock)', () => {
+  it('lists Mcu, ArduinoUno, the four profiles and VhdlBlock with pins, PWM, limits and citations', async () => {
+    const { COMPONENT_CATALOG, GRAMMAR_NOTES } = await import('../../src/cli/catalog');
+    const byType = new Map(COMPONENT_CATALOG.map(e => [e.type, e]));
+    for (const t of ['Mcu', 'ArduinoUno', 'ATmega328P', 'ATtiny85', 'ESP32', 'RP2040', 'VhdlBlock']) expect(byType.has(t), t).toBe(true);
+    const uno = byType.get('ArduinoUno')!;
+    expect(uno.pins).toContain('D9 (PWM 490 Hz)');
+    expect(uno.pins).toContain('5V (supply, = VCC)');
+    const details = uno.details!.join('\n');
+    expect(details).toContain('Rout high 40 Ω, low 45 Ω');
+    expect(details).toContain('per pin 40 mA absolute (R410)');
+    expect(details).toMatch(/source: https:\/\/ww1\.microchip\.com\/.*DS40002061B/);
+    expect(byType.get('ESP32')!.details!.join('\n')).toContain('(ESTIMATED)');
+    expect(byType.get('VhdlBlock')!.details!.join('\n')).toContain('not supported (clear V703/V708)');
+    expect(GRAMMAR_NOTES).toContain('SERIAL ASSERTIONS');
+  });
+});

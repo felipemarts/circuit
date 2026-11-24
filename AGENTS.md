@@ -298,8 +298,9 @@ export default bench('uno-blink', (tb) => {
 - **Library use**: MCU firmware is `async`, so call `await runLadderAsync(bench)` (the CLI
   does); `runLadder` throws `AsyncAnalysisError` for benches with an MCU.
 - **Not modelled**: instruction timing (zero time between awaits), ISRs preempting a running
-  slice, UART timing, ADC conversion time, sleep modes / watchdog, the core's supply current,
-  delayed power-up and restart after brown-out.
+  slice, UART timing and serial input from the bench (`Serial.read()` sees nothing), ADC
+  conversion time, sleep modes / watchdog, the core's supply current, delayed power-up and
+  restart after brown-out; `--set` / `tb.param` cannot target an MCU.
 
 ### VHDL blocks
 

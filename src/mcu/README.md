@@ -176,6 +176,12 @@ fast PWM `(v+1)/256`; 0 and 255 are constant levels; non-PWM pin ⇒ M612 + core
 
 ## Known gaps
 
+- Bench integration: no API yet to feed `Serial.read()` from a bench (the runtime's
+  `serialInput` is not exposed); no delayed power-up (the MCU must be powered at t = 0) and no
+  restart after a brown-out; `--set` / `tb.param` cannot target an MCU.
+- Firmware locations come from V8-style stack frames (`at fn (path:line:col)`, Node and
+  Chromium); other browser engines would report M6xx without `at`.
+
 - No instruction timing: code between yields takes zero time (except the idle-loop cost);
   `analogRead` is instantaneous (the profile records the real conversion time).
 - ISRs cannot preempt a running firmware slice; they run at the next yield point (same

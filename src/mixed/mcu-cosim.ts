@@ -33,6 +33,8 @@ import { clampCurrent, stageCurrent, PIN_LEAK } from './device';
 import type { Mcu, McuCell } from './mcu';
 import type { RatingOptions } from '../verify/ratings';
 
+const toNs = (t: number): number => (Number.isFinite(t) ? Math.round(t * 1e9) : t);
+
 const vOf = (x: ArrayLike<number>, p: Pin): number => {
   const i = p.node.index;
   return i > 0 ? x[i - 1] : 0;
@@ -183,9 +185,9 @@ export class McuCosim implements McuPinBus {
     this.mcu._powered = true;
   }
 
-  /** Firmware work due at t (an event at or before t). */
+  /** Firmware work due at t (an event at or before t, at the runtime's 1 ns resolution). */
   due(t: number): boolean {
-    return this.state === 'running' && !!this.rt && this.rt.nextWakeTime() <= t;
+    return this.state === 'running' && !!this.rt && toNs(this.rt.nextWakeTime()) <= toNs(t);
   }
 
   /** Run the firmware up to t; true when it changed any pin (a discontinuity at t). */
@@ -198,8 +200,10 @@ export class McuCosim implements McuPinBus {
   nextBreakpoint(t: number): number {
     let bp = Infinity;
     if (this.state === 'running' && this.rt) {
+      // Wake times are integer nanoseconds: one in the same nanosecond as t is due now (work(t)),
+      // not a breakpoint an ulp later.
       const w = this.rt.nextWakeTime();
-      if (w > t) bp = w;
+      if (toNs(w) > toNs(t)) bp = w;
     }
     for (const s of this.cells.values()) {
       const c = s.cell.stage.nextCorner(t);

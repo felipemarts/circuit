@@ -24,7 +24,7 @@ fs.writeFileSync(
   path.join(outdir, 'entry.ts'),
   `export * from ${JSON.stringify(path.join(root, 'src/forge.ts').replace(/\\/g, '/'))};\nexport { luSolveInPlace, luProfile } from ${JSON.stringify(path.join(root, 'src/solver/LUSolver.ts').replace(/\\/g, '/'))};\n`,
 );
-await build({ entryPoints: [path.join(outdir, 'entry.ts')], bundle: true, format: 'esm', platform: 'neutral', outfile, logLevel: 'silent' });
+await build({ entryPoints: [path.join(outdir, 'entry.ts')], bundle: true, format: 'esm', platform: 'neutral', mainFields: ['module', 'main'], outfile, logLevel: 'silent' });
 const E = await import(pathToFileURL(outfile).href);
 fs.rmSync(outdir, { recursive: true, force: true });
 

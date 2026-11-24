@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   bench,
+  elaborate,
   runLadder,
   runLadderAsync,
   ArduinoUno,
@@ -297,6 +298,19 @@ export async function loop() { n++; Serial.println(n); await delay(10); }`;
     ]);
   });
 
+  it('the netlist hash covers the firmware text (same path, different code ⇒ different identity)', () => {
+    const make = (ms: number) =>
+      bench('h', tb => {
+        const u1 = tb.add('U1', new ArduinoUno({ firmware: fw(BLINK.replace(/500/g, String(ms))) }));
+        powerMcu(tb, u1);
+      });
+    const a = elaborate(make(500)).netlist;
+    const b = elaborate(make(250)).netlist;
+    expect(a.components).toEqual(b.components); // params reference the path only
+    expect(a.hash).not.toBe(b.hash);
+    expect(elaborate(make(500)).netlist.hash).toBe(a.hash);
+  });
+
   it('inline { setup, loop } firmware runs; it cannot be exported (T013); runLadder (sync) refuses MCU benches', async () => {
     const desc = bench('inline', tb => {
       const u1 = tb.add('U1', new Mcu({ profile: 'esp32', firmware: { setup: async () => undefined, loop: async () => undefined } }));
@@ -345,5 +359,25 @@ export async function loop() { Serial.println(digitalRead(4)); await delay(1); }
     expect(board.typeName).toBe('ArduinoUno');
     expect(board.pin('5V')).toBe(board.pin('VCC'));
     expect(() => new ArduinoUno({ firmware: './x.fw.ts', profile: 'esp32' } as never)).toThrow(/unknown option 'profile'/);
+  });
+});
+
+describe('firmware files (Node host): relative imports travel with the firmware', () => {
+  it('reads the entry relative to the calling file plus its imports; documents embed both', async () => {
+    const { installNodeFirmwareHost } = await import('../../src/mcu/node/firmware-host');
+    installNodeFirmwareHost();
+    const desc = bench('fixture', tb => {
+      const u1 = tb.add('U1', new ArduinoUno({ firmware: './fixtures/main.fw.ts' }));
+      powerMcu(tb, u1);
+      tb.expect.serial('U1', { tstop: '50m' }).toContain('tick #2');
+    });
+    const r = await runLadderAsync(desc);
+    expect(r.stages.tran!.serial![0].lines.map(l => l[1])).toEqual(['tick #1', 'tick #2', 'tick #3']);
+    expect(r.diagnostics.find(d => d.code === 'M601')!.at).toBe('tests/mcuint/fixtures/main.fw.ts:14');
+    const doc = toCircuitDoc(desc);
+    expect(doc.sources!.map(s => s.path)).toEqual(['tests/mcuint/fixtures/lib/fmt.ts', 'tests/mcuint/fixtures/main.fw.ts']);
+    const { benchFromDoc } = await import('../../src/forge');
+    const again = await runLadderAsync(benchFromDoc(doc));
+    expect(JSON.stringify(again)).toBe(JSON.stringify(r));
   });
 });

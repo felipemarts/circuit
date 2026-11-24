@@ -718,10 +718,18 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
   for (const name of [...netNode.keys()].sort()) {
     nets[name] = (netPins.get(name) ?? []).map(p => refOf.get(p)!).sort();
   }
+  // Firmware / VHDL files are referenced by path in params: their content is part of the identity.
+  const sourceDigests: [string, string][] = [];
+  for (const id of [...tb._components.keys()].sort()) {
+    const files = (tb._components.get(id) as { sourceFiles?: () => { path: string; text: string }[] }).sourceFiles?.() ?? [];
+    for (const f of files) if (!sourceDigests.some(([p]) => p === f.path)) sourceDigests.push([f.path, fnv1a64(f.text)]);
+  }
+  sourceDigests.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const hash = fnv1a64(
     stableStringify({
       components: components.map(({ id, type, params, pins }) => ({ id, type, params, pins })),
       nets,
+      ...(sourceDigests.length > 0 ? { sources: sourceDigests } : {}),
     }),
   );
 
