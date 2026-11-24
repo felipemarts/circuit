@@ -10,10 +10,13 @@
 ## Tools
 
 - [npm package](https://www.npmjs.com/package/circuitsvibe): `npx circuitsvibe init <name>` scaffolds a passing bench + AGENTS.md; `verify`, `log list`, `explain <code>`, `catalog`.
+- Share links: `npx circuitsvibe share x.bench.ts` (or `verify --share`) prints a URL with the whole circuit in its fragment (`#c=1.…`, no server); `npx circuitsvibe open <link>` decodes one. Opening links in the web app is in progress.
+- Circuit document: `npx circuitsvibe export x.bench.ts` writes the language-neutral JSON (`circuitsvibe-circuit/1`); `verify x.circuit.json` simulates it like the bench.
 - [circuitsvibe-standalone.mjs](https://circuitsvibe.com/circuitsvibe-standalone.mjs): the whole CLI as one zero-dependency file for offline sandboxes — `node circuitsvibe-standalone.mjs verify x.bench.ts --json`.
 
 ## Optional
 
 - [Source code](https://github.com/felipemarts/circuit)
+- [Circuit document format](https://github.com/felipemarts/circuit/blob/main/docs/CIRCUIT-FORMAT.md): the JSON contract, share-link encoding, versioning.
 - [Diagnostics reference](https://github.com/felipemarts/circuit/blob/main/docs/DIAGNOSTICS.md): code taxonomy and RunRecord JSON format.
 - [Vision](https://github.com/felipemarts/circuit/blob/main/docs/VISION.md)

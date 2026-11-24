@@ -212,6 +212,21 @@ identical runs produce byte-identical records — the diff between agent iterati
 trivial. Matrix unknowns are ordered by component id and net name, so the same netlist
 declared in a different order produces the same numbers (only `at` locations differ).
 
+## Share links (`verify --share`, `share --json`)
+
+`circuitsvibe verify … --json --share` adds one field to the RunRecord (the rest is unchanged,
+and the ledger entry never contains it):
+
+```jsonc
+"share": { "url": "https://circuitsvibe.com/app.html#c=1.dZDNTs…", "bytes": 426, "warnings": [] }
+// or, when the bench cannot be shared (exit code unchanged):
+"share": { "error": { "code": "T013", "message": "U1 (Chatter) is a defineComponent part: …" } }
+```
+
+`circuitsvibe share <file> --json` prints `{ "url", "bytes", "warnings" }` (exit 0) or
+`{ "diagnostics": [...], "exitCode": 3 }`. `warnings` holds T018 when the link exceeds 8 KiB.
+Format and encoding: [CIRCUIT-FORMAT.md](CIRCUIT-FORMAT.md).
+
 ## `circuitsvibe sweep --json`
 
 ```jsonc

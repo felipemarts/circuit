@@ -13,7 +13,7 @@ import { validateCircuitDoc, type ComponentDefinitions } from './validate';
  *
  * `1.` versions the payload ENCODING (not the document schema, which is
  * inside the JSON). Compression uses the platform CompressionStream
- * ('deflate-raw'): browsers and Node ≥ 20.12 — no dependencies.
+ * ('deflate-raw'): browsers and current Node releases — no dependencies.
  */
 
 export const DEFAULT_SHARE_BASE_URL = 'https://circuitsvibe.com/app.html';
@@ -92,7 +92,7 @@ export function base64UrlDecode(text: string): Uint8Array {
 
 function requireStreams(): void {
   if (typeof CompressionStream === 'undefined' || typeof DecompressionStream === 'undefined') {
-    throw new Error('share links need CompressionStream/DecompressionStream (any modern browser, Node >= 20.12)');
+    throw new Error('share links need CompressionStream/DecompressionStream (any modern browser, a current Node release)');
   }
 }
 

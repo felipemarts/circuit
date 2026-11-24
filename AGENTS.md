@@ -30,6 +30,12 @@ single-file build: `node circuitsvibe-standalone.mjs <command>`. Node ≥ 20. No
    (verdict, exit code, first failure, overrides). Don't repeat a configuration that
    already failed. `npx circuitsvibe log show <runId>` returns the full past RunRecord.
 6. Once `--set` values pass, **write them back into the bench** so the file is the truth.
+7. **Share the result with the user**: after exit 0, run
+   `npx circuitsvibe share <name>.bench.ts` (or add `--share` to the passing `verify --json` and
+   read `share.url`) and give the user that link. The whole circuit is in the URL fragment
+   (`…/app.html#c=1.…`) — no upload, no server. Opening links in the web app is still being
+   built: until it lands, tell the user the link opens with `npx circuitsvibe open "<link>"`.
+   Benches with `defineComponent` parts cannot be shared (T013).
 
 Never invent numbers for sizing: declare the free parameter with `tb.param(...)` and let
 the platform sweep it. A hint marked `verified` was simulated; anything else was not.
@@ -164,6 +170,11 @@ npx circuitsvibe verify <bench.ts> --json    # full RunRecord on stdout
 npx circuitsvibe sweep <bench.ts> --source V1 --from 0 --to 5 --points 51 --probe out,R1.i [--json]
     # DC transfer table (or --param R1 to sweep a component value, --step instead of --points)
 npx circuitsvibe log list --json             # run history (.circuitsvibe/runs.jsonl)
+npx circuitsvibe share <bench.ts> [--json]   # share link (circuit in the URL); --json: { url, bytes, warnings }
+npx circuitsvibe verify <bench.ts> --json --share   # RunRecord + "share": { "url", … }
+npx circuitsvibe open "<link>"                # a link the user sent you → circuit document (JSON)
+npx circuitsvibe export <bench.ts> -o x.circuit.json   # language-neutral circuit document
+npx circuitsvibe verify x.circuit.json --json # a document verifies exactly like its bench
 npx circuitsvibe log show <runId>
 npx circuitsvibe explain F101                # physics + fixes for a code
 npx circuitsvibe catalog [type] [--json]     # components, pins, probe/assertion grammar
@@ -187,6 +198,8 @@ npx circuitsvibe agents                      # print this playbook
 | A301 | assertion failed (`measured`, `margin`, maybe `hint` or `note`) | apply a verified hint or change values |
 | T001 / T002 | the bench threw / a stage crashed | fix the bench code (T002: report it) |
 | T003 / T004 | AC assertions without an `ac` stimulus / with several stimuli and no `ref` | add `ac: 1` to the input source / pass `{ ref }` |
+| T010–T014 | invalid circuit document (structure, schema version, unknown type, custom part, bad component) | re-export with `circuitsvibe export`; T013: custom parts cannot be shared |
+| T015–T018 | share link too large / malformed / unknown encoding / long (warning) | send the `.circuit.json` instead; re-copy the full link |
 
 When plain Newton fails at DC, the solver retries with gmin stepping and then source
 stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.

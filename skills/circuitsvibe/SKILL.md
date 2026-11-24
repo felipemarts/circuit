@@ -28,6 +28,10 @@ were given `circuitsvibe-standalone.mjs`, use `node circuitsvibe-standalone.mjs 
 3. Before each retry run `npx circuitsvibe log list --json` — never repeat a failed
    configuration.
 4. When `--set` values pass, write them into the bench file.
+5. Give the user a link: `npx circuitsvibe share <name>.bench.ts` prints a URL that contains
+   the whole circuit (no server), or use `verify … --json --share` and read `share.url`. The web
+   app cannot open these links yet (in progress); meanwhile `npx circuitsvibe open "<link>"`
+   decodes one back to the circuit document. Links you receive: decode them the same way.
 
 Never guess component values: declare `tb.param('R1', { min: '100', max: '10k', scale: 'log' })`
 and let the simulator find the passing range. Only `verified` fixes were simulated.
@@ -66,6 +70,8 @@ new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2
   diagnostic codes, pitfalls.
 - `npx circuitsvibe catalog --json` — every component with pins and value semantics.
 - `npx circuitsvibe explain <code>` — physics and fixes for one diagnostic code.
+- `npx circuitsvibe export <bench.ts>` — the language-neutral circuit document (JSON);
+  `verify x.circuit.json` simulates it exactly like the bench.
 
 Supported today: Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN,
 PULSE, PWL, PWM, AC stimulus), Diode, LED, Switch (SPDT), Button, custom parts via
