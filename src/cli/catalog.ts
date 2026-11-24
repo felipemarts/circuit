@@ -3,12 +3,16 @@
  * value semantics and DC behavior, plus the probe and assertion grammars.
  */
 
+import { mixedCatalog, MIXED_GRAMMAR_NOTES } from '../mixed/catalog';
+
 export interface CatalogEntry {
   type: string;
   example: string;
   pins: string;
   value: string;
   dc: string;
+  /** Extra datasheet-derived lines (logic ICs: levels per VCC, drive, tpd, citations). */
+  details?: string[];
 }
 
 export const COMPONENT_CATALOG: CatalogEntry[] = [
@@ -75,6 +79,8 @@ export const COMPONENT_CATALOG: CatalogEntry[] = [
     value: 'momentary: conducts while .pressed === true',
     dc: 'conducts (1 mΩ pressed / 1 TΩ released)',
   },
+  // Logic ICs, NE555 and generic logic primitives (src/mixed).
+  ...mixedCatalog(),
 ];
 
 export const GRAMMAR_NOTES = `PROBES (every stage)
@@ -110,4 +116,6 @@ TRAN ASSERTIONS    tb.expect.tran({tstop:'5m', dt?:'1u', maxStep?, method?:'trap
 SIZING DELEGATION  tb.param('R1', {min:'100', max:'10k', scale:'log'})
                    -> on op-assertion failure the platform sweeps the range and
                      returns a VERIFIED passing range instead of making you guess
-NET NAMES          tb.name('out', r1.pin('2'))  -> probe 'out' in any stage`;
+NET NAMES          tb.name('out', r1.pin('2'))  -> probe 'out' in any stage
+
+${MIXED_GRAMMAR_NOTES}`;

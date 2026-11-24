@@ -33,7 +33,7 @@ export function resolveOpProbe(elab: Elaboration, dc: DCResult, probe: string): 
     }
     return value;
   }
-  const node = elab.netNode.get(probe);
+  const node = elab.netNode.get(probe) ?? elab.mixed?.pinNode(probe);
   if (!node) throw new Error(`probe '${probe}': unknown net`);
   const v = dc.nodeVoltages.get(node);
   if (v === undefined) throw new Error(`probe '${probe}': net not present in the solved circuit`);
@@ -121,13 +121,17 @@ function computeVerifiedHint(elab: Elaboration, opAssertions: AssertionSpec[]): 
 /** L1 — DC operating point + assertions + verified sizing hints. */
 export function runOp(elab: Elaboration, opts: { hints: boolean }): StageOutcome {
   const opAssertions = elab.assertions.filter(a => a.stage === 'op');
+  // A pure-digital bench has no analog operating point (its power-on state is the tran start).
+  if (elab.mixed?.digitalOnly) return { stage: { verdict: 'pass', probes: {} }, diagnostics: [] };
 
   let dc: DCResult;
   try {
     dc = elab.circuit.analyze('dc');
   } catch (err) {
-    return { stage: { verdict: 'error' }, diagnostics: [solverDiagnostic(elab, err, 'op')] };
+    return { stage: { verdict: 'error' }, diagnostics: [...(elab.mixed ? elab.mixed.controller.run.diagnostics : []), solverDiagnostic(elab, err, 'op')] };
   }
+  // Mixed-signal: static-state diagnostics of the operating point (D508–D514, D50x).
+  const mixedDiags = elab.mixed ? [...elab.mixed.controller.run.diagnostics] : [];
 
   // Probe values reported: every asserted probe + every user-named net.
   const probes: Record<string, number> = {};
@@ -150,12 +154,12 @@ export function runOp(elab: Elaboration, opts: { hints: boolean }): StageOutcome
 
   return {
     stage: {
-      verdict: failed.length > 0 ? 'fail' : 'pass',
+      verdict: mixedDiags.some(d => d.severity === 'error') ? 'error' : failed.length > 0 ? 'fail' : 'pass',
       probes,
       solver: opSolverRecord(dc.telemetry),
       assertions,
     },
-    diagnostics: [],
+    diagnostics: mixedDiags,
   };
 }
 

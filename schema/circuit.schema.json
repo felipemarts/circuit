@@ -557,6 +557,149 @@
               "type": "number"
             }
           }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "t",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "logicAt"
+            },
+            "t": {
+              "type": "number"
+            },
+            "value": {
+              "enum": [
+                0,
+                1,
+                "X",
+                "Z"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "edge"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "logicEdges"
+            },
+            "edge": {
+              "enum": [
+                "rising",
+                "falling",
+                "both"
+              ]
+            },
+            "from": {
+              "type": "number"
+            },
+            "to": {
+              "type": "number"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value",
+            "tol"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "logicFrequency"
+            },
+            "value": {
+              "type": "number"
+            },
+            "tol": {
+              "type": "number"
+            },
+            "from": {
+              "type": "number"
+            },
+            "to": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "value",
+            "tol"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "logicDutyCycle"
+            },
+            "value": {
+              "type": "number"
+            },
+            "tol": {
+              "type": "number"
+            },
+            "from": {
+              "type": "number"
+            },
+            "to": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "logicStable"
+            },
+            "from": {
+              "type": "number"
+            },
+            "to": {
+              "type": "number"
+            },
+            "value": {
+              "enum": [
+                0,
+                1,
+                "X",
+                "Z"
+              ]
+            }
+          }
         }
       ]
     },
@@ -681,7 +824,8 @@
         },
         "probe": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.(i|v))?$"
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\..+)?$",
+          "description": "'<id>.i' / '<id>.v', '<id>.<pin>' (a logic IC or primitive pin, e.g. 'U1.1Y'), or a named net"
         },
         "at": {
           "type": "string"

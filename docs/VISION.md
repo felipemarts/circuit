@@ -153,6 +153,12 @@ $ circuitsvibe catalog                                 # component datasheet for
   `export`, `verify x.circuit.json`, and share links that carry the whole circuit in the URL
   fragment (`share`, `verify --share`, `open`) — no backend. Opening links in the web app is
   the viewer phase (in progress).
+- ✅ Mixed-signal: the event-driven digital engine co-simulates with the adaptive transient
+  (digital events and output ramps are breakpoints, steps are cut back to threshold
+  crossings, the digital side never runs past accepted analog time); real logic ICs and the
+  NE555 from the parts catalog (pins, VIL/VIH or VT+/VT−, Rout, tpd per supply, ratings →
+  D508–D514), generic logic primitives, `tb.expect.logic`, bench-level digital lint
+  F130–F138, logic capture in the RunRecord and `--vcd`.
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap
@@ -210,3 +216,13 @@ no benchmark claim beyond what the component library covers.
   like excalidraw: no server sees or stores a circuit. Warn above 8 KiB, refuse above 2 MiB.
 - **Locations are cwd-relative with forward slashes** — RunRecords are identical across
   machines and operating systems.
+- **Mixed-signal = one MNA system + one event kernel, coupled through a hook** —
+  `circuit._cosim` (src/mixed) is consulted by the engine at DC solves (static power-on
+  settle), breakpoints, step acceptance and threshold location. IC pins are always analog
+  nodes (supply-referenced levels, drive, contention are physical); nets that touch only
+  logic primitives stay purely digital. Datasheet numbers come from src/parts; the few
+  model constants that are not datasheet values (output ramp, unpowered threshold, NE555
+  latch delay, clamp-diode Is) are named in src/mixed/families.ts and printed by the catalog.
+- **Logic inputs use the guaranteed levels** (rising at VIH, falling at VIL): the latest
+  moment a real part is guaranteed to have switched, plus D508 when an input lingers in
+  between — rather than an invented "typical" switching point.

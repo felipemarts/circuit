@@ -3,7 +3,9 @@ import type { ProbeSpec } from '../analysis/TransientAnalysis';
 import { evaluateTranCheck, type Waveform } from './measure';
 import { solverDiagnostic } from './solverDiag';
 import type { StageOutcome } from './op';
-import type { AssertionResult, AssertionSpec, TranConfig, TranRunTelemetry } from '../schema/types';
+import type { AssertionResult, AssertionSpec, Diagnostic, LogicCapture, TranConfig, TranRunTelemetry } from '../schema/types';
+import { isLogicCheck } from '../elab/logic';
+import { evaluateLogicCheck } from '../mixed/measure';
 
 const COMPONENT_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
 
@@ -13,7 +15,7 @@ export function probeSpecFor(elab: Elaboration, expr: string): ProbeSpec {
   if (m) {
     return { label: expr, color: '#000', component: elab.components.get(m[1])!, type: m[2] === 'i' ? 'current' : 'voltage' };
   }
-  return { label: expr, color: '#000', node: elab.netNode.get(expr)!, type: 'voltage' };
+  return { label: expr, color: '#000', node: (elab.netNode.get(expr) ?? elab.mixed?.pinNode(expr))!, type: 'voltage' };
 }
 
 function configKey(c: TranConfig): string {
@@ -54,14 +56,37 @@ export function runTran(elab: Elaboration): StageOutcome {
   const results: AssertionResult[] = [];
   const finalValues: Record<string, number> = {};
   const runs: TranRunTelemetry[] = [];
+  const mixed = elab.mixed;
+  const mixedDiags: Diagnostic[] = [];
+  const seenDiags = new Set<string>();
+  const captures: LogicCapture[] = [];
 
   for (const key of [...groups.keys()].sort()) {
-    const { config, assertions } = groups.get(key)!;
+    const { config, assertions: all } = groups.get(key)!;
+    const assertions = all.filter(a => !isLogicCheck(a.check));
+    const logicAssertions = all.filter(a => isLogicCheck(a.check));
     const probeExprs = [...new Set(assertions.map(a => a.probe))].sort();
     const specs = probeExprs.map(expr => probeSpecFor(elab, expr));
 
-    let waveforms: Map<string, Waveform>;
-    try {
+    let waveforms: Map<string, Waveform> = new Map();
+    mixed?.controller.setTimeScale(config.tstop);
+    if (mixed?.digitalOnly) {
+      // Pure-digital bench: the event engine alone over [0, tstop].
+      mixed.controller.runDigitalOnly(config.tstop);
+      runs.push({
+        config: { ...config },
+        method: config.method ?? 'trap',
+        acceptedSteps: 0,
+        rejectedSteps: 0,
+        newtonFailures: 0,
+        lteRejections: 0,
+        minStep: 0,
+        maxStepTaken: 0,
+        breakpoints: 0,
+        newtonIterations: 0,
+        ...(mixed.controller.run.events !== undefined ? { digitalEvents: mixed.controller.run.events } : {}),
+      });
+    } else try {
       const result = elab.circuit.analyze(
         'transient',
         {
@@ -89,9 +114,48 @@ export function runTran(elab: Elaboration): StageOutcome {
         maxStepTaken: t.maxStepTaken,
         breakpoints: t.breakpoints,
         newtonIterations: t.newtonIterations,
+        ...(mixed ? { eventCuts: t.eventCuts ?? 0 } : {}),
       });
+      if (mixed) {
+        mixed.controller.finishTransient(config.tstop);
+        if (mixed.controller.run.events !== undefined) runs[runs.length - 1].digitalEvents = mixed.controller.run.events;
+      }
     } catch (err) {
-      return { stage: { verdict: 'error' }, diagnostics: [solverDiagnostic(elab, err, 'tran')] };
+      return { stage: { verdict: 'error' }, diagnostics: [...(mixed ? mixed.controller.run.diagnostics : []), solverDiagnostic(elab, err, 'tran')] };
+    }
+
+    if (mixed) {
+      for (const d of mixed.controller.run.diagnostics) {
+        const k = JSON.stringify(d);
+        if (seenDiags.has(k)) continue;
+        seenDiags.add(k);
+        mixedDiags.push(d);
+      }
+      const signals = new Map(mixed.namedSignals);
+      for (const a of logicAssertions) signals.set(a.probe, mixed.logicSignal(a.probe)!);
+      const cap = mixed.controller.capture(configLabel(config), signals);
+      if (cap && Object.keys(cap.signals).length > 0) captures.push(cap);
+      for (const spec of logicAssertions) {
+        const tr = mixed.controller.trace(mixed.logicSignal(spec.probe)!)!;
+        const outcome = evaluateLogicCheck(spec.check, tr, config.tstop);
+        const result: AssertionResult = {
+          id: spec.id,
+          stage: 'tran',
+          probe: spec.probe,
+          check: spec.check,
+          verdict: outcome.pass ? 'pass' : 'fail',
+          ...(outcome.measured !== undefined ? { measured: outcome.measured } : {}),
+          ...(outcome.measuredLogic !== undefined && outcome.measured === undefined ? { measuredLogic: outcome.measuredLogic } : {}),
+          ...(spec.at ? { at: spec.at } : {}),
+        };
+        if (!outcome.pass) {
+          if (outcome.measuredLogic !== undefined) result.measuredLogic = outcome.measuredLogic;
+          if (outcome.outsideBy !== undefined) result.margin = { outsideBy: outcome.outsideBy, ...(outcome.ratio !== undefined ? { ratio: outcome.ratio } : {}) };
+          if (outcome.note) result.note = outcome.note;
+          if (outcome.tFirstViolation !== undefined) result.tFirstViolation = outcome.tFirstViolation;
+        }
+        results.push(result);
+      }
     }
 
     for (const expr of probeExprs) {
@@ -127,6 +191,7 @@ export function runTran(elab: Elaboration): StageOutcome {
   // Assertion results in declaration order, independent of group order.
   results.sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
   const failed = results.some(r => r.verdict === 'fail');
+  const mixedError = mixedDiags.some(d => d.severity === 'error');
   const totals = runs.reduce(
     (acc, r) => ({
       accepted: acc.accepted + r.acceptedSteps,
@@ -138,7 +203,7 @@ export function runTran(elab: Elaboration): StageOutcome {
   );
   return {
     stage: {
-      verdict: failed ? 'fail' : 'pass',
+      verdict: mixedError ? 'error' : failed ? 'fail' : 'pass',
       probes: finalValues,
       solver: {
         method: runs.every(r => r.method === 'be') ? 'be' : 'trap',
@@ -149,8 +214,9 @@ export function runTran(elab: Elaboration): StageOutcome {
         runs,
       },
       assertions: results,
+      ...(captures.length > 0 ? { logic: captures } : {}),
     },
-    diagnostics: [],
+    diagnostics: mixedDiags,
   };
 }
 

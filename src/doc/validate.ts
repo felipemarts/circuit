@@ -40,6 +40,8 @@ export type CircuitDocValidation =
 const ID_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const AUTO_NET_RE = /^n\d+$/;
 const PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
+/** '<id>.<pin>': a pin of a logic IC or primitive (e.g. 'U1.1Y', 'U1.pin6', 'G1.q'); the pin itself is checked at elaboration. */
+const PIN_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(.+)$/;
 const LANGUAGE_RE = /^[a-z][a-z0-9+#.-]*$/;
 const MAX_DIAGNOSTICS = 50;
 
@@ -52,7 +54,10 @@ const STAGE_OPS: Record<string, string[]> = {
   op: SCALAR_OPS,
   dc: ['at', 'slopeAt', 'monotonic', 'crosses'],
   ac: ['gainAt', 'phaseAt', 'bandwidth3dB', 'unityGainFrequency', 'phaseMargin'],
-  tran: ['settleWithin', 'neverExceed', 'stayAbove', 'stayBelow', 'rippleBelow', 'finalCloseTo'],
+  tran: [
+    'settleWithin', 'neverExceed', 'stayAbove', 'stayBelow', 'rippleBelow', 'finalCloseTo',
+    'logicAt', 'logicEdges', 'logicFrequency', 'logicDutyCycle', 'logicStable',
+  ],
 };
 /** Required and optional numeric fields of each non-scalar check (beyond `op`). */
 const CHECK_FIELDS: Record<string, { num: string[]; optNum?: string[]; nested?: boolean; extra?: string[] }> = {
@@ -75,7 +80,13 @@ const CHECK_FIELDS: Record<string, { num: string[]; optNum?: string[]; nested?: 
   stayBelow: { num: ['value'], optNum: ['from'] },
   rippleBelow: { num: ['amplitude'], optNum: ['from'] },
   finalCloseTo: { num: ['value', 'tol'] },
+  logicAt: { num: ['t'], extra: ['value'] },
+  logicEdges: { num: [], optNum: ['from', 'to', 'count', 'min', 'max'], extra: ['edge'] },
+  logicFrequency: { num: ['value', 'tol'], optNum: ['from', 'to'] },
+  logicDutyCycle: { num: ['value', 'tol'], optNum: ['from', 'to'] },
+  logicStable: { num: ['from', 'to'], extra: ['value'] },
 };
+const LOGIC_LEVELS: unknown[] = [0, 1, 'X', 'Z'];
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -272,8 +283,10 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
       if (!ids.has(m[1])) c.add('T010', path, `probe '${probe}': no component '${m[1]}'`);
       return;
     }
+    const pin = probe.match(PIN_PROBE_RE);
+    if (pin && ids.has(pin[1])) return;
     if (probe !== 'gnd' && !declaredNets.has(probe)) {
-      c.add('T010', path, `probe '${probe}' must be '<id>.i', '<id>.v' or a net listed in "nets"`);
+      c.add('T010', path, `probe '${probe}' must be '<id>.i', '<id>.v', '<id>.<pin>' or a net listed in "nets"`);
     }
   };
   const assertionIds = new Set<string>();
@@ -453,6 +466,14 @@ function checkFields(c: Collector, check: Obj, path: string): void {
   if (check.op === 'crosses' && isNum(check.min) && isNum(check.max) && !(check.min <= check.max)) c.add('T010', path, 'crosses needs min <= max');
   if (check.op === 'monotonic' &&check.direction !== 'increasing' && check.direction !== 'decreasing') {
     c.add('T010', `${path}/direction`, "direction must be 'increasing' or 'decreasing'");
+  }
+  const levelPath = `${path}/value`;
+  if (check.op === 'logicAt' && !LOGIC_LEVELS.includes(check.value)) c.add('T010', levelPath, "value must be 0, 1, 'X' or 'Z'");
+  if (check.op === 'logicStable' && check.value !== undefined && !LOGIC_LEVELS.includes(check.value)) {
+    c.add('T010', levelPath, "value must be 0, 1, 'X' or 'Z'");
+  }
+  if (check.op === 'logicEdges' && !['rising', 'falling', 'both'].includes(check.edge as string)) {
+    c.add('T010', `${path}/edge`, "edge must be 'rising', 'falling' or 'both'");
   }
   if (spec.nested) checkScalar(c, check.check, `${path}/check`);
 }

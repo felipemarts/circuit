@@ -134,6 +134,37 @@ export interface CircuitOrdering {
   nodeKey: Map<Node, string>;
 }
 
+/**
+ * Co-simulation hook: an event-driven simulator (the digital engine, through
+ * the mixed-signal bridges in src/mixed) attached to a circuit as
+ * `circuit._cosim`. The engine calls it at fixed points of every analysis;
+ * a circuit without a hook behaves exactly as before.
+ *
+ *   - DC-type solves (operating point, sweep points, the transient t = 0
+ *     point): after each converged solve `settleDc` updates the discrete state
+ *     (logic levels, output stages) from the solution; while it reports a
+ *     change the point is re-solved (warm start).
+ *   - Transient (adaptive): `nextBreakpoint` feeds event times (digital
+ *     events, output-ramp corners) into the breakpoint list; `locate` may cut
+ *     a converged step at a threshold crossing (the step is rejected and
+ *     retried up to the returned time); `accepted` advances the event side to
+ *     the accepted time and may report a discontinuity (forces a BE restart).
+ */
+export interface CoSimHook {
+  /** A new analysis system was built (node indices are assigned): reset to the power-on state. */
+  attach(system: SimulationSystem): void;
+  /** After a converged DC-type solve. `pass` counts re-solves of this point. True = state changed: re-solve. */
+  settleDc(x: Float64Array, mode: 'dc' | 'tran', pass: number): boolean;
+  /** The transient's t = 0 point was solved and committed. */
+  beginTransient(x: Float64Array): void;
+  /** Earliest event time strictly after t (Infinity: none). */
+  nextBreakpoint(t: number): number;
+  /** Converged, LTE-accepted attempt t0 → t1: a time in (t0, t1) to cut the step at, or undefined to accept it. */
+  locate(t0: number, x0: Float64Array, t1: number, x1: Float64Array): number | undefined;
+  /** The step to t1 was accepted. True when a discontinuity happened at t1 (BE restart). */
+  accepted(t1: number, x1: Float64Array): boolean;
+}
+
 function sortByKey<T>(items: T[], keys: Map<T, string> | undefined): T[] {
   if (!keys || keys.size === 0) return items;
   const indexed = items.map((item, i) => ({ item, i, key: keys.get(item) }));
@@ -160,6 +191,8 @@ export class SimulationSystem {
   readonly linear: boolean;
   /** Last operating-point solution (for AC). */
   opSolution: Float64Array | null = null;
+  /** Co-simulation hook of the circuit (mixed-signal), if any. */
+  readonly cosim: CoSimHook | null;
 
   private stamp = 0;
   private touched: ReactiveState[] = [];
@@ -196,6 +229,8 @@ export class SimulationSystem {
     this.work = Array.from({ length: this.size }, () => new Float64Array(this.size));
     this.nonlinear = this.components.filter(c => c.isNonlinear());
     this.linear = this.nonlinear.length === 0;
+    this.cosim = circuit._cosim ?? null;
+    this.cosim?.attach(this);
   }
 
   /** Reset node indices so the circuit can be re-analyzed (or edited). */
@@ -353,6 +388,24 @@ export class SimulationSystem {
     initial?: boolean;
     maxIterations?: number;
   } = {}): { x: Float64Array; telemetry: OpTelemetry } {
+    let r = this.solveDcPoint(opts);
+    if (!this.cosim) return r;
+    // Discrete state (logic levels) consistent with the solution: re-solve
+    // while the co-simulator changes it. The hook bounds the number of passes.
+    let iterations = r.telemetry.iterations;
+    for (let pass = 0; this.cosim.settleDc(r.x, opts.mode ?? 'dc', pass); pass++) {
+      r = this.solveDcPoint({ ...opts, x0: r.x });
+      iterations += r.telemetry.iterations;
+    }
+    return { x: r.x, telemetry: { ...r.telemetry, iterations } };
+  }
+
+  private solveDcPoint(opts: {
+    x0?: Float64Array;
+    mode?: 'dc' | 'tran';
+    initial?: boolean;
+    maxIterations?: number;
+  }): { x: Float64Array; telemetry: OpTelemetry } {
     const mode = opts.mode ?? 'dc';
     const maxIterations = opts.maxIterations ?? DC_MAX_ITERATIONS;
     const base = {
@@ -519,6 +572,10 @@ export class SimulationSystem {
       const b = comp.nextBreakpoint(t);
       if (b < bp && b > t) bp = b;
     }
+    if (this.cosim) {
+      const b = this.cosim.nextBreakpoint(t);
+      if (b < bp && b > t) bp = b;
+    }
     return bp;
   }
 
@@ -601,6 +658,8 @@ export interface TranTelemetry {
   newtonIterations: number;
   breakpoints: number;
   ic: 'zero' | 'op';
+  /** Co-simulation: step attempts cut back to a threshold crossing (mixed-signal circuits only). */
+  eventCuts?: number;
 }
 
 export type PointSink = (t: number, x: Float64Array) => void;
@@ -647,6 +706,7 @@ export class TransientEngine {
       sys.initTransientStates(this.x, false);
     }
     sys.commitStep(this.x, 0);
+    sys.cosim?.beginTransient(this.x);
     sys.publish(this.x);
     this.time = 0;
     this.times.fill(0);
@@ -738,6 +798,7 @@ export class TransientEngine {
    * internal (unrecorded) substep, and the step after a corner uses BE.
    */
   runFixed(opts: TransientOptions, sink: PointSink): void {
+    if (this.system.cosim) throw new Error('mixed-signal (co-simulated) circuits need the adaptive transient (adaptive: true)');
     const method = opts.method ?? 'trap';
     const dt = opts.dt;
     const n = Math.ceil(opts.tstop / dt);
@@ -835,6 +896,19 @@ export class TransientEngine {
         if (h < hmin) throw new TimestepTooSmallError(target, h, hmin, culprit);
         continue;
       }
+      const cosim = sys.cosim;
+      if (cosim) {
+        // Threshold crossing inside the step: cut it back so the event side
+        // sees the crossing at (nearly) the end of an accepted step.
+        const cut = cosim.locate(this.time, this.x, target, r.x);
+        if (cut !== undefined && cut > this.time && cut < target) {
+          sys.rejectStep();
+          this.telemetry.rejectedSteps++;
+          this.telemetry.eventCuts = (this.telemetry.eventCuts ?? 0) + 1;
+          h = cut - this.time;
+          continue;
+        }
+      }
       let hNext: number;
       if (estimated) {
         const grow = worstRatio > 0 ? 0.9 * Math.pow(worstRatio, -1 / (order + 1)) : 2;
@@ -844,6 +918,7 @@ export class TransientEngine {
       }
       this.accept(target, hStep, r.x);
       sink(target, this.x);
+      const discontinuity = cosim ? cosim.accepted(target, this.x) : false;
       if (landing) {
         if (target >= tstop) break;
         this.telemetry.breakpoints++;
@@ -854,6 +929,15 @@ export class TransientEngine {
       } else {
         this.forceBE = false;
         h = hNext;
+      }
+      if (cosim) {
+        // Event times appear as the event side advances: refresh the next breakpoint.
+        nextBp = Math.min(sys.nextBreakpoint(target), tstop);
+        if (discontinuity) {
+          this.forceBE = true;
+          this.points = 1;
+          h = Math.min(h, opts.dt, Math.max(0.1 * (nextBp - target), hmin));
+        }
       }
     }
     this.time = tstop;

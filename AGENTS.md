@@ -92,6 +92,72 @@ Custom parts: `defineComponent({ name, pins, params, stamp, ac? })` (see the REA
 `ctx.stampCapacitance(a, b, C)` for internal capacitors (integrated like built-ins) and
 give an `ac(ctx)` stamp if the part is used in an AC analysis (else S204).
 
+### Logic ICs, NE555 and logic primitives (mixed-signal)
+
+Real parts come from the catalog with their datasheet pins; generic logic primitives are for
+quick digital blocks. Both co-simulate with the analog transient.
+
+```ts
+import { bench, Part, VoltageSource, Resistor, LED, Clock } from 'circuitsvibe';
+
+export default bench('blink', (tb) => {
+  const vcc = tb.add('VCC', new VoltageSource(5));
+  const u1 = tb.add('U1', Part('74HC04'));           // also 74HC00 74HC14 74HC74 74HC595 74HCT04 CD4017 CD4011 NE555
+  vcc.pin('-').connect(tb.gnd);
+  u1.pin('VCC').connect(vcc.pin('+'));               // pin 14 — supply pins MUST be wired (F135)
+  u1.pin(7).connect(tb.gnd);                         // pins by datasheet name OR number
+  const clk = tb.add('CLK', new Clock({ freq: '1k' })); // primitive, bridged with 74HC levels at 5 V
+  clk.pin('y').connect(u1.pin('1A'));
+  const r1 = tb.add('R1', new Resistor('330'));
+  const d1 = tb.add('D1', new LED());
+  u1.pin('1Y').connect(r1.pin('1'));
+  r1.pin('2').connect(d1.pin('anode'));
+  d1.pin('cathode').connect(tb.gnd);
+  for (const p of ['2A', '3A', '4A', '5A', '6A']) u1.pin(p).connect(tb.gnd); // tie unused inputs (F137)
+
+  const run = tb.expect.tran({ tstop: '5m', maxStep: '20u' });
+  run.logic('U1.1Y').toHaveFrequency('1k', 0.01, { from: '1m' }); // logic assertion
+  run.probe('D1.i').toNeverExceed('15m');                         // analog, same run
+});
+```
+
+- **`Part(id, { corner?: 'typ' | 'worst', clamp?: boolean })`** — `u1.pin('1A')`, `u1.pin(1)`,
+  `u1.pin('~OE')`, `u1.pin('CARRY OUT')` (case, spaces, `_` ignored). Active-low pins start
+  with `~`. `npx circuitsvibe catalog 74HC14` prints the pinout with numbers, the levels, Rout
+  and tpd per VCC, and the datasheet citations.
+- Every logic level is referenced to the IC's **own** VCC/GND pins and scales with them:
+  74HC at 5 V: VIL 1.5 V, VIH 3.5 V; at 2 V: 0.5 V / 1.5 V. A rising input is recognised at
+  VIH, a falling one at VIL; 74HC14 and the CD4017 CLOCK pin use VT+/VT− (Schmitt).
+- Outputs are a pull-up/pull-down resistance pair (Rout from the datasheet VOH/VOL rows)
+  with a short ramp, so a logic output drives an LED, a transistor base or an RC node;
+  delays are the datasheet tpd at the IC's supply (50 pF test load de-embedded).
+- **NE555**: comparators at CONT (internal 5k/5k/5k divider, 2/3 VCC) and CONT/2, SR latch,
+  discharge transistor (Ron from the datasheet), RESET (active low, tie to VCC), Darlington
+  output. Astable f ≈ 1.44/((R1+2R2)·C), monostable T ≈ 1.1·R·C (tests hold them within 2 %).
+- **Primitives**: `And Or Nand Nor Xor Xnor Not Buf TriBuf Mux DFF JKFF DLatch Counter
+  ShiftRegister Clock Stimulus Const Pull` — options and pins as in the catalog (`delay`
+  default 1 ns) plus `{ family: 'HC' | 'HCT' | 'CD4000', vcc: 5 }` for the bridge used where a
+  pin touches an analog net. Between primitives (pure-digital nets) only the event engine
+  runs; a bench with no analog part at all is simulated by the digital engine alone.
+
+### Logic assertions
+
+```ts
+tb.expect.logic('q', { tstop: '20u' })      // window given, else the last tb.expect.tran/logic one
+  .toBe(1).at('2u')                          // value at a time (toBe alone = at tstop)
+tb.expect.logic('U1.1Y').toToggle({ count: 10, within: ['0', '10u'] })  // or min/max, edge: 'rising'
+tb.expect.logic('U1.pin3').toHaveFrequency('500k', 0.01, { from: '1u' }) // tol = FRACTION
+tb.expect.logic('out').toHaveDutyCycle(0.5, 0.02)                        // tol = ABSOLUTE duty
+tb.expect.logic('U1.QA').toBeStable('4u', '8u', { value: 0 })
+tb.expect.tran({ tstop: '1m' }).logic('q')   // same run as the analog probes
+```
+
+Logic probes: a `tb.name`d net (pure-digital, or analog with a logic pin on it), an IC pin
+`'U1.1Y'` / `'U1.pin3'`, a primitive pin `'G1.q'`. Analog probes on IC pins work in op/tran:
+`tb.expect.op('U1.1Y')` is that pin's voltage. The RunRecord carries the logic-analyzer data
+in `stages.tran.logic[]` (value-change lists of every probed and named logic signal);
+`circuitsvibe verify x.bench.ts --vcd out.vcd` writes it as VCD.
+
 ### Sources
 
 Give a value, or an options object with at most ONE waveform. All values accept units.
@@ -167,6 +233,7 @@ npx circuitsvibe verify <bench.ts> --json    # full RunRecord on stdout
     --stage op,dc,ac,tran                    # subset of stages (lint always runs)
     --set R1=280,V1=5                        # override values without editing the file
     --no-hints  --no-ledger
+    --vcd out.vcd                            # logic-analyzer capture of the transient (VCD)
 npx circuitsvibe sweep <bench.ts> --source V1 --from 0 --to 5 --points 51 --probe out,R1.i [--json]
     # DC transfer table (or --param R1 to sweep a component value, --step instead of --points)
 npx circuitsvibe log list --json             # run history (.circuitsvibe/runs.jsonl)
@@ -177,7 +244,7 @@ npx circuitsvibe export <bench.ts> -o x.circuit.json   # language-neutral circui
 npx circuitsvibe verify x.circuit.json --json # a document verifies exactly like its bench
 npx circuitsvibe log show <runId>
 npx circuitsvibe explain F101                # physics + fixes for a code
-npx circuitsvibe catalog [type] [--json]     # components, pins, probe/assertion grammar
+npx circuitsvibe catalog [type] [--json]     # components, ICs (pins, levels per VCC), probe/assertion grammar
 npx circuitsvibe agents                      # print this playbook
 ```
 
@@ -200,6 +267,19 @@ npx circuitsvibe agents                      # print this playbook
 | T003 / T004 | AC assertions without an `ac` stimulus / with several stimuli and no `ref` | add `ac: 1` to the input source / pass `{ ref }` |
 | T010–T014 | invalid circuit document (structure, schema version, unknown type, custom part, bad component) | re-export with `circuitsvibe export`; T013: custom parts cannot be shared |
 | T015–T018 | share link too large / malformed / unknown encoding / long (warning) | send the `.circuit.json` instead; re-copy the full link |
+| F130–F134 | digital lint: floating input, multiple drivers, shorted outputs, zero-delay loop, undriven clock | wire / drive the pin, use a TriBuf or a gate |
+| F135 | IC VCC/GND pin unconnected | wire the supply pins |
+| F136 | two logic outputs on one analog net | one driver per net, or tri-states |
+| F137 | logic input floating at the analog level (warning: unused gate) | drive it or tie it to a rail |
+| F138 | logic output tied to ground / a source / a rail | disconnect it (tie unused INPUTS) |
+| D501–D507 | digital runtime: contention, setup/hold (D502/D503 with `time`), delta limit, X controls | fix timing / drivers |
+| D508 | input between VIL and VIH (op, or longer than the max input transition time) | valid level, faster edge, Schmitt input (74HC14) |
+| D509 | supply outside the recommended range (error above the absolute max) | power within range |
+| D510 | IC unpowered / browned out | stiff supply on VCC |
+| D511 | output current above the absolute maximum (overload, contention) | series resistor, buffer |
+| D512 (warning) | X logic value driving an analog net | fix the upstream X |
+| D513 | input clamp diode overcurrent (input beyond the rails) | series resistor |
+| D514 (warning) | no DC logic state (oscillator) | assert in tran, not op |
 
 When plain Newton fails at DC, the solver retries with gmin stepping and then source
 stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.
@@ -220,5 +300,15 @@ stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.
 - Bench files are CommonJS under the hood: no top-level `await`, no `import.meta`.
   Relative imports of other `.ts` files work.
 - Outputs are deterministic (no timestamps); diff two `--json` runs to see what changed.
-- Not implemented yet (don't use): BJTs, MOSFETs, op-amps, digital logic,
-  microcontrollers, noise analysis.
+- Logic ICs need their **supply pins wired** (F135) and **unused inputs tied** to a rail (F137);
+  an LED on a logic output still needs its resistor (D511: 74HC is 25 mA absolute max).
+- A slow RC edge into a plain 74HC input is D508 (forbidden zone): use a 74HC14.
+- 74HCT is specified for 4.5–5.5 V only (D509 at 3.3 V); 74HC runs 2–6 V; CD4000B 3–18 V.
+- Oscillators (RC + Schmitt, NE555 astable) have no DC state: the op stage reports D514
+  (warning). Assert on them with `tb.expect.logic(...)` / `tb.expect.tran(...)`.
+- `toHaveFrequency` tol is a **fraction**; `toHaveDutyCycle` tol is **absolute**. Measure
+  frequencies with `{ from }` past the start-up (the first 555 period is longer).
+- The NE555 period also depends on the discharge transistor: with a small R1 the
+  discharge node sits at VCC·Ron/(R1+Ron) (≈ 90 mV at 1 kΩ, 5 V) and the period grows a few %.
+- Not implemented yet (don't use): BJTs, MOSFETs, op-amps, microcontrollers in benches,
+  noise analysis.

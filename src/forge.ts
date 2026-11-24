@@ -58,6 +58,37 @@ export type {
 } from './components/waveforms';
 export { waveformValue, waveformNextBreakpoint } from './components/waveforms';
 export { pnjlim, fetlim, limvds, junctionVcrit } from './solver/limiting';
+
+// Mixed-signal: real logic ICs + NE555 (Part), generic logic primitives, logic assertions.
+export { Part } from './elab/part';
+export type { PartOptions } from './elab/part';
+export { icPart, icPartIds } from './mixed/part';
+export {
+  LogicIC,
+  LogicPrimitive,
+  Buf,
+  Not,
+  And,
+  Or,
+  Nand,
+  Nor,
+  Xor,
+  Xnor,
+  TriBuf,
+  Mux,
+  DFF,
+  JKFF,
+  DLatch,
+  Counter,
+  ShiftRegister,
+  Clock,
+  Stimulus,
+  Const,
+  Pull,
+} from './mixed/device';
+export type { IcOptions, BridgeOptions } from './mixed/device';
+export { LogicExpect } from './elab/logic';
+export { toLogicVCD } from './mixed/vcd';
 export { ReactiveState } from './analysis/integration';
 export type { LoadContext, AcLoadContext, StepContext, InitContext, AcceptContext, Phasor } from './analysis/context';
 export { SimulationSystem, TransientEngine, ConvergenceError, TimestepTooSmallError, NoAcModelError } from './analysis/engine';

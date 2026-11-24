@@ -5,6 +5,11 @@ ratings, key electrical characteristics, pinouts and, for discrete semiconductor
 SPICE-style model cards. It contains no simulation code; later phases wire it into device
 models. It has no Node dependencies, so it is safe to use in the browser.
 
+The logic ICs (74HC00/04/14/74/595, 74HCT04, CD4017, CD4011) and the NE555 are simulated
+from these records by src/mixed (`Part('74HC04')` in a bench): pinouts, VIL/VIH or VT+/VT−,
+rOutHigh/rOutLow, tpd, supply ranges and current ratings are read here and interpolated
+over the supply voltage (see src/mixed/README.md and `circuitsvibe catalog <id>`).
+
 ```ts
 import { PARTS, findPart, partsByCategory } from './src/parts';
 

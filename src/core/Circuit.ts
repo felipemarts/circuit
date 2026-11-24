@@ -4,7 +4,7 @@ import { Component } from './Component';
 import { DCAnalysis, type DCResult } from '../analysis/DCAnalysis';
 import { TransientAnalysis, type TransientConfig, type TransientResult, type ProbeSpec } from '../analysis/TransientAnalysis';
 import type { MNAMatrix } from '../solver/MNAMatrix';
-import type { CircuitOrdering } from '../analysis/engine';
+import type { CircuitOrdering, CoSimHook } from '../analysis/engine';
 
 class GroundComponent extends Component {
   constructor() {
@@ -24,6 +24,11 @@ export class Circuit {
    * discovery order.
    */
   _ordering?: CircuitOrdering;
+  /**
+   * @internal Co-simulation hook (mixed-signal benches attach the digital
+   * engine here; see src/mixed). Every analysis of this circuit consults it.
+   */
+  _cosim?: CoSimHook;
 
   constructor() {
     this._groundComponent = new GroundComponent();

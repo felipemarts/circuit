@@ -59,6 +59,9 @@ function solverLine(stage: StageRecord): string | undefined {
   if (s.aids && s.aids.length > 0) {
     return `solver: plain newton failed; converged with ${s.aids[s.aids.length - 1]} (${s.iterations} iterations)`;
   }
+  if (s.runs && s.runs.length > 0 && s.runs.every(r => r.acceptedSteps === 0 && r.digitalEvents !== undefined)) {
+    return `digital engine only (no analog parts): ${s.runs.reduce((n, r) => n + (r.digitalEvents ?? 0), 0)} events`;
+  }
   if (s.runs && s.runs.length > 0) {
     return `solver: ${s.method}, ${s.acceptedSteps} steps accepted, ${s.rejectedSteps} rejected, min step ${formatEng(s.minStep ?? 0, 's')}`;
   }
@@ -85,7 +88,12 @@ function renderFailedAssertion(a: AssertionResult): string[] {
     a.margin !== undefined
       ? ` (outside by ${formatEng(a.margin.outsideBy)}${a.margin.ratio !== undefined ? `, ${a.margin.ratio}x` : ''})`
       : '';
-  const measured = a.measured !== undefined ? `measured ${formatEng(a.measured)}${margin}` : 'not measurable';
+  const measured =
+    a.measuredLogic !== undefined && a.measured === undefined
+      ? `measured ${a.measuredLogic}`
+      : a.measured !== undefined
+        ? `measured ${formatEng(a.measured)}${margin}`
+        : 'not measurable';
   const probe = a.ref ? `${a.probe}/${a.ref}` : a.probe;
   lines.push(`        A301 ${a.id}: ${probe} ${describeCheck(a.check)} — ${measured}`);
   if (a.at) lines.push(`          at ${a.at}`);
@@ -157,5 +165,22 @@ export function describeCheck(check: CheckSpec): string {
       return `ripple below ${formatEng(check.amplitude)}${check.from !== undefined ? ` from ${formatEng(check.from, 's')}` : ''}`;
     case 'finalCloseTo':
       return `ends close to ${formatEng(check.value)} ± ${formatEng(check.tol)}`;
+    case 'logicAt':
+      return `is ${check.value} at t=${formatEng(check.t, 's')}`;
+    case 'logicEdges': {
+      const n = check.count !== undefined ? `exactly ${check.count}` : check.max === undefined ? `at least ${check.min}` : check.min === undefined ? `at most ${check.max}` : `${check.min}–${check.max}`;
+      return `toggles ${n} times (${check.edge} edges)${logicWindow(check.from, check.to)} (measured: edges)`;
+    }
+    case 'logicFrequency':
+      return `frequency ${formatEng(check.value, 'Hz')} ± ${Number((check.tol * 100).toPrecision(3))}%${logicWindow(check.from, check.to)}`;
+    case 'logicDutyCycle':
+      return `duty cycle ${check.value} ± ${check.tol}${logicWindow(check.from, check.to)}`;
+    case 'logicStable':
+      return `stable${check.value !== undefined ? ` at ${check.value}` : ''} from ${formatEng(check.from, 's')} to ${formatEng(check.to, 's')}`;
   }
+}
+
+function logicWindow(from?: number, to?: number): string {
+  if (from === undefined && to === undefined) return '';
+  return ` in [${formatEng(from ?? 0, 's')}, ${to !== undefined ? formatEng(to, 's') : 'tstop'}]`;
 }

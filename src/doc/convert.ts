@@ -1,5 +1,6 @@
 import { elaborate, type BenchDescriptor, type TB } from '../elab/bench';
 import { buildComponent, kindOf } from '../elab/describe';
+import { isLogicCheck } from '../elab/logic';
 import type { Component } from '../core/Component';
 import type { ComponentDef } from '../core/CustomComponent';
 import type { Pin } from '../core/Pin';
@@ -215,6 +216,15 @@ function applyScalar<P>(target: ScalarTarget<P>, check: ScalarCheck): void {
   }
 }
 
+/** Key order of each logic check as src/elab/logic.ts records it. */
+const LOGIC_KEY_ORDER: Record<string, string[]> = {
+  logicAt: ['op', 't', 'value'],
+  logicEdges: ['op', 'edge', 'from', 'to', 'count', 'min', 'max'],
+  logicFrequency: ['op', 'value', 'tol', 'from', 'to'],
+  logicDutyCycle: ['op', 'value', 'tol', 'from', 'to'],
+  logicStable: ['op', 'from', 'to', 'value'],
+};
+
 function replayAssertion(tb: TB, a: AssertionSpec): void {
   const ch = a.check;
   switch (a.stage) {
@@ -255,6 +265,16 @@ function replayAssertion(tb: TB, a: AssertionSpec): void {
       break;
     }
     case 'tran': {
+      if (isLogicCheck(ch)) {
+        // Logic checks are plain data already validated against the document
+        // schema; record them directly, in the key order the fluent API emits
+        // (RunRecords are compared byte for byte), on the DSL-normalized window.
+        const order = LOGIC_KEY_ORDER[ch.op] ?? [];
+        const src = ch as unknown as Record<string, unknown>;
+        const check = Object.fromEntries(order.filter(k => src[k] !== undefined).map(k => [k, src[k]]));
+        tb._record('tran', a.probe, check as typeof ch, { tran: tb.expect.tran(a.tran!)._config });
+        return;
+      }
       const p = tb.expect.tran(a.tran!).probe(a.probe);
       const from = (f: number | undefined) => (f !== undefined ? { from: f } : undefined);
       switch (ch.op) {
