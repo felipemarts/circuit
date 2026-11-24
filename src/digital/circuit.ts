@@ -330,7 +330,7 @@ export class DigitalCircuit {
     const r = resolveNetlist(n);
     const c = new DigitalCircuit();
     for (const i of r.inputs) c.input(i.net, { initial: i.initial, strength: i.strength });
-    for (const comp of r.components) c.add(comp.id, partFromJSON(comp.type, comp.params));
+    for (const comp of r.components) c.add(comp.id, partFromJSON(comp.type, comp.params), {}, comp.at !== undefined ? { at: comp.at } : {});
     for (const comp of r.components) {
       for (const [pin, net] of Object.entries(comp.pins)) {
         // Auto nets are named after one of their pins ('U1.y'): connect to that pin.
