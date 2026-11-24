@@ -44,3 +44,13 @@ describe('formatEng', () => {
     expect(formatEng(1e-6)).toBe('1u');
   });
 });
+
+describe('parseValue decimal exactness', () => {
+  it('scales by powers of ten in decimal, so suffixed values equal their literal', () => {
+    expect(parseValue('10u')).toBe(1e-5);
+    expect(parseValue('100n')).toBe(1e-7);
+    expect(parseValue('4.7k')).toBe(4700);
+    expect(parseValue('2.2M')).toBe(2.2e6);
+    expect(parseValue('1e-3k')).toBe(1);
+  });
+});

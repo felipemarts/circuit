@@ -18,6 +18,20 @@ const MULTIPLIERS: Record<string, number> = {
   f: 1e-15,
 };
 
+const EXPONENTS: Record<string, number> = {
+  T: 12,
+  G: 9,
+  M: 6,
+  k: 3,
+  K: 3,
+  m: -3,
+  u: -6,
+  'µ': -6,
+  n: -9,
+  p: -12,
+  f: -15,
+};
+
 const VALUE_RE = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([TGMkKmuµnpf])?\s*(A|V|F|H|s|Hz|Ohm|ohm|Ω)?$/;
 
 export function parseValue(input: number | string, what = 'value'): number {
@@ -33,9 +47,9 @@ export function parseValue(input: number | string, what = 'value'): number {
       `invalid ${what} '${input}': expected a number with optional engineering suffix, e.g. '4.7k', '10m', '2u', '1e-6'`,
     );
   }
-  const base = Number(m[1]);
-  const mult = m[2] ? MULTIPLIERS[m[2]] : 1;
-  const value = base * mult;
+  // Scale in decimal ('10u' → 1e-5 exactly, not 10 × 1e-6 = 9.999…e-6).
+  const exponent = m[2] ? EXPONENTS[m[2]] : 0;
+  const value = /[eE]/.test(m[1]) || exponent === 0 ? Number(m[1]) * (m[2] ? MULTIPLIERS[m[2]] : 1) : Number(`${m[1]}e${exponent}`);
   if (!Number.isFinite(value)) {
     throw new Error(`invalid ${what} '${input}': not a finite number`);
   }
