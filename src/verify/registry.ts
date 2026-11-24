@@ -10,7 +10,9 @@
  *   T0xx  tooling / bench authoring
  *   M6xx  MCU / firmware runtime (M601–M649)
  *   F14x  firmware lint (F140–F149)
+ *   F12x  op-amp / comparator lint (F120–F124) · R42x op-amp ratings (R420–R425)
  */
+import { AMPLIFIER_DIAGNOSTIC_DOCS } from '../opamps/registry';
 
 export interface DiagnosticDoc {
   code: string;
@@ -1077,6 +1079,8 @@ is X or Z — typically an integer input port that the testbench does not drive
 on every bit, or contention — the value cannot be represented and reads as
 the subtype's lowest value / the first literal / false. Drive every bit.`,
   },
+  // ── op-amps and comparators (src/opamps): F120–F124 lint, R420–R425 datasheet checks ──
+  ...AMPLIFIER_DIAGNOSTIC_DOCS,
 ];
 
 export function findDiagnosticDoc(code: string): DiagnosticDoc | undefined {

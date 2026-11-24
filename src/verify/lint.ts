@@ -2,6 +2,7 @@ import type { Elaboration } from '../elab/bench';
 import type { Diagnostic } from '../schema/types';
 import { conductsAtDC, isDCVoltageSourceEdge, describeComponent } from '../elab/describe';
 import type { Component } from '../core/Component';
+import { amplifierDcGroups, amplifierInputRefs, floatingInputDiagnostic, isOptionalOpenPin, lintAmplifiers } from '../opamps/lint';
 
 /**
  * L0 — structural lint. Pure graph analysis over the elaborated netlist,
@@ -73,10 +74,37 @@ export function runLint(elab: Elaboration): Diagnostic[] {
   const reachedComps = all.comps;
 
   // ── F101: nets with no DC path to ground (islands isolated by caps/current sources) ──
-  const dc = reach(id => reachedComps.has(id) && conductsAtDC(compOf(id)));
+  // Nets each component connects at DC: all its pins, or for op-amps and
+  // comparators only the output (inputs and supply pins carry no DC path).
+  const dcGroupsOf = (id: string): string[][] => {
+    const amp = amplifierDcGroups(byId.get(id)!);
+    if (amp) return amp;
+    return conductsAtDC(compOf(id)) ? [netsOf(id)] : [];
+  };
+  const dc = (() => {
+    const nets = new Set<string>(['gnd']);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const id of ids) {
+        if (!reachedComps.has(id)) continue;
+        for (const g of dcGroupsOf(id)) {
+          if (g.some(n => nets.has(n)) && g.some(n => !nets.has(n))) {
+            for (const n of g) nets.add(n);
+            changed = true;
+          }
+        }
+      }
+    }
+    return { nets };
+  })();
   const reachedNets = new Set<string>(['gnd']);
   for (const id of reachedComps) for (const n of netsOf(id)) reachedNets.add(n);
-  const floating = [...reachedNets].filter(n => !dc.nets.has(n)).sort();
+  // An IdealOpAmp's unused supply pins (both open) are not floating nets.
+  const optionalOpen = new Set(
+    doc.components.flatMap(c => Object.entries(c.pins).filter(([pin]) => isOptionalOpenPin(c, pin, doc.nets)).map(([, net]) => net)),
+  );
+  const floating = [...reachedNets].filter(n => !dc.nets.has(n) && !optionalOpen.has(n)).sort();
 
   if (floating.length > 0) {
     // Group floating nets into islands via components whose nets are all floating.
@@ -91,12 +119,13 @@ export function runLint(elab: Elaboration): Diagnostic[] {
       // Group only through DC-conducting parts: a capacitor bridging two
       // floating nets does NOT make them one DC island, and merging them
       // would produce a single diagnostic whose one fix can't fix both.
-      if (!conductsAtDC(compOf(id))) continue;
-      const cNets = netsOf(id).filter(n => parent.has(n));
-      for (let i = 1; i < cNets.length; i++) {
-        const a = find(cNets[0]);
-        const b = find(cNets[i]);
-        if (a !== b) parent.set(b, a);
+      for (const g of dcGroupsOf(id)) {
+        const cNets = g.filter(n => parent.has(n));
+        for (let i = 1; i < cNets.length; i++) {
+          const a = find(cNets[0]);
+          const b = find(cNets[i]);
+          if (a !== b) parent.set(b, a);
+        }
       }
     }
     const islands = new Map<string, string[]>();
@@ -107,6 +136,11 @@ export function runLint(elab: Elaboration): Diagnostic[] {
     for (const nets of [...islands.values()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
       const pins = nets.flatMap(n => doc.nets[n] ?? []).sort();
       const exampleRef = pins[0];
+      const ampInputs = amplifierInputRefs(elab, pins);
+      if (ampInputs.length > 0) {
+        diagnostics.push(floatingInputDiagnostic(elab, nets, pins, ampInputs));
+        continue;
+      }
       diagnostics.push({
         code: 'F101',
         slug: 'floating-net',
@@ -273,7 +307,7 @@ export function runLint(elab: Elaboration): Diagnostic[] {
   for (const comp of doc.components) {
     if (!reachedComps.has(comp.id)) continue;
     const dangling = Object.entries(comp.pins)
-      .filter(([, net]) => net !== 'gnd' && (doc.nets[net] ?? []).length === 1)
+      .filter(([pin, net]) => net !== 'gnd' && (doc.nets[net] ?? []).length === 1 && !isOptionalOpenPin(comp, pin, doc.nets))
       .map(([pin]) => pin)
       .sort();
     if (dangling.length > 0) {
@@ -292,6 +326,9 @@ export function runLint(elab: Elaboration): Diagnostic[] {
       });
     }
   }
+
+  // ── F120–F124: op-amps and comparators ──
+  diagnostics.push(...lintAmplifiers(elab, reachedComps));
 
   return diagnostics;
 }
