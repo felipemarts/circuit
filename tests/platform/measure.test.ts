@@ -81,3 +81,34 @@ describe('waveform checks (tran)', () => {
     ).toThrow(/no samples/);
   });
 });
+
+describe('waveform checks on non-uniform samples (adaptive steps)', () => {
+  // A ramp 0 → 10 over [0, 1] sampled at irregular instants.
+  const t = [0, 0.05, 0.4, 0.41, 0.9, 1, 2, 5];
+  const y = [0, 0.5, 4, 4.1, 9, 10, 10, 10];
+  const wf = { t, y };
+
+  it('settle time is the interpolated band entry, not the next sample', () => {
+    const r = evaluateTranCheck({ op: 'settleWithin', target: 10, tol: 0.05, by: 4 }, wf, 5);
+    expect(r.pass).toBe(true);
+    expect(r.measured).toBeCloseTo(0.95, 12); // enters 9.5 at t = 0.95 (between the 0.9 and 1 samples)
+  });
+
+  it('neverExceed reports the interpolated crossing time', () => {
+    const r = evaluateTranCheck({ op: 'neverExceed', value: 2 }, wf, 5);
+    expect(r.pass).toBe(false);
+    expect(r.tFirstViolation).toBeCloseTo(0.2, 12);
+  });
+
+  it('stayAbove/stayBelow/ripple windows start at the interpolated value at `from`', () => {
+    // from = 0.2 falls between samples; the signal there is 2 (not the next sample's 4).
+    const above = evaluateTranCheck({ op: 'stayAbove', value: 3, from: 0.2 }, wf, 5);
+    expect(above.pass).toBe(false);
+    expect(above.measured).toBeCloseTo(2, 12);
+    expect(above.tFirstViolation).toBeCloseTo(0.2, 12);
+    const ripple = evaluateTranCheck({ op: 'rippleBelow', amplitude: 1, from: 0.95 }, wf, 5);
+    expect(ripple.measured).toBeCloseTo(0.5, 12); // 9.5 at 0.95 up to 10
+    const below = evaluateTranCheck({ op: 'stayBelow', value: 9, from: 0.2 }, wf, 5);
+    expect(below.tFirstViolation).toBeCloseTo(0.9, 12);
+  });
+});
