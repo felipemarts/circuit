@@ -11,6 +11,7 @@ import { Button } from '../components/Button';
 import { CustomComponent, type ComponentDef } from '../core/CustomComponent';
 import type { SourceOptions } from '../components/source';
 import type { ParamValue } from '../schema/types';
+import { buildMixedComponent } from '../mixed/device';
 
 export interface ComponentInfo {
   type: string;
@@ -51,6 +52,14 @@ export function describeComponent(comp: Component): ComponentInfo {
       return { type: 'Switch', params: { closed: (comp as Switch).closed } };
     case 'Button':
       return { type: 'Button', params: { pressed: (comp as Button).pressed } };
+    case 'IC': {
+      const ic = comp as unknown as { partId: string; describeParams(): Record<string, ParamValue> };
+      return { type: ic.partId, params: ic.describeParams() };
+    }
+    case 'LogicPrimitive': {
+      const lp = comp as unknown as { logicType: string; describeParams(): Record<string, ParamValue> };
+      return { type: lp.logicType, params: lp.describeParams() };
+    }
     default: {
       // defineComponent parts carry their params in _params; without them,
       // electrically different custom circuits would share a netlist hash.
@@ -167,6 +176,8 @@ export function buildComponent(
     case 'Button':
       return new Button(params.pressed === true);
     default: {
+      const mixed = customDefs[type] ? undefined : buildMixedComponent(type, params);
+      if (mixed) return mixed;
       const def = customDefs[type];
       if (!def) throw new Error(`cannot rebuild component type '${type}': unknown type (pass its definition in customDefs)`);
       const p: Record<string, number> = {};

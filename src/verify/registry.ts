@@ -8,6 +8,8 @@
  *   S2xx  nonlinear solver (Newton-Raphson), transient stepping, AC models
  *   A3xx  assertion outcomes
  *   T0xx  tooling / bench authoring
+ *   D5xx  digital runtime (D501–D507 engine, D508–D549 mixed-signal bridges)
+ *   F13x  digital lint (F130–F134 engine, F135–F139 bench level)
  *   M6xx  MCU / firmware runtime (M601–M649)
  *   F14x  firmware lint (F140–F149)
  */
@@ -367,6 +369,170 @@ active drivers of a net, so it sits at the divider midpoint — neither 0 nor
 This is a warning.
 
 Fix: keep a single Pull per net.`,
+  },
+  // ── mixed-signal (src/mixed): F135–F139 bench-level digital lint, D508–D549 bridge runtime ──
+  {
+    code: 'F135',
+    slug: 'ic-supply-unconnected',
+    title: 'IC supply pin (VCC/GND) unconnected or shorted to the other',
+    explanation: `A real IC (Part('74HC00'), Part('NE555'), ...) is powered only through its
+supply pins: every input threshold, output level and drive current is
+referenced to V(VCC) - V(GND). An IC whose VCC (VDD) or GND (VSS) pin is
+not connected — or whose VCC and GND sit on the same net — has no supply,
+so the bench is structurally wrong before any solve.
+
+Fix (mechanical): connect the VCC pin to the supply's + terminal and the
+GND pin to tb.gnd: u1.pin('VCC').connect(v1.pin('+')); u1.pin('GND').connect(tb.gnd).`,
+  },
+  {
+    code: 'F136',
+    slug: 'outputs-tied',
+    title: 'two push-pull logic outputs on one analog net',
+    explanation: `Two logic outputs (IC pins or bridged primitives) drive the same analog
+net and at least one is push-pull. Whenever they disagree the supply is
+shorted through both output stages — contention through the analog net —
+and the level is set by the ratio of their output resistances. (The
+digital-only counterpart on pure-digital nets is F131.)
+
+Fixes: keep one driver per net; combine the signals with a gate; for a
+shared bus use tri-state outputs (74HC595 QA–QH, TriBuf) with mutually
+exclusive enables.`,
+  },
+  {
+    code: 'F137',
+    slug: 'floating-logic-input',
+    title: 'logic input with nothing that sets its voltage',
+    explanation: `A logic input pin (IC input, NE555 TRIG/THRES/RESET, or a bridged primitive
+input) is on an analog net where nothing defines the voltage: no output, no
+resistor/source/diode/switch path, only other inputs or capacitors. A
+floating CMOS input drifts to an undefined level — the logic value is
+unknown, the input can oscillate and draw shoot-through current.
+
+Severity: error, except for inputs of an UNUSED section of a multi-gate IC
+(e.g. gates 2–4 of a 74HC00 whose outputs are also open), which is a warning:
+the simulator holds them low, but the datasheet still requires tying them.
+
+Fixes: drive the input from an output, or tie it to a rail directly or
+through a pull-up/pull-down resistor (mechanical for unused sections: tie
+them to tb.gnd).`,
+  },
+  {
+    code: 'F138',
+    slug: 'output-on-rail',
+    title: 'logic output tied to ground or to an ideal source',
+    explanation: `A logic output pin is wired to ground, to an IC supply rail or to the
+terminal of an ideal voltage source. Whenever it drives the opposite level
+the current is limited only by its output resistance (tens of ohms) — far
+above the absolute maximum, and the source wins the level anyway.
+
+Fix: disconnect the output. To tie off an unused gate, tie its INPUTS to a
+rail and leave its output open.`,
+  },
+  {
+    code: 'D508',
+    slug: 'input-forbidden-zone',
+    title: 'logic input between VIL and VIH for too long',
+    explanation: `A non-Schmitt logic input sat between the datasheet VIL(max) and VIH(min)
+of its family at its actual supply (e.g. 74HC at 5 V: 1.5 V and 3.5 V):
+  - at the operating point (static: the input is stuck there), or
+  - in the transient, for longer than the datasheet's maximum input
+    transition time at that supply (74HC: 1000/500/400 ns at 2/4.5/6 V,
+    interpolated; 74HCT: 500 ns). Parts without a stated limit (CD4011)
+    are checked only at the operating point.
+In that zone both input transistors conduct: the level is undefined, the
+gate can oscillate on a slow edge and draws shoot-through current.
+
+Model: a rising input is recognised at VIH, a falling one at VIL (the
+guaranteed levels); between them the previous value is held.
+
+Fixes: drive the pin to a valid level (check the divider or pull resistor);
+speed up the edge; or square up slow signals with a Schmitt-trigger input
+(Part('74HC14'); the CD4017 CLOCK pin is a Schmitt input too).`,
+  },
+  {
+    code: 'D509',
+    slug: 'supply-out-of-range',
+    title: 'IC supply outside its operating range',
+    explanation: `V(VCC) - V(GND) of an IC is outside the datasheet's recommended operating
+range (74HC 2–6 V, 74HCT 4.5–5.5 V, CD4000B 3–18 V, NE555 4.5–16 V):
+  - warning when it is still below the absolute maximum: thresholds, drive
+    and delays are extrapolated from the datasheet points and not guaranteed;
+  - error above the absolute maximum (74HC 7 V, CD4000B 20 V, NE555 18 V) or
+    below -0.5 V (reversed supply): the part would be damaged.
+Checked at the operating point and at every accepted transient step
+(reported once per IC, with time).
+
+Fix: power the IC from its recommended range (use 74HC instead of 74HCT
+below 4.5 V).`,
+  },
+  {
+    code: 'D510',
+    slug: 'ic-unpowered',
+    title: 'IC unpowered (supply below half the minimum operating voltage)',
+    explanation: `The IC's supply is below half its minimum recommended operating voltage
+(74HC: 1 V, CD4000B: 1.5 V, NE555: 2.25 V — a model threshold). Below that
+the outputs are modeled high-Z and the IC does nothing useful.
+  - op stage: warning (the operating point is computed with the outputs off;
+    a power-up ramp from 0 V legitimately starts there);
+  - tran stage: error when the IC was never powered during the run, or lost
+    its supply after being powered (brown-out, with the time).
+
+Fixes: connect VCC to a stiff supply; do not feed an IC through a large
+series resistor; reduce the load on its outputs.`,
+  },
+  {
+    code: 'D511',
+    slug: 'output-overcurrent',
+    title: 'logic output current above the absolute maximum (overload or contention)',
+    explanation: `An output pin sources or sinks more than the datasheet absolute maximum
+(74HC/74HCT: 25 mA per pin, 74HC595: 35 mA, NE555: 225 mA; CD4000B: more
+than its 100 mW per output transistor). Measured from the output-stage
+model (Rout from the datasheet VOH/VOL rows) at the operating point and at
+every accepted transient step.
+
+When another output on the same analog net drives the opposite level the
+message names both: that is contention through the analog net.
+
+Fixes: add a series resistor (an LED needs one even on a logic output);
+buffer high loads with a transistor; never tie push-pull outputs together.`,
+  },
+  {
+    code: 'D512',
+    slug: 'unknown-output',
+    title: 'an X (unknown) logic value drives an analog net',
+    explanation: `An IC or bridged primitive output pin connected to an analog net carries X
+(unknown). The output stage is modeled half-on — a mid-rail level — which a
+real part could resolve either way. X comes from undefined inputs
+(floating, contention), setup/hold violations (D502/D503) or an
+uninitialized feedback loop. Warning; look for the upstream cause.`,
+  },
+  {
+    code: 'D513',
+    slug: 'input-clamp-overcurrent',
+    title: 'input protection-diode current above the absolute maximum',
+    explanation: `A CMOS input is driven beyond its rails (above VCC or below GND) and its
+ESD protection diode conducts more than the datasheet |IIK| absolute
+maximum (74HC: 20 mA). Inputs are modeled with clamp diodes to VCC and GND
+(Part(id, { clamp: false }) removes them). Large clamp currents cause
+latch-up and can back-power an unpowered IC through its input.
+
+Fixes: add a series resistor (e.g. 10k) in front of the input; keep the
+driving signal within 0..VCC; power the IC before driving its inputs.`,
+  },
+  {
+    code: 'D514',
+    slug: 'no-static-logic-state',
+    title: 'no consistent DC logic state (the circuit oscillates)',
+    explanation: `At a DC point (operating point, DC sweep, transient t = 0) the logic
+outputs are held at fixed levels consistent with the analog solution:
+solve, re-classify every input, power the logic on with those inputs,
+update the outputs, repeat. If the outputs keep changing the inputs that set
+them (an RC oscillator around an inverter, a 555 astable — capacitors are
+open at DC) there is no such state. Warning: the reported operating-point
+values use the outputs of the last pass.
+
+Fix: assert on oscillators in the transient (tb.expect.tran / tb.expect.logic,
+with ic: 'zero'), not at the operating point.`,
   },
   // ── M6xx: MCU / firmware runtime ──
   {

@@ -10,6 +10,8 @@ import { init } from './init';
 import AGENTS_MD from '../../AGENTS.md';
 import { STAGE_ORDER, type StageName } from '../schema/types';
 import { sweepBench, renderSweepTable } from './sweep';
+import { toLogicVCD } from '../mixed/vcd';
+import { writeFileSync } from 'node:fs';
 
 const USAGE = `${CLI} — circuits as code; simulation is the feedback loop (${ENGINE})
 
@@ -31,6 +33,7 @@ VERIFY OPTIONS
   --json                 emit the full RunRecord as JSON on stdout
   --no-hints             skip verified sizing hints (faster)
   --no-ledger            do not append this run to ${LEDGER_DIR}/runs.jsonl
+  --vcd out.vcd          write the logic-analyzer capture of the transient (VCD, GTKWave)
 
 EXIT CODES
   0  all requested stages pass
@@ -41,7 +44,7 @@ EXIT CODES
 EXAMPLE
   ${CLI} init led-driver && ${CLI} verify led-driver.bench.ts --json`;
 
-const VALUE_OPTIONS = ['--source', '--param', '--from', '--to', '--points', '--step', '--probe'];
+const VALUE_OPTIONS = ['--source', '--param', '--from', '--to', '--points', '--step', '--probe', '--vcd'];
 
 interface Flags {
   json: boolean;
@@ -162,6 +165,23 @@ async function verify(flags: Flags): Promise<number> {
     overrides: flags.overrides,
     hints: flags.hints,
   });
+
+  if (flags.options.vcd !== undefined) {
+    const caps = record.stages.tran?.logic ?? [];
+    if (caps.length === 0) {
+      console.error(`warning: --vcd: no logic capture in this run (no tran stage with logic signals) — nothing written`);
+    } else {
+      // One transient configuration per file: out.vcd, then out.2.vcd, …
+      caps.forEach((cap, i) => {
+        const path = i === 0 ? flags.options.vcd : flags.options.vcd.replace(/(\.vcd)?$/i, `.${i + 1}.vcd`);
+        try {
+          writeFileSync(path, toLogicVCD(cap));
+        } catch (err) {
+          console.error(`warning: --vcd: cannot write ${path}: ${err instanceof Error ? err.message : err}`);
+        }
+      });
+    }
+  }
 
   let runId: string | undefined;
   if (flags.ledger) {
@@ -314,7 +334,8 @@ function catalog(flags: Flags): number {
     return 0;
   }
   for (const e of entries) {
-    console.log(`${e.type}\n  example: ${e.example}\n  pins:    ${e.pins}\n  value:   ${e.value}\n  dc:      ${e.dc}\n`);
+    const details = (e.details ?? []).map(d => `\n  ${d}`).join('');
+    console.log(`${e.type}\n  example: ${e.example}\n  pins:    ${e.pins}\n  value:   ${e.value}\n  dc:      ${e.dc}${details}\n`);
   }
   if (!type) console.log(GRAMMAR_NOTES);
   return 0;

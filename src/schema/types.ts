@@ -81,7 +81,30 @@ export type CheckSpec =
   | { op: 'stayAbove'; value: number; from?: number }
   | { op: 'stayBelow'; value: number; from?: number }
   | { op: 'rippleBelow'; amplitude: number; from?: number }
-  | { op: 'finalCloseTo'; value: number; tol: number };
+  | { op: 'finalCloseTo'; value: number; tol: number }
+  // Logic (digital) checks — tran stage, on logic probes (tb.expect.logic)
+  | { op: 'logicAt'; t: number; value: LogicLevel }
+  | { op: 'logicEdges'; edge: 'rising' | 'falling' | 'both'; from?: number; to?: number; count?: number; min?: number; max?: number }
+  | { op: 'logicFrequency'; value: number; tol: number; from?: number; to?: number }
+  | { op: 'logicDutyCycle'; value: number; tol: number; from?: number; to?: number }
+  | { op: 'logicStable'; from: number; to: number; value?: LogicLevel };
+
+/** A logic value: 0, 1, unknown 'X' or high-impedance 'Z'. */
+export type LogicLevel = 0 | 1 | 'X' | 'Z';
+
+/** Logic-analyzer data of one transient run: value-change lists per signal. */
+export interface LogicCapture {
+  /** Transient configuration label (same as the probe keys). */
+  config: string;
+  /** Simulated end time (s). */
+  tEnd: number;
+  /** signal → [[t, value], …]; the first entry (t = 0) is the power-on value. */
+  signals: Record<string, [number, LogicLevel][]>;
+  /** Signals cut at the per-signal change limit. */
+  truncated?: string[];
+  /** Digital events processed. */
+  events?: number;
+}
 
 export interface AssertionSpec {
   id: string;
@@ -178,6 +201,8 @@ export interface AssertionResult {
   note?: string;
   /** Sweep value of the first violation (dc: x, ac: Hz). */
   xFirstViolation?: number;
+  /** Logic assertions: the logic value measured (when it is not a number, e.g. 'X'). */
+  measuredLogic?: LogicLevel;
 }
 
 export interface NetlistComponent {
@@ -210,6 +235,8 @@ export interface StageRecord {
   probes?: Record<string, number>;
   solver?: SolverRecord;
   assertions?: AssertionResult[];
+  /** tran: logic-analyzer capture per transient run (mixed-signal / digital benches). */
+  logic?: LogicCapture[];
 }
 
 export interface SolverAttempt {
@@ -251,6 +278,10 @@ export interface TranRunTelemetry {
   maxStepTaken: number;
   breakpoints: number;
   newtonIterations: number;
+  /** Mixed-signal: step attempts cut back to a logic threshold crossing. */
+  eventCuts?: number;
+  /** Mixed-signal / digital: digital events processed. */
+  digitalEvents?: number;
 }
 
 export interface RunRecord {

@@ -11,11 +11,20 @@ import type { Component } from '../core/Component';
 export function runLint(elab: Elaboration): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const doc = elab.netlist;
-  const ids = doc.components.map(c => c.id);
+  const mixed = elab.mixed;
+  // Logic primitives that touch no analog net are the digital lint's business (F130–F134).
+  const ids = doc.components.map(c => c.id).filter(id => !mixed?.digitalOnlyComps.has(id));
   const byId = new Map(doc.components.map(c => [c.id, c]));
   const compOf = (id: string): Component => elab.components.get(id)!;
+  const isLogicPrimitive = (id: string): boolean => (compOf(id) as { kind?: string }).kind === 'LogicPrimitive';
 
-  const netsOf = (id: string): string[] => [...new Set(Object.values(byId.get(id)!.pins))];
+  // A bridged logic primitive is referenced to the ground (ideal rails); its pure-digital nets are not analog.
+  const netsOf = (id: string): string[] => {
+    const nets = [...new Set(Object.values(byId.get(id)!.pins))];
+    if (!mixed?.devices.has(id)) return nets;
+    const analog = nets.filter(n => !mixed.pureNets.has(n));
+    return isLogicPrimitive(id) ? [...new Set([...analog, 'gnd'])] : analog;
+  };
 
   // Fixpoint reachability from gnd over components passing the filter.
   const reach = (filter: (id: string) => boolean): { nets: Set<string>; comps: Set<string> } => {
@@ -272,6 +281,8 @@ export function runLint(elab: Elaboration): Diagnostic[] {
   // ── F106: dangling pins (warning) ──
   for (const comp of doc.components) {
     if (!reachedComps.has(comp.id)) continue;
+    // IC / logic pins are checked by the mixed-signal lint (F135, F137): open outputs are fine.
+    if (mixed?.devices.has(comp.id)) continue;
     const dangling = Object.entries(comp.pins)
       .filter(([, net]) => net !== 'gnd' && (doc.nets[net] ?? []).length === 1)
       .map(([pin]) => pin)
@@ -293,5 +304,6 @@ export function runLint(elab: Elaboration): Diagnostic[] {
     }
   }
 
+  if (mixed) diagnostics.push(...mixed.lint);
   return diagnostics;
 }

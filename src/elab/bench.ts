@@ -7,6 +7,8 @@ import { fnv1a64 } from './hash';
 import { captureLoc } from './loc';
 import { describeComponent, rebuildWithValue, isOverridable, kindOf } from './describe';
 import { DcExpect, AcExpect, type DcSweepInput, type AcSweepInput } from './expect';
+import { LogicExpect, isLogicCheck } from './logic';
+import { elaborateMixed, type MixedInfo } from '../mixed/elab';
 import type {
   AcSweepConfig,
   AssertionSpec,
@@ -61,6 +63,8 @@ export class TB {
   _overrides: Record<string, number>;
   /** @internal */
   _instances = new Set<Component>();
+  /** @internal config of the last tb.expect.tran(...) (default window of tb.expect.logic). */
+  _lastTran?: TranConfig;
 
   constructor(circuit: Circuit, overrides: Record<string, number> = {}) {
     this._circuit = circuit;
@@ -148,6 +152,19 @@ export class TB {
     ac: (config: AcSweepInput): AcExpect => new AcExpect(this, config),
     /** Transient assertions (adaptive trapezoidal; `dt` is the initial step and the step ceiling). */
     tran: (config: TranInput): TranExpect => new TranExpect(this, config),
+    /**
+     * Logic assertions on a digital net, an IC pin ('U1.3Y', 'U1.pin6') or a
+     * primitive pin, over a transient run (`config`, default: the window of
+     * the last tb.expect.tran(...) / tb.expect.logic(..., config) call).
+     */
+    logic: (probe: string, config?: TranInput): LogicExpect => {
+      const tran = config ? normalizeTran(config) : this._lastTran;
+      if (config) this._lastTran = tran;
+      if (!tran) {
+        throw new Error(`tb.expect.logic('${probe}') needs a simulation window: tb.expect.logic('${probe}', { tstop: '1m' }) (or declare tb.expect.tran({...}) first)`);
+      }
+      return new LogicExpect(this, tran, probe);
+    },
   };
 
   /** @internal */
@@ -263,10 +280,16 @@ export class TranExpect {
 
   constructor(private tb: TB, config: TranInput) {
     this._config = normalizeTran(config);
+    tb._lastTran = this._config;
   }
 
   probe(probe: string): TranProbeExpect {
     return new TranProbeExpect(this.tb, this, probe);
+  }
+
+  /** Logic assertions on a signal of this transient run. */
+  logic(probe: string): LogicExpect {
+    return new LogicExpect(this.tb, this._config, probe);
   }
 }
 
@@ -276,6 +299,11 @@ export class TranProbeExpect {
   /** Assert on a different probe of the same transient run. */
   probe(probe: string): TranProbeExpect {
     return this.parent.probe(probe);
+  }
+
+  /** Logic assertions on a signal of the same transient run. */
+  logic(probe: string): LogicExpect {
+    return this.parent.logic(probe);
   }
 
   /** Settles into target ± tol (fraction) no later than `by`, and stays there. */
@@ -366,6 +394,8 @@ export interface Elaboration {
   refOf: Map<Pin, string>;
   /** net name -> member pins */
   netPins: Map<string, Pin[]>;
+  /** Mixed-signal plan (logic ICs / primitives), when the bench has any. */
+  mixed?: MixedInfo;
 }
 
 function stableStringify(value: unknown): string {
@@ -539,10 +569,21 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
     netPins.set(name, pins);
   }
 
+  // Mixed-signal devices: bridges, digital netlist, bench-level digital lint.
+  const mixed = elaborateMixed({
+    components: tb._components,
+    netOf: pin => nodeName.get(pin.node)!,
+    netPins,
+    netNode,
+    locOf: tb._locOf,
+    userNets: new Set(tb._namedNets.map(n => n.name)),
+  });
+
   // Validate probes now that nets are named.
   const knownNets = [...netNode.keys()].filter(n => n === 'gnd' || !/^n\d+$/.test(n));
   const validateProbe = (probe: string, at: string | undefined): void => {
     const where = at ? ` at ${at}` : '';
+    if (mixed?.pinNode(probe)) return; // IC / bridged primitive pin: its node voltage
     const m = probe.match(COMPONENT_PROBE_RE);
     if (m) {
       const comp = tb._components.get(m[1]);
@@ -573,7 +614,18 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
       `unknown probe '${probe}'${where}: use '<id>.i' / '<id>.v', or a net named via tb.name(...). Named nets: ${knownNets.join(', ') || '(none)'}`,
     );
   };
+  const validateLogicProbe = (probe: string, at: string | undefined): void => {
+    if (mixed?.logicSignal(probe)) return;
+    const where = at ? ` at ${at}` : '';
+    throw new Error(
+      `unknown logic probe '${probe}'${where}: use a net named via tb.name(...) that a logic pin is on, or an IC/logic pin ref like 'U1.1Y' / 'U1.pin3' / 'G1.q'`,
+    );
+  };
   for (const a of tb._assertions) {
+    if (isLogicCheck(a.check)) {
+      validateLogicProbe(a.probe, a.at);
+      continue;
+    }
     validateProbe(a.probe, a.at);
     if (a.ref !== undefined) validateProbe(a.ref, a.at);
     if (a.dc) {
@@ -623,6 +675,7 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
   const nodeKey = new Map<Node, string>();
   for (const [name, node] of netNode) nodeKey.set(node, name);
   circuit._ordering = { componentKey: new Map(idOf), nodeKey };
+  if (mixed && !mixed.digitalOnly) circuit._cosim = mixed.controller;
 
   return {
     desc,
@@ -637,5 +690,6 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
     netNode,
     refOf,
     netPins,
+    ...(mixed ? { mixed } : {}),
   };
 }
