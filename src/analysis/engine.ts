@@ -163,6 +163,7 @@ export class SimulationSystem {
 
   private stamp = 0;
   private touched: ReactiveState[] = [];
+  private work: Float64Array[];
   private released = false;
 
   constructor(circuit: Circuit) {
@@ -192,6 +193,7 @@ export class SimulationSystem {
     this.branchCount = branches;
     this.size = this.nodeCount - 1 + branches;
     this.matrix = new MNAMatrix(this.nodeCount, branches);
+    this.work = Array.from({ length: this.size }, () => new Float64Array(this.size));
     this.nonlinear = this.components.filter(c => c.isNonlinear());
     this.linear = this.nonlinear.length === 0;
   }
@@ -268,7 +270,9 @@ export class SimulationSystem {
       for (const comp of this.components) comp.load(ctx);
       if (p.gshunt > 0) for (let i = 0; i < nodeRows; i++) matrix.G[i][i] += p.gshunt;
 
-      const M = matrix.G.map(row => Float64Array.from(row));
+      // Factor a copy (reused buffers; LU permutes the row references).
+      const M = this.work;
+      for (let i = 0; i < n; i++) M[i].set(matrix.G[i]);
       const xNew = Float64Array.from(matrix.z);
       try {
         luSolveInPlace(M, xNew);

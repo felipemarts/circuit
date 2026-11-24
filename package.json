@@ -61,6 +61,7 @@
     "test:watch": "vitest",
     "benches": "node scripts/check-benches.mjs",
     "smoke:pack": "node scripts/smoke-pack.mjs",
+    "perf": "node scripts/perf.mjs",
     "cli": "node bin/dev.mjs",
     "prepack": "npm run build:lib"
   },

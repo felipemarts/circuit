@@ -30,12 +30,38 @@ export function solveLU(A: Matrix, b: ArrayLike<number>): number[] {
   return Array.from(rhs);
 }
 
+/** Opt-in profiling of the real LU (scripts/perf.mjs); off by default. */
+export const luProfile = { enabled: false, calls: 0, ms: 0 };
+
 /**
  * Factor M in place and overwrite rhs with the solution. M is destroyed.
  * Throws SingularMatrixError on a (numerically) zero pivot.
  */
 export function luSolveInPlace(M: Float64Array[], rhs: Float64Array): void {
+  if (!luProfile.enabled) return luKernel(M, rhs);
+  const t0 = performance.now();
+  try {
+    luKernel(M, rhs);
+  } finally {
+    luProfile.calls++;
+    luProfile.ms += performance.now() - t0;
+  }
+}
+
+function luKernel(M: Float64Array[], rhs: Float64Array): void {
   const n = M.length;
+  // Last nonzero column of every row. MNA matrices are sparse and mostly
+  // banded; skipping the all-zero tail of the pivot row turns elimination
+  // into O(n · bandwidth²) work without changing a single floating-point
+  // operation on nonzeros (x − f·0 = x), so results are bit-identical to
+  // the plain dense loop and the pivot order is unchanged.
+  const ext = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = M[i];
+    let k = n - 1;
+    while (k >= 0 && r[k] === 0) k--;
+    ext[i] = k;
+  }
   for (let col = 0; col < n; col++) {
     let maxVal = Math.abs(M[col][col]);
     let maxRow = col;
@@ -54,23 +80,29 @@ export function luSolveInPlace(M: Float64Array[], rhs: Float64Array): void {
       const t = rhs[col];
       rhs[col] = rhs[maxRow];
       rhs[maxRow] = t;
+      const e = ext[col];
+      ext[col] = ext[maxRow];
+      ext[maxRow] = e;
     }
     const pivotRow = M[col];
     const pivot = pivotRow[col];
+    const last = ext[col];
     for (let row = col + 1; row < n; row++) {
       const r = M[row];
       const a = r[col];
       if (a === 0) continue;
       const factor = a / pivot;
       r[col] = 0;
-      for (let j = col + 1; j < n; j++) r[j] -= factor * pivotRow[j];
+      for (let j = col + 1; j <= last; j++) r[j] -= factor * pivotRow[j];
+      if (last > ext[row]) ext[row] = last;
       rhs[row] -= factor * rhs[col];
     }
   }
   for (let row = n - 1; row >= 0; row--) {
     const r = M[row];
     let sum = rhs[row];
-    for (let j = row + 1; j < n; j++) sum -= r[j] * rhs[j];
+    const last = ext[row];
+    for (let j = row + 1; j <= last; j++) sum -= r[j] * rhs[j];
     rhs[row] = sum / r[row];
   }
 }
@@ -160,3 +192,4 @@ export function complexLuSolveInPlace(
     bIm[row] = (sIm * dRe - sRe * dIm) / den;
   }
 }
+
