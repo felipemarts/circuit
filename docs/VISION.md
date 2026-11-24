@@ -76,10 +76,13 @@ bench/led-driver.bench.ts
         │  elaboration (code → canonical netlist + hash)
         ▼
   L0 lint    pure graph, no solver       F1xx  ──┐
-  L1 op      DC operating point          S2xx    │ fail-fast:
-             assertions + hints          A301    │ stage failed,
-  L3 tran    transient + measurements    A301    │ next ones skip
-             (settle/ripple/overshoot)         ──┘
+  L1 op      DC operating point          S2xx    │
+             assertions + hints          A301    │ fail-fast:
+  L2 dc      DC sweep, curve checks      A301    │ stage failed,
+  L2 ac      small-signal sweep          S204    │ next ones skip
+             gain/phase/bandwidth/PM     A301    │
+  L3 tran    transient + measurements    S202/3  │
+             (settle/ripple/overshoot)   A301  ──┘
         ▼
   RunRecord (JSON) ── human renderer ── ledger (.circuitsvibe/runs.jsonl)
 ```
@@ -115,17 +118,31 @@ $ circuitsvibe explain F101                            # physics + fix for each 
 $ circuitsvibe catalog                                 # component datasheet for the agent
 ```
 
-## Current state (v0.1 — the loop exists)
+## Current state (v0.1 + numerical core)
 
-- ✅ Correct MNA engine (DC + Backward-Euler transient, Newton-Raphson) — validated against
-  analytical solutions.
+- ✅ MNA engine validated against analytical solutions (RC/RL/RLC transients, AC RC and RLC
+  responses, diode DC sweep vs the implicit Shockley solution):
+  - DC operating point: Newton-Raphson with SPICE pn-junction limiting (the limiting hook is
+    part of the device protocol, `fetlim`/`limvds` ready for FET models), then gmin
+    stepping, then source stepping — the telemetry names the aid that was needed, and a
+    total failure still names the culprit device;
+  - transient: trapezoidal with Backward-Euler restarts after t = 0 and every source corner,
+    local-truncation-error step control, exact landing on PULSE/PWL/PWM corners, step cuts
+    on Newton failure (S202) and a minimum-step floor (S203);
+  - DC sweep of a source or a component value (warm-started points);
+  - AC small-signal: complex MNA linearized at the operating point; custom components
+    provide an optional `ac(ctx)` stamp (S204 otherwise);
+  - sources: DC, SIN, PULSE, PWL, PWM, AC stimulus — plain JSON in the netlist params.
 - ✅ `bench()` DSL with units (`'4.7k'`), named pins, canonical netlist with hash,
   per-component/per-assertion source location ("circuit sourcemaps").
 - ✅ Structural lint F101/F103/F104/F105/F106 before the solver.
 - ✅ DC stage with probes (`D1.i`, `R1.v`, named nets), assertions, **simulation-verified**
   hints, and non-convergence telemetry (offending component + oscillation).
 - ✅ Transient stage with a measurement kernel (settle, neverExceed, stayAbove/Below,
-  ripple, final value) + a waveform excerpt at the first violation.
+  ripple, final value) that interpolates the non-uniform adaptive samples, plus a waveform
+  excerpt at the first violation.
+- ✅ DC-sweep stage (`at`, `slopeAt`, monotonic, crossing) and AC stage (`gainAt`, `phaseAt`,
+  `bandwidth3dB`, `unityGainFrequency`, `phaseMargin`); `circuitsvibe sweep`.
 - ✅ `circuitsvibe` CLI (init/verify/log/explain/catalog/agents), exit codes 0/1/2/3,
   `--json`, `--set`, JSONL ledger.
 - ✅ Publishable: prebuilt `dist/` (ESM + .d.ts), zero runtime dependencies,
@@ -137,12 +154,12 @@ $ circuitsvibe catalog                                 # component datasheet for
 
 | Phase | Deliverable | Why |
 |------|---------|-----|
-| v0.2 | L2 stage (sweep/transfer curves), `circuitsvibe sweep`, `circuitsvibe probe` over the ledger | completes the AnalogCoder ladder |
+| v0.2 | ~~L2 stage (sweep/transfer curves), `circuitsvibe sweep`~~ (done), `circuitsvibe probe` over the ledger | completes the AnalogCoder ladder |
 | v0.3 | Token-budget report (failures-only + drill-down pointers), `--watch` with a hard solve timeout | sub-second iteration; never block the agent's tool call |
 | v0.4 | **MCP server** (`circuitsvibe mcp`): verify/sweep/probe/history/catalog/explain with the SAME schema as the CLI | the agent uses it as a native tool |
-| v0.5 | `circuitsvibe optimize` (Nelder-Mead over the ladder as an objective function), gmin/source stepping in NR | the agent never picks a resistor by hand again |
+| v0.5 | `circuitsvibe optimize` (Nelder-Mead over the ladder as an objective function) — gmin/source stepping already shipped | the agent never picks a resistor by hand again |
 | v0.6 | UI = RunRecord viewer: assertion chips on the schematic, bands on the oscilloscope, ledger timeline | human and agent see the same artifact |
-| v0.7 | Strong determinism (ordering by ref in the matrix), SPICE export + ngspice cross-check in CI with a tolerance table | public numerical credibility |
+| v0.7 | SPICE export + ngspice cross-check in CI with a tolerance table (ordering by ref in the matrix already shipped); sparse LU once benches pass ~500 nodes | public numerical credibility |
 | v0.8 | Level-1 MOSFET, Ebers-Moll BJT, behavioral sources; op-amp macro-model | unlocks real specs |
 | v1.0 | **CircuitBench**: public eval of "iterations-to-green" per model, tasks with hidden assertions; freeze of the `circuitsvibe-run/1.0` schema | the standard wins because agents provably converge on it |
 
@@ -155,9 +172,20 @@ no benchmark claim beyond what the component library covers.
 - **No monorepo for now** — a single package until the schemas stabilize (v0.7).
 - **Component identity by `kind` tag**, never `instanceof` — the CLI and the bench may load
   distinct copies of the classes (two bundles); structural identity is the contract.
-- **Determinism v0.1 = same source, same numbers** (JS Sets iterate in insertion order).
-  Same hash ⇒ same results requires the ordering-by-ref patch (v0.7); until then the claim is
-  scoped honestly.
+- **Determinism = same netlist, same numbers.** Bench elaboration orders the matrix
+  unknowns by component id and net name (auto-named nets are themselves named from their
+  sorted pin refs), so the same netlist hash yields the same matrix, the same pivot order
+  and byte-identical RunRecords whatever the declaration order (only `at` locations differ;
+  a test enforces it). Circuits built without a bench (the visual editor) fall back to
+  discovery order.
+- **Transient defaults favour accuracy over speed**: truncation-error reltol 1e-4 (≈ 0.01 % of
+  the signal per step), and `dt` stays a step ceiling for backward compatibility; `maxStep`
+  opts into long strides. The default initial state stays the zero state (a DC source is a
+  step at t = 0); `ic: 'op'` starts from the operating point.
+- **Dense LU stays for now** (measured with `npm run perf`): at ~200 nodes a 1000-step
+  transient takes ~0.2–0.5 s and an adaptive one ~0.07–0.15 s; LU is ~60 % of that, the rest
+  is O(n²) dense assembly. A sparse LU only pays off together with sparse assembly, at
+  ~500+ nodes.
 - **The batch path is the agent's contract** — the UI's "live" path stretches `dt` under load
   (machine-dependent) and must never feed assertions.
 - **`.circuitsvibe/` in `.gitignore`** — the ledger is a local artifact, not source.
