@@ -2,8 +2,13 @@
 
 `src/parts/` is a pure-data catalog of real components: datasheet absolute maximum
 ratings, key electrical characteristics, pinouts and, for discrete semiconductors,
-SPICE-style model cards. It contains no simulation code; later phases wire it into device
-models. It has no Node dependencies, so it is safe to use in the browser.
+SPICE-style model cards. It contains no simulation code: `Part(id)` (src/components/Part.ts) turns a diode, BJT
+or MOSFET entry into a configured device, and the ladder checks its `ratings` after
+op/dc/tran (R401–R404, docs/DIAGNOSTICS.md). Parameters a card carries but the simulator
+does not model (BJT Irb/Rbm/Xtf/Vtf/Itf/Xcjc, MOSFET Rg…) are listed by
+`circuitsvibe catalog <id>`. 2N2222A (no card), TIP120 (Darlington subcircuit) and the
+op-amp/comparator/timer/logic/MCU entries are data only. It has no Node dependencies, so it
+is safe to use in the browser.
 
 ```ts
 import { PARTS, findPart, partsByCategory } from './src/parts';

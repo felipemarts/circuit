@@ -15,6 +15,9 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `F130`–`F139` | digital lint (pre-simulation) | digital netlist structure (src/digital) |
 | `D501`–`D549` | digital runtime | event-driven logic simulation: contention, timing checks (src/digital) |
 | `F14x` | firmware lint (pre-simulation) | MCU firmware source mistakes (F140–F149) |
+| `F107`–`F119` | semiconductor lint (pre-solver) | transistor bias/drive topology (F107–F110 active) |
+| `R401`–`R409` | datasheet ratings (after op, dc, tran) | a catalog `Part()` exceeds an absolute maximum rating (R401–R404 active; R41x reserved for MCU pins) |
+| `T005`–`T009` | tooling: `.model` cards | SPICE model card problems (T005–T008 active) |
 | `M6xx` | MCU runtime | firmware execution on a simulated microcontroller (M601–M649) |
 
 ## Active codes
@@ -36,6 +39,18 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `T002` | stage-crash | error | a stage (op/dc/ac/tran) crashed after elaboration — platform bug; the RunRecord is still emitted (exit 3) |
 | `T003` | no-ac-stimulus | error | AC assertions but no source has an `ac` stimulus (exit 3) |
 | `T004` | ambiguous-ac-reference | error | several sources have an `ac` stimulus and an AC probe has no `ref` (exit 3) |
+| `F107` | bjt-base-floating | warning | BJT base net reaches only capacitors / other bases: no DC bias, cutoff at DC |
+| `F108` | mosfet-gate-floating | error | MOSFET gate with no DC path (driven only through a capacitor, or open) — replaces F101 for that island |
+| `F109` | bjt-junction-clamped | error | BJT base-emitter/base-collector junction forward-clamped by ideal sources (no base resistor); fires when the model's own estimate exceeds 100 A (Rb/Re bound it) |
+| `F110` | reversed-polarity | warning | PNP/enhancement PMOS with emitter/source pinned at the lowest potential (or NPN/NMOS at the highest) in a resistive circuit with ground-referenced sources: it never conducts forward |
+| `R401` | voltage-rating-exceeded | fail | a `Part()` exceeds Vceo/Vcbo/Vebo, Vds/±Vgs or VR/VRRM (in `stages.<stage>.ratings`, exit 1) |
+| `R402` | current-rating-exceeded | fail | continuous current over IcMax/IbMax, Id25 or IF/IFAV |
+| `R403` | pulsed-current-rating-exceeded | fail | transient peak over IcPeak, IdPulsed, IFP or IFSM |
+| `R404` | power-rating-exceeded | fail | dissipation over Pd (op/dc value; tran: window average, or peak with `tb.ratings({ pd: 'peak' })`) |
+| `T005` | model-unknown-param | warning | `.model` card parameter unknown for the device type — ignored |
+| `T006` | model-unsupported | error | `.model` type not D/NPN/PNP/NMOS/PMOS, LEVEL ≠ 1, or card type ≠ the fromModel used (exit 3, nothing simulated) |
+| `T007` | model-parse-error | error | malformed `.model` card or value out of range (exit 3) |
+| `T008` | model-param-not-modeled | warning | known SPICE parameter this simulator does not model (IRB, RBM, XTF, XCJC, ISR…) — ignored |
 | `F130` | floating-input | error | digital input pin on a net with no driver (no output, Const/Pull, or declared input) — simulates as X |
 | `F131` | multiple-drivers | error | push-pull digital output shares its net with another non-weak driver (output, tri-state, external input) |
 | `F132` | output-short | error | two outputs of the same digital part on one net (e.g. q tied to qn) |
@@ -61,6 +76,53 @@ Semantic notes:
 - `hint.passingRange` covers only the **longest contiguous run** of passing samples
   (each sample passes lint AND all op assertions); the exact simulated values
   are in `passingSamples`.
+
+## Datasheet ratings (R401–R404)
+
+Catalog parts (`Part('2N3904')`, `Part('IRLZ44N')`, `Part('1N4148')`, `Part('LED-RED-5MM')`…)
+are checked against their datasheet **absolute maximum ratings** after the op, dc and tran
+stages. Generic devices (`new NPN({ bf: 100 })`) have free parameters and no ratings.
+
+- **Where**: `stages.<op|dc|tran>.ratings[]` — the real-part spec, kept apart from
+  `stages.<stage>.assertions[]` (the spec the bench author wrote). Passing checks are
+  listed too (with `utilization` and `margin`), so the tightest rating is visible.
+- **Verdict**: any violation fails the stage — `verdict: "fail"`, exit **1** (the circuit is
+  valid, the real part would be over-stressed), `firstFailure` = the R code when no
+  assertion failed first. Later stages are skipped (`reason: "op datasheet ratings exceeded"`).
+- **What is compared** (magnitudes in the rated sense): op — the operating-point value;
+  dc — the largest value over the sweep, with its sweep `x`; tran — voltages: the
+  instantaneous peak with its `time` and `tFirstViolation`; continuous currents: the
+  instantaneous peak, or, when the datasheet also prints a pulsed/surge rating (IcPeak,
+  IdPulsed, IFP, IFSM), the **time average over the window** `[0, tstop]` while the peak is
+  checked against the pulsed rating (R403); Pd: the window average (steady-state thermal
+  rating), or the instantaneous peak with `tb.ratings({ pd: 'peak' })`.
+- **Checked ratings**: BJT Vceo (base open — the conservative rating), Vcbo, Vebo, IcMax,
+  IbMax, IcPeak, Pd · MOSFET Vds, ±Vgs, Id25, IdPulsed, Pd · diode/LED/Zener VR (dc stages)
+  or VRRM (tran), IF/IFAV, IFP/IFSM, Pd. Junction temperature is not simulated.
+- **Options**: `tb.ratings({ derate: 0.8 })` compares against 80 % of every limit,
+  `{ pd: 'peak' }`, `{ ignore: ['Q1'] }`, `tb.ratings(false)` disables the checks.
+- **Hints**: when tb.param is declared and the op stage fails, the verified hint keeps every
+  op rating within limits too; it is attached as `hint` and as a `verified` fix.
+- **Confidence**: `confidence: "verified"` — the value was simulated. `modelEstimated: true`
+  says the part's model card is a fit (see `circuitsvibe catalog <id>`).
+
+```jsonc
+"ratings": [{
+  "code": "R402", "slug": "current-rating-exceeded", "verdict": "fail",
+  "component": "D1", "part": "LED-RED-5MM", "rating": "IF",
+  "description": "continuous forward current", "quantity": "D1.i", "measure": "value",
+  "limit": 0.03, "allowed": 0.03, "unit": "A", "value": 0.063469, "utilization": 2.116, "margin": -0.033469,
+  "source": "Kingbright, DSAF2433 / 1101005271-02, Rev. V.9A, 08/05/2020", "url": "https://…",
+  "modelEstimated": true, "confidence": "verified",
+  "message": "D1 (LED-RED-5MM) continuous forward current is 63.469mA — exceeds the absolute maximum IF = 30mA (2.12×)",
+  "note": "absolute maximum ratings must never be exceeded; …",
+  "fixes": [{ "kind": "set-param", "confidence": "verified", "detail": "R1 in [122.677, 569.418] keeps every rating and op assertion within limits (simulated) — try --set R1=264.3" }, …],
+  "at": "bench/broken/led-rating-overcurrent.bench.ts:13",
+  "hint": { "kind": "verified-param-range", "param": "R1", … }
+}]
+// tran entries add "time", "tFirstViolation" (peak) or "window" (average) and "config";
+// dc entries add "x" and "config"; "derate" appears when tb.ratings({ derate }) is set.
+```
 
 ## MCU codes (firmware runtime and firmware lint)
 
@@ -194,6 +256,10 @@ Assertion results may also carry `note` (why a measurement is missing or how it 
 `xFirstViolation` (dc: sweep value of the first violation) and `ref` (AC reference probe).
 Transient final values in `stages.tran.probes` are keyed `<probe>@tstop=…s,dt=…s[,maxStep=…]`.
 
+Semiconductor params list every model parameter that differs from its SPICE default
+(Diode/LED always carry `Is`, `n`, `Vt`); a catalog part adds `part: "<id>"` and
+`buildComponent` rebuilds it from the catalog; a `.model` device adds `model: "<name>"`.
+
 Netlist `params` are plain JSON and complete enough to rebuild the component
 (`buildComponent(type, params)`): sources carry their waveform and AC stimulus, e.g.
 `{ "v": 0, "pulse": { "v1": 0, "v2": 5, "td": 0, "tr": 1e-6, "tf": 1e-6, "pw": 0.001, "per": 0.002 }, "ac": { "mag": 1, "phase": 0 } }`.
@@ -223,6 +289,10 @@ declared in a different order produces the same numbers (only `at` locations dif
 ```
 '<id>.i'    current through the component  e.g.: 'D1.i'
 '<id>.v'    voltage across the component   e.g.: 'R1.v'
+'<id>.<q>'  device quantity of a semiconductor (every stage):
+              Diode/LED  i v p
+              NPN/PNP    ic ib ie (into the pins) vbe vbc vce vcb veb p   (i = ic, v = vce)
+              NMOS/PMOS  id ig is [ib] vgs vds vgd vbs p                 (i = id, v = vds)
 '<net>'     voltage of a net named via tb.name(...)   (every stage)
 ```
 

@@ -89,7 +89,7 @@ circuitsvibe sweep <bench.ts> --source V1 --from 0 --to 5 [--points 51 | --step 
     [--probe out,R1.i] [--param R1] [--json]   DC transfer table / JSON
 circuitsvibe log list [--json] | log show <runId>
 circuitsvibe explain <code>
-circuitsvibe catalog [type] [--json]
+circuitsvibe catalog [type|part] [--json]   generic types + real parts; one type or part in detail
 circuitsvibe agents
 circuitsvibe version
 ```
@@ -116,8 +116,16 @@ The package is ESM with type declarations. The library entry is browser-safe (no
 ## Components
 
 Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN, PULSE, PWL, PWM,
-AC stimulus), Diode (Shockley, pn-junction limiting), LED, Switch (SPDT), Button, plus custom
-components through `defineComponent`:
+AC stimulus), Diode (SPICE level 1: Rs, junction/diffusion charge, breakdown), LED, NPN/PNP
+(Gummel-Poon), NMOS/PMOS (Level 1), Switch (SPDT), Button, real catalog parts through
+`Part(id)`, plus custom components through `defineComponent`:
+
+```ts
+const q1 = tb.add('Q1', Part('2N3904'));          // real part: catalog model + datasheet ratings
+const m1 = tb.add('M1', new NMOS({ vto: 2, kp: '50m' }));          // generic: free parameters
+const d1 = tb.add('D1', Diode.fromModel('.model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p TT=20n)'));
+tb.ratings({ derate: 0.8 });                     // check real parts against 80 % of their abs-max
+```
 
 ```ts
 new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2m' } });
@@ -158,12 +166,12 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | DC sweep | ✅ source DC value or component value, curve assertions, `circuitsvibe sweep` |
 | AC small-signal | ✅ complex MNA around the operating point, gain/phase/bandwidth/unity-gain/phase-margin |
 | Sources | ✅ DC, SIN, PULSE, PWL, PWM (voltage and current), AC stimulus |
-| Semiconductors | ✅ Diode, LED · ❌ BJT, MOSFET, JFET |
+| Semiconductors | ✅ Diode (Rs, junction/diffusion charge, Zener breakdown), LED, BJT NPN/PNP (Gummel-Poon subset), MOSFET N/P (Level 1, body diode), SPICE `.model` cards · ❌ JFET, MOSFET levels > 1, temperature |
 | Op-amps, comparators | ❌ |
 | Digital logic, mixed-signal | ❌ |
 | Microcontrollers | ❌ |
 | Noise, distortion, pole-zero analysis | ❌ |
-| Real-part catalog with datasheet ratings | ❌ |
+| Real-part catalog with datasheet ratings | ✅ `Part('2N3904')` etc. (diodes, LEDs, Zeners, BJTs, MOSFETs); absolute-max ratings checked after op/dc/tran (R401–R404) · op-amps/logic/MCUs are data only |
 | SPICE netlist import/export | ❌ |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
 | Linear solver | dense LU (sub-second at ~200 nodes, see `npm run perf`); no sparse LU yet |

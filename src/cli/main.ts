@@ -22,7 +22,7 @@ USAGE
   ${CLI} log list [--json]            list past runs from the ledger (${LEDGER_DIR}/runs.jsonl)
   ${CLI} log show <runId>             full RunRecord of a past run (JSON)
   ${CLI} explain <code>               docs for a diagnostic code, e.g. ${CLI} explain F101
-  ${CLI} catalog [type] [--json]      component datasheet + probe/assertion grammar
+  ${CLI} catalog [type|part] [--json] component datasheet, real parts (pins, model, ratings) + grammar
   ${CLI} agents                       print the agent playbook (AGENTS.md)
   ${CLI} version                      print the engine version
 

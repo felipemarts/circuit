@@ -148,6 +148,14 @@ $ circuitsvibe catalog                                 # component datasheet for
 - ✅ Publishable: prebuilt `dist/` (ESM + .d.ts), zero runtime dependencies,
   `npx circuitsvibe` works in an empty folder, and a single-file
   `circuitsvibe-standalone.mjs` for offline agents. AGENTS.md, a Claude skill and llms.txt.
+- ✅ Semiconductors: SPICE level-1 diode (Rs on an internal node, depletion + diffusion
+  charge, Zener breakdown with limiting), Gummel-Poon BJT subset (Ebers-Moll as the
+  zero-parameter limit), Level-1 MOSFET with body effect, gate capacitances and body diode;
+  DC/AC/transient stamps through one polarity-normalized device core; SPICE `.model`
+  cards (T005–T008).
+- ✅ Real parts: `Part('2N3904')` from the cited catalog (src/parts) — model card plus
+  datasheet absolute maximum ratings, checked automatically after op/dc/tran (R401–R404,
+  exit 1) and reported apart from the bench's assertions; semiconductor lint F107–F110.
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap
@@ -160,7 +168,7 @@ $ circuitsvibe catalog                                 # component datasheet for
 | v0.5 | `circuitsvibe optimize` (Nelder-Mead over the ladder as an objective function) — gmin/source stepping already shipped | the agent never picks a resistor by hand again |
 | v0.6 | UI = RunRecord viewer: assertion chips on the schematic, bands on the oscilloscope, ledger timeline | human and agent see the same artifact |
 | v0.7 | SPICE export + ngspice cross-check in CI with a tolerance table (ordering by ref in the matrix already shipped); sparse LU once benches pass ~500 nodes | public numerical credibility |
-| v0.8 | Level-1 MOSFET, Ebers-Moll BJT, behavioral sources; op-amp macro-model | unlocks real specs |
+| v0.8 | ~~Level-1 MOSFET, Gummel-Poon BJT, real parts with ratings~~ (done), behavioral sources; op-amp macro-model | unlocks real specs |
 | v1.0 | **CircuitBench**: public eval of "iterations-to-green" per model, tasks with hidden assertions; freeze of the `circuitsvibe-run/1.0` schema | the standard wins because agents provably converge on it |
 
 Sequencing rules (from the architecture-panel judges): the terminal loop stands on its own
@@ -197,5 +205,15 @@ no benchmark claim beyond what the component library covers.
   their real filename, so `at` locations point at the source. Consequence: no top-level
   `await` or `import.meta` in bench files. `import ... from 'circuitsvibe'` resolves to the
   running CLI, so a bench needs no local install.
+- **Datasheet ratings are spec failures, not structural errors** — a part over its absolute
+  maximum rating is a valid circuit with an unmet (real) spec: exit 1, like an assertion,
+  with `confidence: verified` because the stress was simulated. Ratings live in
+  `stages.<stage>.ratings`, never mixed with the author's assertions, so the agent can tell
+  "my spec" from "the part's spec". Transient continuous-current and Pd checks use the
+  window average when the datasheet has a pulsed companion rating (or Pd, a thermal rating);
+  the instantaneous peak otherwise.
+- **Generic vs real parts are explicit** — `new NPN({ bf })` has free parameters and no
+  ratings; `Part(id)` is a real part and records `part: id` in the netlist (rebuilt from the
+  catalog). Estimated (fitted) model cards say so in `circuitsvibe catalog`.
 - **Locations are cwd-relative with forward slashes** — RunRecords are identical across
   machines and operating systems.

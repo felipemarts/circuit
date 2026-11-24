@@ -1,6 +1,6 @@
 ---
 name: circuitsvibe
-description: Design, size and verify electronic circuits by writing TypeScript benches and running the circuitsvibe simulator CLI (lint → DC operating point → DC sweep → AC → transient) until it exits 0. Use when asked to design, check, debug or size an analog circuit (resistors, capacitors, inductors, DC/pulse/sine/PWL/PWM sources, diodes, LEDs, switches), to verify a circuit against a spec (operating point, transfer curve, frequency response, transient), or when a *.bench.ts file is present.
+description: Design, size and verify electronic circuits by writing TypeScript benches and running the circuitsvibe simulator CLI (lint → DC operating point → DC sweep → AC → transient) until it exits 0. Use when asked to design, check, debug or size an analog circuit (resistors, capacitors, inductors, DC/pulse/sine/PWL/PWM sources, diodes, Zeners, LEDs, BJTs, MOSFETs, real catalog parts such as 2N3904/2N7000/1N4148, switches), to verify a circuit against a spec (operating point, transfer curve, frequency response, transient), or when a *.bench.ts file is present.
 ---
 
 # CircuitsVibe — circuits as code, verified by simulation
@@ -68,7 +68,14 @@ new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2
 - `npx circuitsvibe explain <code>` — physics and fixes for one diagnostic code.
 
 Supported today: Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN,
-PULSE, PWL, PWM, AC stimulus), Diode, LED, Switch (SPDT), Button, custom parts via
-`defineComponent`; DC operating point (with gmin/source stepping), DC sweep, AC
-small-signal, adaptive transient. Not yet: transistors, op-amps, digital logic,
+PULSE, PWL, PWM, AC stimulus), Diode (Rs, capacitance, Zener breakdown), LED, NPN/PNP
+(Gummel-Poon), NMOS/PMOS (Level 1), `.model` cards via `Diode/NPN/NMOS.fromModel`, Switch
+(SPDT), Button, custom parts via `defineComponent`; DC operating point (with gmin/source
+stepping), DC sweep, AC small-signal, adaptive transient. Not yet: op-amps, digital logic,
 microcontrollers.
+
+Real parts: `tb.add('Q1', Part('2N3904'))` uses the catalog model AND checks the datasheet
+absolute maximum ratings after op/dc/tran — violations are R401–R404 in
+`stages.<stage>.ratings` (exit 1, separate from your assertions). Generic `new NPN({ bf: 100 })`
+has no ratings. `npx circuitsvibe catalog 2N3904` shows pins, model (published or ESTIMATED),
+ratings and citations. Probes: `Q1.ic`, `Q1.vce`, `M1.id`, `M1.vgs`, `D1.p`…
