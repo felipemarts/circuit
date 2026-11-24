@@ -5,6 +5,7 @@ import { MNAMatrix, ComplexMNAMatrix } from '../solver/MNAMatrix';
 import { luSolveInPlace, complexLuSolveInPlace, SingularMatrixError } from '../solver/LUSolver';
 import { ReactiveState, integrateStep, lteRatio } from './integration';
 import type { AcceptContext, InitContext, LoadContext } from './context';
+import { drainAsync, drainSync, type Steps } from './steps';
 
 /**
  * The analysis engine: one indexed MNA system per circuit, shared by the
@@ -163,6 +164,13 @@ export interface CoSimHook {
   locate(t0: number, x0: Float64Array, t1: number, x1: Float64Array): number | undefined;
   /** The step to t1 was accepted. True when a discontinuity happened at t1 (BE restart). */
   accepted(t1: number, x1: Float64Array): boolean;
+  /**
+   * Asynchronous event-side work at t (microcontroller firmware, src/mixed/mcu-cosim.ts):
+   * asked after beginTransient (t = 0) and after every accepted(t). Undefined when nothing
+   * is due at t; otherwise a promise resolving true when outputs changed at t (BE restart).
+   * Only the asynchronous drivers (runAdaptiveAsync) can serve it.
+   */
+  work?(t: number): Promise<boolean> | undefined;
 }
 
 function sortByKey<T>(items: T[], keys: Map<T, string> | undefined): T[] {
@@ -838,6 +846,20 @@ export class TransientEngine {
 
   /** Adaptive run: LTE step control, breakpoints landed exactly, BE restarts. */
   runAdaptive(opts: TransientOptions, sink: PointSink): void {
+    drainSync(this.adaptiveSteps(opts, sink));
+  }
+
+  /** The adaptive run for circuits whose co-simulation does asynchronous work (MCU firmware). */
+  runAdaptiveAsync(opts: TransientOptions, sink: PointSink): Promise<void> {
+    return drainAsync(this.adaptiveSteps(opts, sink));
+  }
+
+  /**
+   * The adaptive run as a step generator: it yields only when the co-simulation
+   * hook has asynchronous work due (`CoSimHook.work`), and receives whether that
+   * work changed outputs (a discontinuity) back from `yield`.
+   */
+  *adaptiveSteps(opts: TransientOptions, sink: PointSink): Steps<void> {
     const sys = this.system;
     const method = opts.method ?? 'trap';
     const tstop = opts.tstop;
@@ -850,6 +872,11 @@ export class TransientEngine {
 
     this.start(opts.ic ?? 'zero');
     sink(0, this.x);
+    {
+      // Event-side work at t = 0 (firmware setup() up to its first yield).
+      const work = sys.cosim?.work?.(0);
+      if (work && (yield work)) this.forceBE = true;
+    }
     let nextBp = Math.min(sys.nextBreakpoint(0), tstop);
     let h = Math.min(opts.dt, maxStep, nextBp < tstop ? Math.max(0.1 * nextBp, hmin) : Infinity);
     let lastCulprit: Component | null = null;
@@ -927,7 +954,11 @@ export class TransientEngine {
       }
       this.accept(target, hStep, r.x);
       sink(target, this.x);
-      const discontinuity = cosim ? cosim.accepted(target, this.x) : false;
+      let discontinuity = cosim ? cosim.accepted(target, this.x) : false;
+      if (cosim?.work) {
+        const work = cosim.work(target);
+        if (work && (yield work)) discontinuity = true;
+      }
       if (landing) {
         if (target >= tstop) break;
         this.telemetry.breakpoints++;
