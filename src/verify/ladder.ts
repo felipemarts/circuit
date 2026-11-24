@@ -28,6 +28,13 @@ const EMPTY_NETLIST = { hash: '', components: [], nets: {} };
  *   2 = diagnostic error — circuit invalid or unsolvable (fix structure first)
  *   3 = tooling error — the bench itself threw (fix the bench code)
  */
+/** Why a stage verdict is 'fail': its own assertions, or a part outside its datasheet ratings. */
+function failReason(stage: string, rec: { assertions?: { verdict: string }[]; ratings?: { verdict: string }[] }): string {
+  if (rec.assertions?.some(a => a.verdict === 'fail')) return `${stage} assertions failed`;
+  if (rec.ratings?.some(r => r.verdict === 'fail')) return `${stage} datasheet ratings exceeded`;
+  return `${stage} assertions failed`;
+}
+
 export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunRecord {
   const requested = opts.stages ?? STAGE_ORDER;
   const overrides = opts.overrides ?? {};
@@ -104,7 +111,7 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
         record.stages.op = outcome.stage;
         record.diagnostics.push(...outcome.diagnostics);
         if (outcome.stage.verdict === 'error') gate = 'op failed';
-        if (outcome.stage.verdict === 'fail') gate = 'op assertions failed';
+        if (outcome.stage.verdict === 'fail') gate = failReason('op', outcome.stage);
       } catch (err) {
         crashed('op', err);
       }
@@ -129,7 +136,7 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
       record.stages[stage] = outcome.stage;
       record.diagnostics.push(...outcome.diagnostics);
       if (outcome.stage.verdict === 'error') gate = `${stage} failed`;
-      if (outcome.stage.verdict === 'fail') gate = `${stage} assertions failed`;
+      if (outcome.stage.verdict === 'fail') gate = failReason(stage, outcome.stage);
     } catch (err) {
       crashed(stage, err);
     }
@@ -137,9 +144,22 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
 
   // ── Verdict + exit code ──
   const errorDiag = record.diagnostics.find(d => d.severity === 'error');
-  const failedAssertion = STAGE_ORDER
-    .flatMap(s => record.stages[s]?.assertions ?? [])
-    .find(a => a.verdict === 'fail');
+  // First failure in stage order: a failed assertion (its id) or, failing
+  // that, an exceeded datasheet rating (its R4xx code).
+  let failedAssertion: { id: string } | undefined;
+  for (const s of STAGE_ORDER) {
+    const st = record.stages[s];
+    const a = st?.assertions?.find(x => x.verdict === 'fail');
+    if (a) {
+      failedAssertion = a;
+      break;
+    }
+    const r = st?.ratings?.find(x => x.verdict === 'fail');
+    if (r) {
+      failedAssertion = { id: r.code };
+      break;
+    }
+  }
 
   if (errorDiag) {
     record.verdict = 'error';
