@@ -147,36 +147,32 @@ fast PWM `(v+1)/256`; 0 and 255 are constant levels; non-PWM pin ⇒ M612 + core
 `bit*`, `lowByte`, `highByte` · constants `HIGH/LOW`, `BIN/OCT/DEC/HEX`, `LED_BUILTIN`,
 `A0…` (live bindings to the running profile).
 
-## What the integrator must add
+## Integration in benches (done — src/mixed/mcu.ts, mcu-cosim.ts, firmware.ts)
 
-1. **Bench loader (`src/cli/load.ts`)** — map the virtual module and instrument firmware:
-
-   ```ts
-   import { arduinoModule, ARDUINO_SPECIFIER, instrumentLoops } from '../mcu';
-   // in localRequire:
-   if (specifier === ARDUINO_SPECIFIER) return arduinoModule();
-   // after the sucrase transform, for modules that import it:
-   if (code.includes(ARDUINO_SPECIFIER)) code = instrumentLoops(code);
-   ```
-
-   Preferred: benches reference firmware **by path** (`firmware: './blink.fw.ts'`) and the
-   CLI loads it with `loadFirmwareFile(path, { profile })` from `src/mcu/node/load-firmware`
-   — one fresh module graph per MCU instance (independent globals), constants evaluated for
-   the right profile, M608 on load errors. A firmware module imported directly by the bench
-   is shared by every MCU that uses it.
-2. **Types for user firmware**: `tsconfig.json` `paths` `"circuitsvibe/arduino":
-   ["src/mcu/arduino.ts"]`, and a `"./arduino"` entry in `package.json#exports` with a
-   matching `dist` build (e.g. an extra esbuild entry for `src/mcu/arduino.ts`, or export
-   `src/mcu` from `src/forge.ts`).
-3. **Lint stage**: run `lintFirmware(source, { file, profile })` with the circuit lint;
-   F14x errors should block simulation like F1xx.
-4. **Bridge**: an `McuPinBus` over the analog engine (pin = voltage source with output
-   resistance when `output`, pull-up resistor when `input_pullup`, threshold detection with
-   edge location for subscribed pins), the transient loop above, and `McuDiagnostic` →
-   RunRecord mapping (`stage: 'mcu'` diagnostics carry `time`; `at` is the firmware line).
-5. **Assertions**: `tb.expect.serial('U1').toContain(...)`, `tb.expect.pin('U1.D9')…` on top
-   of `measure.ts` (`serialContains`, `serialMatches`, `serialLineCount`, `serialFirstTime`,
-   `levelsOf`, `toggleCount`, `frequency`, `dutyCycle`, `pwmStats`).
+- **Component**: `new Mcu({ profile, firmware, pwm?, randomSeed? })`, `new ArduinoUno({ firmware })`
+  (`Part('ArduinoUno', { firmware })`). Pins = the profile names + `VCC`/`GND` (Uno: `5V`).
+  Electrical data in `electrical.ts` (Rout from the VOH/VOL rows, pull-ups, reset threshold,
+  supply ranges, citations).
+- **Firmware from source text** (`firmware.ts`, browser-safe): a `FirmwareBundle`
+  `{ entry, files }` is transpiled with sucrase, loop-instrumented once, and instantiated as a
+  fresh module graph per transient run (indirect eval under `//# sourceURL=<path>`, so stack
+  frames give `<path>:<line>`). The CLI's `FirmwareHost` (`node/firmware-host.ts`) reads the
+  entry relative to the bench file plus its relative imports; circuit documents carry the same
+  files in `sources[]`. `node/load-firmware.ts` (vm-based) remains for direct Node use.
+- **Bus** (`McuCosim`, an `McuPinBus` over the accepted analog solution): `drive`/`setDirection`
+  start 10 ns output ramps at the event time; `readDigital` = the pin's hysteresis level
+  (VIH rising / VIL falling); `readVoltage` / `readSupply` read V(pin) − V(GND) and VCC − GND
+  (`analogReference(DEFAULT)` follows the simulated supply); `onEdge` subscribers get edges at
+  the interpolated crossing times, and those pins cut transient steps (edge within 1 ns).
+- **Transient loop**: `CoSimHook.work(t)` runs `runUntil(t)` whenever `nextWakeTime() ≤ t`;
+  every wake time is a breakpoint, so the runtime never reads the bus past accepted time. The
+  op stage sees the MCU in reset (pins high-Z).
+- **Lint**: compile errors are M608 and `lintFirmware(entry, { file, profile })` findings
+  (F140–F149) are lint-stage diagnostics; F139 checks the supply pins.
+- **RunRecord**: diagnostics as platform `Diagnostic`s (subject `{ components, pins }`, `time`,
+  firmware `at`), `stages.tran.serial[]`, logic traces of MCU pins, R410–R413 ratings, M622/M623.
+- **Assertions**: `tb.expect.serial('U1')` (`measure.ts` helpers), logic assertions on
+  `'U1.D13'`, voltage probes on `'U1.D9'`.
 
 ## Known gaps
 

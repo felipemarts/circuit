@@ -13,6 +13,12 @@ controller.ts  MixedController (the CoSimHook): DC settle, transient co-simulati
 measure.ts     tb.expect.logic evaluation over recorded traces
 catalog.ts     `circuitsvibe catalog` entries, generated from the same data
 part.ts        icPart(id) — the IC side of Part()
+mcu.ts         Mcu / ArduinoUno components: per-pin output stage, pull-ups, clamps (MCU pin model)
+mcu-cosim.ts   McuCosim: the McuPinBus over the analog solution, firmware in lockstep, R410–R413, M622/M623
+mcu-catalog.ts catalog entries: Mcu, ArduinoUno, the four profiles, VhdlBlock
+vhdl-block.ts  VhdlBlock: a VHDL entity as a bench component (per-bit pins, bridged like primitives)
+build.ts       rebuild of source-referencing components (firmware / VHDL) from circuit documents
+serial-measure.ts  tb.expect.serial evaluation
 vcd.ts         RunRecord logic capture → VCD (--vcd)
 ```
 
@@ -68,6 +74,20 @@ Accuracy (tests): RC → 74HC04 switches within 0.5 ns of the analytic VIH cross
 74HC04 tpd into 50 pF within 20 % of the datasheet value (measured −0.5 % / +3 %); 74HC14 RC
 oscillator within 3 % of T = RC·[ln((VCC−VT−)/(VCC−VT+)) + ln(VT+/VT−)]; NE555 astable and
 monostable within 2 % of 1.44/((R1+2R2)C) and 1.1·RC.
+
+## Microcontrollers and VHDL blocks
+
+- **MCU** pins are analog nodes like IC pins, but their role changes at run time (the firmware's
+  `pinMode`): OUTPUT = an `OutputStage` between the MCU's VCC/GND pins (Rout from
+  src/mcu/electrical.ts), INPUT_PULLUP = the internal resistor, every pin keeps ESD clamps and
+  1 GΩ leakage. The controller forwards `beginTransient`, `nextBreakpoint` (firmware wake
+  times + ramp corners), `locate` (interrupt pins), `accepted` and the asynchronous
+  `work(t)` (the engine awaits `runUntil(t)`) to one `McuCosim` per MCU. In reset (op,
+  unpowered, brown-out) every pin is high-Z.
+- **VHDL blocks** are classified like logic primitives (pure-digital nets when every pin on
+  the net is a primitive or a VHDL block); their elaborated processes join the bench's
+  digital netlist, bridged pins get `logic` inputs and `tristate` outputs at the ideal `vcc`.
+  VHDL diagnostics keep their `.vhd` `at`.
 
 ## Part() seam (merging with other part families)
 

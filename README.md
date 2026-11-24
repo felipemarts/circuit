@@ -204,11 +204,12 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | Semiconductors | ✅ Diode (Rs, junction/diffusion charge, Zener breakdown), LED, BJT NPN/PNP (Gummel-Poon subset), MOSFET N/P (Level 1, body diode), SPICE `.model` cards · ❌ JFET, MOSFET levels > 1, temperature |
 | Op-amps, comparators | ❌ |
 | Digital logic, mixed-signal | ✅ event-driven logic co-simulated with the transient: real ICs `Part('74HC00' / '74HC04' / '74HC14' / '74HC74' / '74HC595' / '74HCT04' / 'CD4017' / 'CD4011' / 'NE555')` with datasheet pins, levels, drive and tpd per VCC; generic logic primitives; `tb.expect.logic(...)`; logic capture + `--vcd` |
-| Microcontrollers | ❌ |
+| Microcontrollers | ✅ `new ArduinoUno({ firmware: './blink.fw.ts' })` / `new Mcu({ profile: 'atmega328p' \| 'attiny85' \| 'esp32' \| 'rp2040', firmware })`: Arduino-style TypeScript firmware (`import … from 'circuitsvibe/arduino'`, `await delay()`) co-simulated in lockstep with the transient — pins as datasheet-derived push-pull stages, pull-ups, VIL/VIH, ADC, PWM edges, interrupts at the analog crossing; `tb.expect.serial(...)`, `stages.tran.serial`, firmware `file:line` in M6xx diagnostics, pin/port/supply current ratings R410–R413, brown-out M622 · ❌ instruction timing, UART timing, I2C/SPI, sleep |
+| VHDL | ✅ `new VhdlBlock({ source: importedVhd, generics })`: a synthesizable VHDL subset on the event engine, ports as per-bit pins bridged to analog nets or wired to logic primitives, V7xx diagnostics with `.vhd` locations |
 | Noise, distortion, pole-zero analysis | ❌ |
-| Real-part catalog with datasheet ratings | ✅ `Part('2N3904')` etc. (diodes, LEDs, Zeners, BJTs, MOSFETs); absolute-max ratings checked after op/dc/tran, mixed-signal transients included (R401–R404); logic ICs / NE555 go through the same `Part()` (row above) · op-amps/MCUs are catalog data only |
+| Real-part catalog with datasheet ratings | ✅ `Part('2N3904')` etc. (diodes, LEDs, Zeners, BJTs, MOSFETs); absolute-max ratings checked after op/dc/tran, mixed-signal transients included (R401–R404); logic ICs / NE555 go through the same `Part()` (row above), `Part('ArduinoUno', { firmware })` too · op-amps are catalog data only |
 | SPICE netlist import/export | ❌ |
-| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer support in progress |
+| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` (firmware and VHDL files travel in `sources[]`) · web viewer support in progress |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
 | Linear solver | dense LU (sub-second at ~200 nodes, see `npm run perf`); no sparse LU yet |
 

@@ -1,6 +1,6 @@
 ---
 name: circuitsvibe
-description: Design, size and verify electronic circuits by writing TypeScript benches and running the circuitsvibe simulator CLI (lint → DC operating point → DC sweep → AC → transient) until it exits 0. Use when asked to design, check, debug or size an analog circuit (resistors, capacitors, inductors, DC/pulse/sine/PWL/PWM sources, diodes, Zeners, LEDs, BJTs, MOSFETs, real catalog parts such as 2N3904/2N7000/1N4148, switches), to verify a circuit against a spec (operating point, transfer curve, frequency response, transient), or when a *.bench.ts file is present.
+description: Design, size and verify electronic circuits by writing TypeScript benches and running the circuitsvibe simulator CLI (lint → DC operating point → DC sweep → AC → transient) until it exits 0. Use when asked to design, check, debug or size an analog circuit (resistors, capacitors, inductors, DC/pulse/sine/PWL/PWM sources, diodes, Zeners, LEDs, BJTs, MOSFETs, real catalog parts such as 2N3904/2N7000/1N4148, switches, logic ICs, Arduino-style microcontroller firmware on an Uno/ATtiny85/ESP32/RP2040, VHDL blocks), to verify a circuit against a spec (operating point, transfer curve, frequency response, transient), or when a *.bench.ts file is present.
 ---
 
 # CircuitsVibe — circuits as code, verified by simulation
@@ -64,7 +64,14 @@ tb.expect.ac({ from: '10', to: '1M' }).probe('out').gainAt('1k').toBeWithin(-3.1
 new VoltageSource({ pulse: { v1: 0, v2: 5, tr: '1u', tf: '1u', pw: '1m', per: '2m' } });  // also sin, pwl, pwm
 const u1 = tb.add('U1', Part('74HC04'));   // logic IC: wire VCC/GND, tie unused inputs; pins by name or number
 tb.expect.logic('U1.1Y', { tstop: '1m' }).toHaveFrequency('10k', 0.01);   // logic assertions (tran stage)
+const u2 = tb.add('U2', new ArduinoUno({ firmware: './blink.fw.ts' }));    // firmware next to the bench; wire 5V/GND
+tb.expect.serial('U2', { tstop: '1' }).toContain('ready');                 // what the firmware printed
 ```
+
+Firmware (`blink.fw.ts`): `import { pinMode, digitalWrite, delay, … } from 'circuitsvibe/arduino'`,
+`export async function setup()` / `loop()`, and every wait is `await delay(ms)` — code between
+awaits takes zero simulated time. The MCU is in reset at the operating point: assert it in
+tran / logic / serial. Details: `npx circuitsvibe agents` (Microcontrollers, VHDL blocks).
 
 ## Reference on demand
 
@@ -80,9 +87,12 @@ PULSE, PWL, PWM, AC stimulus), Diode (Rs, capacitance, Zener breakdown), LED, NP
 (Gummel-Poon), NMOS/PMOS (Level 1), `.model` cards via `Diode/NPN/NMOS.fromModel`, Switch
 (SPDT), Button, custom parts via `defineComponent`; logic ICs and NE555 via `Part(...)`
 (74HC00/04/14/74/595, 74HCT04, CD4017, CD4011, NE555) and generic logic primitives (Nand,
-DFF, Counter, Clock, …) co-simulated with the transient; DC operating point (with gmin/source
-stepping), DC sweep, AC small-signal, adaptive transient. Not yet: op-amps, microcontrollers
-in benches.
+DFF, Counter, Clock, …) co-simulated with the transient; microcontrollers running
+Arduino-style TypeScript firmware (`new ArduinoUno({ firmware: './blink.fw.ts' })`, `Mcu`
+profiles atmega328p / attiny85 / esp32 / rp2040; firmware imports from `'circuitsvibe/arduino'`
+and waits with `await delay(ms)`; `tb.expect.serial('U1')`); VHDL blocks
+(`new VhdlBlock({ source: importedVhd })`, pins = port bits); DC operating point (with
+gmin/source stepping), DC sweep, AC small-signal, adaptive transient. Not yet: op-amps.
 
 Real parts: one `Part(id)` covers logic ICs (`Part('74HC04')`) and catalog semiconductors.
 `tb.add('Q1', Part('2N3904'))` uses the catalog model AND checks the datasheet absolute

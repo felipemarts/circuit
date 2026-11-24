@@ -167,6 +167,16 @@ $ circuitsvibe catalog                                 # component datasheet for
 - ✅ Real parts: `Part('2N3904')` from the cited catalog (src/parts) — model card plus
   datasheet absolute maximum ratings, checked automatically after op/dc/tran (R401–R404,
   exit 1) and reported apart from the bench's assertions; semiconductor lint F107–F110.
+- ✅ Microcontrollers and VHDL in benches: Arduino-style TypeScript firmware
+  (`new ArduinoUno({ firmware: './blink.fw.ts' })`, ATmega328P / ATtiny85 / ESP32 / RP2040
+  profiles) co-simulated in lockstep with the transient — firmware wake times are
+  breakpoints, interrupt pins cut steps at their analog crossing, pins are datasheet-derived
+  output stages / pull-ups / thresholds / ADC; serial assertions, firmware `file:line` in every
+  M6xx diagnostic, pin-current ratings R410–R413, brown-out. VHDL blocks (a synthesizable
+  subset) as per-bit pins on the same bridges. Firmware and VHDL travel inside the circuit
+  document, so share links reproduce MCU benches; the firmware path is browser-safe
+  (sucrase + eval from source text) for the web viewer. The transient is a step generator
+  that awaits firmware only where it is due (`runLadderAsync`).
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap

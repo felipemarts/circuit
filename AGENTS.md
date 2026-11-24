@@ -90,6 +90,8 @@ export default bench('rc-led', (tb) => {
 | Part | `Part('2N3904')`, `Part('IRLZ44N')`, `Part('1N4733A')`, `Part('74HC04')` | the device's | one factory for every REAL part: semiconductors (catalog model + datasheet ratings checked automatically) and logic ICs / NE555 (see below) |
 | Switch | `new Switch(false)` | `'com'`, `'a'`, `'b'` | SPDT: false → com–a, true → com–b |
 | Button | `new Button(false)` | `'1'`, `'2'` | conducts while pressed |
+| ArduinoUno / Mcu | `new ArduinoUno({ firmware: './app.fw.ts' })`, `new Mcu({ profile: 'attiny85', firmware })` | `'D0'`…`'D13'`, `'A0'`…`'A5'`, `'5V'`/`'VCC'`, `'GND'` | runs TypeScript firmware in the transient — see Microcontrollers |
+| VhdlBlock | `new VhdlBlock({ source: importedVhd, generics: { N: 4 } })` | port bits `'clk'`, `'q[0]'`… | a VHDL entity on the logic engine — see VHDL blocks |
 
 ### Semiconductors: generic devices vs real parts
 
@@ -197,6 +199,155 @@ Logic probes: a `tb.name`d net (pure-digital, or analog with a logic pin on it),
 in `stages.tran.logic[]` (value-change lists of every probed and named logic signal);
 `circuitsvibe verify x.bench.ts --vcd out.vcd` writes it as VCD.
 
+### Microcontrollers (Arduino-style TypeScript firmware)
+
+The firmware is a TypeScript file next to the bench; it runs **in lockstep with the
+transient** (firmware time = simulation time) and drives / reads real analog nodes.
+
+```ts
+// blink.fw.ts
+import { pinMode, digitalWrite, delay, Serial, OUTPUT, HIGH, LOW, LED_BUILTIN } from 'circuitsvibe/arduino';
+
+export async function setup() {
+  Serial.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.println('ready');
+}
+
+export async function loop() {
+  digitalWrite(LED_BUILTIN, HIGH);
+  await delay(500);
+  digitalWrite(LED_BUILTIN, LOW);
+  await delay(500);
+}
+```
+
+```ts
+// uno-blink.bench.ts
+import { bench, ArduinoUno, VoltageSource, Resistor, LED } from 'circuitsvibe';
+
+export default bench('uno-blink', (tb) => {
+  const v5 = tb.add('V5', new VoltageSource(5));
+  const u1 = tb.add('U1', new ArduinoUno({ firmware: './blink.fw.ts' })); // path relative to the bench file
+  const r1 = tb.add('R1', new Resistor('330'));
+  const d1 = tb.add('D1', new LED());
+  v5.pin('-').connect(tb.gnd);
+  u1.pin('5V').connect(v5.pin('+'));                 // supply pins MUST be wired (F139)
+  u1.pin('GND').connect(tb.gnd);
+  u1.pin('D13').connect(r1.pin('1'));                // pins: 'D0'…'D13', 'A0'…'A5', 'AREF', or 13
+  r1.pin('2').connect(d1.pin('anode'));
+  d1.pin('cathode').connect(tb.gnd);
+
+  const run = tb.expect.tran({ tstop: '2.2', maxStep: '10m' });
+  run.logic('U1.D13').toHaveFrequency(1, 1e-6, { from: '0.1' }); // pin logic (driven level)
+  run.probe('D1.i').toNeverExceed('10m');                          // analog, same run
+  run.serial('U1').toContain('ready', { by: '1m' });               // Serial output
+});
+```
+
+- **Parts**: `new ArduinoUno({ firmware })` (= `Part('ArduinoUno', { firmware })`, pins `D0–D13`,
+  `A0–A5`, `AREF`, `5V`, `GND`) or `new Mcu({ profile, firmware })` with profile
+  `'atmega328p'` (default), `'attiny85'` (`PB0–PB5`), `'esp32'` (`GPIOn`, 3.3 V), `'rp2040'`
+  (`GPn`, 3.3 V) — pins `VCC` and `GND` plus the profile's names. `npx circuitsvibe catalog
+  ArduinoUno` (or `ATtiny85`, `ESP32`, `RP2040`) lists pins, ADC, PWM pins and frequencies,
+  current limits and citations. The Uno board model is the MCU pins only: no 5 V / 3.3 V
+  regulator (VIN, 3V3), no USB bridge, no on-board LED — power `5V` and wire your own LED.
+- **Firmware rules** (the lint and the runtime enforce each one):
+  - `export async function setup()` and `export async function loop()`; import only from
+    `'circuitsvibe/arduino'` and relative files.
+  - **Every wait is `await delay(ms)` / `await delayMicroseconds(us)`.** Code between two awaits
+    takes zero simulated time. A `delay()` without `await` is F140 / M605; a polling loop that
+    never awaits is F142 / M602; `Date`, `setTimeout`, `Math.random` are F147 (use `millis()`,
+    `random()`). A helper that waits must be `async` and awaited.
+  - Interrupts: `attachInterrupt(digitalPinToInterrupt(2), onPress, FALLING)` (Uno: D2, D3);
+    the handler is a plain (sync) function; `delay()` inside it is M607.
+  - API: `pinMode` (INPUT, OUTPUT, INPUT_PULLUP), `digitalWrite/Read`, `analogRead` (10-bit on
+    AVR: `floor(Vin·1024/Vref)`, Vref = the simulated VCC, or `analogReference(INTERNAL)` 1.1 V /
+    `EXTERNAL` = AREF), `analogWrite` (Uno D3 D9 D10 D11 at 490.196 Hz, D5 D6 at 976.5625 Hz),
+    `tone/noTone`, `millis/micros`, `Serial.begin/print/println`, `Timer1`, `random`, `map`,
+    `constrain`. Not available: `pulseIn`, `shiftOut`, Wire/I2C, SPI, EEPROM, Wi-Fi (F146).
+- **Pin model**: OUTPUT = push-pull stage from the MCU's own VCC/GND pins with Rout from the
+  datasheet VOH/VOL rows (Uno at 5 V: 40 Ω high, 45 Ω low — guaranteed worst case), 10 ns
+  edges; INPUT_PULLUP = the internal resistor (Uno 35 kΩ nominal); inputs switch at VIH rising /
+  VIL falling (0.6/0.3·VCC on AVR); ESD clamp diodes to the rails. PWM is real edges by default
+  (`{ pwm: 'average' }`: the duty-cycle average, no edges — faster for RC filters).
+- **Co-simulation**: every firmware wake time (delay end, PWM edge, Timer1 tick) is a
+  transient breakpoint; an `attachInterrupt` pin cuts the step at its threshold crossing (edge
+  time within 1 ns); the firmware reads the accepted solution at its own time.
+- **Power**: at the operating point the MCU is in reset (all pins high-Z) — assert MCU
+  behaviour in `tran`/`logic`/`serial`, not `op`. It must be powered at t = 0 (else M622, it
+  never starts); a supply that later falls below the reset threshold (Uno brown-out 2.7 V)
+  latches it in reset (M622, restart not modelled); outside 4.5–5.5 V (Uno at 16 MHz) M623
+  (warning; error above the 6 V absolute maximum).
+- **Ratings** (in `stages.tran.ratings[]`, exit 1 like R40x): R410 a pin over its absolute
+  maximum (Uno 40 mA — an LED without resistor draws ≈ 70 mA), R412 a port group (Uno: D5–D13
+  source/sink 100 mA together), R413 VCC/GND or total current; R411 (warning) a pin over the
+  20 mA VOH/VOL test current. `tb.ratings({ derate, ignore: ['U1'] })` applies.
+- **Logic probes on MCU pins** (`'U1.D13'`): the driven level while the pin is an OUTPUT, the
+  input-buffer level otherwise; voltage probes `'U1.D9'` are the pin voltage.
+- **Serial assertions**: `tb.expect.serial('U1', { tstop })` or `run.serial('U1')`, then
+  `.toContain(text, { by? })`, `.toNotContain(text)`, `.toMatch(/re/flags)`, `.toHaveLines(n |
+  { min, max })`. The output is the concatenated text (`println` ends lines with `\r\n`);
+  `stages.tran.serial[]` holds `{ config, mcu, lines: [[t, text], …], partial? }` per MCU.
+- **Diagnostics**: M601 (exception) … M623 carry the **firmware** `file:line` in `at`
+  (e.g. `bench/mcu/blink.fw.ts:12`) and the simulation `time`; F14x and M608 (load/compile
+  errors) come from the lint stage, before anything is simulated.
+- **Share links**: the firmware file and its relative imports travel in the circuit document
+  (`sources[]`), so `share`, `open` and `verify x.circuit.json` reproduce the run. Inline
+  `{ setup, loop }` functions (library tests) cannot be exported (T013).
+- **Library use**: MCU firmware is `async`, so call `await runLadderAsync(bench)` (the CLI
+  does); `runLadder` throws `AsyncAnalysisError` for benches with an MCU.
+- **Not modelled**: instruction timing (zero time between awaits), ISRs preempting a running
+  slice, UART timing, ADC conversion time, sleep modes / watchdog, the core's supply current,
+  delayed power-up and restart after brown-out.
+
+### VHDL blocks
+
+```ts
+import { bench, VhdlBlock, VoltageSource, Resistor, LED } from 'circuitsvibe';
+import counter from './counter.vhd';                 // the CLI loads the text (also .vhdl)
+
+export default bench('vhdl-counter', (tb) => {
+  const clk = tb.add('CLK', new VoltageSource({ pulse: { v1: 0, v2: 5, td: '0.5m', tr: '100n', tf: '100n', pw: '0.5m', per: '1m' } }));
+  const u2 = tb.add('U2', new VhdlBlock({ source: counter, entity: 'counter', generics: { N: 4 }, family: 'HC', vcc: 5 }));
+  clk.pin('-').connect(tb.gnd);
+  clk.pin('+').connect(u2.pin('clk'));               // pins = port bits: 'clk', 'rst', 'q[0]'…'q[3]'
+  u2.pin('rst').connect(tb.gnd);                     // an input left open keeps its VHDL default (en := '1')
+  const r0 = tb.add('R0', new Resistor('470'));
+  const d0 = tb.add('D0', new LED());
+  u2.pin('q[0]').connect(r0.pin('1'));
+  r0.pin('2').connect(d0.pin('anode'));
+  d0.pin('cathode').connect(tb.gnd);
+  tb.expect.logic('U2.q[0]', { tstop: '20m', maxStep: '50u' }).toHaveFrequency(500, 1e-6, { from: '1m' });
+});
+```
+
+- A VHDL block behaves like a logic primitive: on pure-digital nets (to `Clock`, `Not`, `DFF`,
+  other VHDL blocks…) it runs on the event engine alone; a pin on an analog net is bridged with
+  the levels of `family` (`'HC'` default, `'HCT'`, `'CD4000'`) at an ideal `vcc` (default 5 V)
+  vs ground — no supply pins. Outputs are 3-state (`'Z'` releases the pin); `inout` ports only
+  on pure-digital nets. VHDL processes have zero delay unless you write `after`.
+- Pins: `std_logic` ports by name; vectors `'q[i]'` per VHDL index (`'q(0)'` works too);
+  integer/enum ports `'n[k]'` per encoding bit, LSB 0.
+- Diagnostics V701–V749 (syntax, types, unsupported constructs) come out of the **lint stage**
+  with the `.vhd` `file:line:col` (inline text: `<bench line> (vhdl line:col)`); V750–V755 at run
+  time with the time and the VHDL line. The `.vhd` text travels in the circuit document.
+
+VHDL cheat sheet (synthesizable subset; anything else is a clear V703/V708):
+
+| | Supported |
+|---|---|
+| Header | `library ieee; use ieee.std_logic_1164.all; use ieee.numeric_std.all;` (required when used, V707) |
+| Units | several entities/architectures per file; `generic (N : positive := 4)`; ports `in`/`out`/`inout`/`buffer` |
+| Types | `std_logic`, `std_logic_vector`/`unsigned`/`signed (N-1 downto 0)`, `integer range a to b`, `natural`, `positive`, `boolean`, `type state is (A, B)`, `subtype` |
+| Concurrent | `y <= a and b;` · `y <= a when s = '1' else b;` · `with s select y <= …;` · `process (clk)` / `process (all)` / leading `wait until rising_edge(clk);` · `for … generate`, `if … generate` · entity/component instances |
+| Sequential | `if/elsif/else`, `case … when … | others`, `for i in 0 to N-1 loop`, `exit`/`next`, variables `:=`, signals `<=` (last assignment wins), `after 5 ns` (inertial), `assert … report … severity` |
+| Expressions | logic ops, reductions `and v`, comparisons, `+ - * / mod rem` (integer and numeric_std), `&`, shifts `sll srl rol ror`, `shift_left/right`, `resize`, `to_unsigned`, `to_signed`, `to_integer`, `rising_edge`, `falling_edge`, `'event`, `'length`/`'range`/`'high`/`'low`, aggregates `(others => '0')`, `x"FF"`, `b"1010"` |
+| **Not supported** | `wait for`, `wait on`, `while` loops, functions/procedures, packages (`use work.pkg`), records, arrays/memories, `real`, `bit`/`bit_vector`, `textio`, `std_logic_arith`/`std_logic_unsigned` |
+
+Integers do not wrap (leaving a range is V751, the assignment is skipped) — use `unsigned` for
+counters that roll over.
+
 ### Sources
 
 Give a value, or an options object with at most ONE waveform. All values accept units.
@@ -224,7 +375,8 @@ new VoltageSource({ pwm: { low: 0, high: 5, freq: '10k', duty: '25%', rise: '100
 - `'<id>.v'` — voltage across a component (e.g. `'R1.v'`)
 - `'<id>.<q>'` — a semiconductor device quantity (`'Q1.ic'`, `'Q1.vce'`, `'M1.vgs'`, `'D1.p'`;
   see Device probes above)
-- `'<id>.<pin>'` — voltage of a logic IC / primitive pin (`'U1.1Y'`, `'U1.pin6'`)
+- `'<id>.<pin>'` — voltage of a logic IC / primitive / VHDL-block / MCU pin (`'U1.1Y'`, `'U1.pin6'`,
+  `'U2.q[0]'`, `'U1.D9'`); the same refs are logic probes in `tb.expect.logic(...)`
 - `'<net>'` — voltage of a net named with `tb.name`
 
 ### Assertions
@@ -286,7 +438,7 @@ npx circuitsvibe export <bench.ts> -o x.circuit.json   # language-neutral circui
 npx circuitsvibe verify x.circuit.json --json # a document verifies exactly like its bench
 npx circuitsvibe log show <runId>
 npx circuitsvibe explain F101                # physics + fixes for a code
-npx circuitsvibe catalog [type|part] [--json] # components, logic ICs (pins, levels per VCC), real parts (catalog 2N3904: pins, model, ratings), grammar
+npx circuitsvibe catalog [type|part] [--json] # components, logic ICs (pins, levels per VCC), real parts (catalog 2N3904: pins, model, ratings), MCUs (catalog ArduinoUno), VhdlBlock, grammar
 npx circuitsvibe agents                      # print this playbook
 ```
 
@@ -317,6 +469,14 @@ npx circuitsvibe agents                      # print this playbook
 | F136 | two logic outputs on one analog net | one driver per net, or tri-states |
 | F137 | logic input floating at the analog level (warning: unused gate) | drive it or tie it to a rail |
 | F138 | logic output tied to ground / a source / a rail | disconnect it (tie unused INPUTS) |
+| F139 | MCU VCC (Uno `5V`) / GND pin unconnected | wire the supply pins |
+| F140–F149 | firmware lint: delay not awaited, missing setup/loop, busy-wait, pin without PWM/ADC, pin number passed to attachInterrupt, unsupported API, host API (Date/setTimeout), Serial without begin, write without pinMode | fix the firmware at `at` (firmware file:line) |
+| M601–M621 | firmware runtime: exception (M601, with firmware file:line + time), busy loop, zero-time loop, delay not awaited, foreign await, load error (M608), unknown pin, … | fix the firmware at `at` |
+| M622 | MCU held in reset: unpowered at t = 0 or browned out (supply below the reset threshold) | stiff supply on VCC |
+| M623 | MCU supply outside the recommended range (error above the absolute maximum) | power within range |
+| R410 / R412 / R413 | MCU pin / port group / VCC-GND or total current over the datasheet limit (exit 1) | series resistor, spread loads, transistor driver |
+| R411 (warning) | MCU pin over the VOH/VOL test current (Uno 20 mA) | larger series resistor |
+| V701–V755 | VHDL compile (lint, `.vhd` file:line:col) and runtime errors | fix the VHDL at `at` |
 | R401–R404 | a `Part()` exceeds a datasheet voltage / current / pulsed-current / power rating (exit 1) | apply the verified fix, reduce the stress or pick a stronger part |
 | S101 | singular system lint didn't catch | report it; simplify the topology |
 | S201 | Newton-Raphson did not converge at DC (after gmin and source stepping) — names the culprit | add series resistance, check values |
@@ -371,4 +531,8 @@ stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.
 - Not modeled: temperature, junction self-heating, BJT base-resistance modulation and
   excess phase, MOSFET Meyer intrinsic capacitances (Level-1 lumped gate capacitances only),
   MOSFET levels above 1, JFETs, Darlingtons as catalog parts.
-- Not implemented yet (don't use): op-amps, microcontrollers in benches, noise analysis.
+- MCU firmware: every wait is `await delay(...)`; the MCU is in reset at the operating point
+  (assert in tran / logic / serial); power it at t = 0; LEDs on MCU pins need a resistor
+  (R410: an LED alone draws ≈ 70 mA from an Uno pin, 40 mA absolute max).
+- VHDL integers do not wrap (V751): count with `unsigned` vectors.
+- Not implemented yet (don't use): op-amps, noise analysis.

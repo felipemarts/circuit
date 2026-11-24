@@ -4,7 +4,8 @@ Compiles a practical synthesizable subset of VHDL (IEEE 1076-2008 flavored, `std
 + `numeric_std`) onto the event-driven digital engine in `src/digital`, so digital logic can be
 written in VHDL and simulated — later together with analog circuits through the engine's
 co-simulation API. Pure TypeScript, zero dependencies, browser-safe (no Node APIs),
-deterministic. **Not yet exported from `src/forge.ts`** (integration step pending).
+deterministic. In benches it is the `VhdlBlock` component (src/mixed/vhdl-block.ts, exported from
+`'circuitsvibe'`): port bits become pins, bridged to analog nets like logic primitives.
 
 ```
 source.ts       VhdlSource, source locations (file:line:col / bench line + vhdl line:col)
@@ -211,7 +212,8 @@ text (the caller is the line that called `compileVhdl` / `instantiateVhdl`, or `
 
 ## Integration notes / known gaps
 
-- Not exported from `src/forge.ts`; benches cannot reach it through `'circuitsvibe'` yet.
+- In benches: `new VhdlBlock({ source, entity?, generics?, family?, vcc? })` — pins `'clk'`,
+  `'q[0]'`…; `inout` ports only on pure-digital nets; the `.vhd` text travels in circuit documents.
 - Lint: each process declares comb paths from its sensitivity inputs to the outputs it assigns
   outside clock-edge branches (with the static `after` delay), so F133 finds zero-delay VHDL
   loops; clocked processes have none.

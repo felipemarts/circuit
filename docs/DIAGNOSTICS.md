@@ -357,6 +357,34 @@ transient configuration:
 when the logic value is X/Z; `tFirstViolation` for `toBeStable`. The tran run telemetry adds
 `eventCuts` (steps cut back to a threshold crossing) and `digitalEvents`.
 
+Microcontrollers (`new Mcu(...)`, `new ArduinoUno(...)`): `stages.tran.serial[]`, one entry
+per MCU that printed, per transient configuration — complete lines with the simulation time
+of the print call that ended them:
+
+```jsonc
+"serial": [{
+  "config": "tstop=0.31s,dt=0.00031s,maxStep=0.001s",
+  "mcu": "U1",
+  "lines": [[0.025, "presses=1"], [0.085, "presses=2"]],   // [t (s), text without 
+]
+  "partial": [0.3, "count="],      // text after the last line terminator, when any
+  "truncated": true                // only beyond 2000 lines
+}]
+```
+
+Serial assertions (`tb.expect.serial('U1')`) are tran assertions with `probe` = the MCU id and
+checks `serialContains { text, by? }` (`measured` = the time the text was printed),
+`serialNotContains { text }`, `serialMatches { pattern, flags? }`, `serialLines { count | min,
+max }` (`measured` = complete lines); a failure carries a `note` with the output seen.
+Logic captures include MCU pins that are probed (`"U1.D13"`: the driven level while OUTPUT,
+the input-buffer level otherwise). MCU pin-current checks (R410–R413) are entries of
+`stages.tran.ratings[]` with `part` = the MCU part (`ATmega328P`), `quantity` = `U1.D13.i`,
+`U1.ΣIOH(D5…D13)` or `U1.5V.i`, `measure: "peak"`, `time`, `tFirstViolation` and the datasheet
+`url`; pins without current are not listed. An MCU's netlist params are
+`{ profile?, firmware: "<entry path>", pwm?, randomSeed? }` (the firmware text is in the
+circuit document's `sources`); a VHDL block's `{ source: "<path>" | [paths] | text, entity,
+architecture?, generics?, family, vcc }` with one pin per port bit (`"q[0]"`).
+
 Semiconductor params list every model parameter that differs from its SPICE default
 (Diode/LED always carry `Is`, `n`, `Vt`); a catalog part adds `part: "<id>"` and
 `buildComponent` rebuilds it from the catalog; a `.model` device adds `model: "<name>"` (a circuit document also carries the card text as `modelCard`, so its T005–T008 diagnostics are reproduced from the document).
