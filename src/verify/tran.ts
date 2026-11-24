@@ -3,15 +3,18 @@ import type { ProbeSpec } from '../analysis/TransientAnalysis';
 import { evaluateTranCheck, type Waveform } from './measure';
 import { solverDiagnostic } from './solverDiag';
 import type { StageOutcome } from './op';
+import { evaluateTranRatings, ratingProbes } from './ratings';
 import type { AssertionResult, AssertionSpec, TranConfig, TranRunTelemetry } from '../schema/types';
 
-const COMPONENT_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
+import { COMPONENT_PROBE_RE, asQuantityDevice } from '../elab/quantity';
 
 /** Probe expression → engine probe spec (component quantity or named net). */
 export function probeSpecFor(elab: Elaboration, expr: string): ProbeSpec {
   const m = expr.match(COMPONENT_PROBE_RE);
   if (m) {
-    return { label: expr, color: '#000', component: elab.components.get(m[1])!, type: m[2] === 'i' ? 'current' : 'voltage' };
+    const component = elab.components.get(m[1])!;
+    if (asQuantityDevice(component)) return { label: expr, color: '#000', component, type: 'voltage', quantity: m[2] };
+    return { label: expr, color: '#000', component, type: m[2] === 'i' ? 'current' : 'voltage' };
   }
   return { label: expr, color: '#000', node: elab.netNode.get(expr)!, type: 'voltage' };
 }
@@ -54,11 +57,14 @@ export function runTran(elab: Elaboration): StageOutcome {
   const results: AssertionResult[] = [];
   const finalValues: Record<string, number> = {};
   const runs: TranRunTelemetry[] = [];
+  const ratingRuns: { label: string; waveforms: Map<string, Waveform> }[] = [];
+  const extraProbes = ratingProbes(elab, 'tran');
 
   for (const key of [...groups.keys()].sort()) {
     const { config, assertions } = groups.get(key)!;
     const probeExprs = [...new Set(assertions.map(a => a.probe))].sort();
-    const specs = probeExprs.map(expr => probeSpecFor(elab, expr));
+    const simulated = [...new Set([...probeExprs, ...extraProbes])].sort();
+    const specs = simulated.map(expr => probeSpecFor(elab, expr));
 
     let waveforms: Map<string, Waveform>;
     try {
@@ -94,6 +100,7 @@ export function runTran(elab: Elaboration): StageOutcome {
       return { stage: { verdict: 'error' }, diagnostics: [solverDiagnostic(elab, err, 'tran')] };
     }
 
+    if (extraProbes.length > 0) ratingRuns.push({ label: configLabel(config), waveforms });
     for (const expr of probeExprs) {
       const wf = waveforms.get(expr)!;
       finalValues[`${expr}@${configLabel(config)}`] = wf.y[wf.y.length - 1];
@@ -126,7 +133,8 @@ export function runTran(elab: Elaboration): StageOutcome {
 
   // Assertion results in declaration order, independent of group order.
   results.sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
-  const failed = results.some(r => r.verdict === 'fail');
+  const ratings = evaluateTranRatings(elab, ratingRuns);
+  const failed = results.some(r => r.verdict === 'fail') || ratings.some(r => r.verdict === 'fail');
   const totals = runs.reduce(
     (acc, r) => ({
       accepted: acc.accepted + r.acceptedSteps,
@@ -149,6 +157,7 @@ export function runTran(elab: Elaboration): StageOutcome {
         runs,
       },
       assertions: results,
+      ...(ratings.length > 0 ? { ratings } : {}),
     },
     diagnostics: [],
   };

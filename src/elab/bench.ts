@@ -5,6 +5,7 @@ import type { Node } from '../core/Node';
 import { parseValue } from './units';
 import { fnv1a64 } from './hash';
 import { captureLoc } from './loc';
+import { normalizeRatingOptions, type RatingOptions } from '../verify/ratings';
 import { describeComponent, rebuildWithValue, isOverridable, kindOf } from './describe';
 import { DcExpect, AcExpect, type DcSweepInput, type AcSweepInput } from './expect';
 import type {
@@ -20,7 +21,7 @@ import type {
 } from '../schema/types';
 
 const ID_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
-const COMPONENT_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(i|v)$/;
+import { COMPONENT_PROBE_RE, probeQuantitiesOf, isLegacyQuantity } from './quantity';
 
 export interface BenchDescriptor {
   name: string;
@@ -61,6 +62,8 @@ export class TB {
   _overrides: Record<string, number>;
   /** @internal */
   _instances = new Set<Component>();
+  /** @internal */
+  _ratings: RatingOptions = normalizeRatingOptions(undefined);
 
   constructor(circuit: Circuit, overrides: Record<string, number> = {}) {
     this._circuit = circuit;
@@ -121,6 +124,17 @@ export class TB {
       throw new Error(`param '${id}': log scale requires min > 0, got ${min}`);
     }
     this._params.set(id, { min, max, scale });
+  }
+
+  /**
+   * Datasheet absolute-maximum-rating checks of Part() devices (on by
+   * default): `tb.ratings({ derate: 0.8 })` keeps a 20 % margin,
+   * `{ pd: 'peak' }` compares instantaneous instead of window-average power
+   * in the transient stage, `{ ignore: ['Q1'] }` skips parts, and
+   * `tb.ratings(false)` disables the checks.
+   */
+  ratings(options: { enabled?: boolean; derate?: number; pd?: 'average' | 'peak'; ignore?: string[] } | false): void {
+    this._ratings = normalizeRatingOptions(options as Partial<RatingOptions> | false);
   }
 
   /** Name the electrical net that contains this pin, so probes can cite it. */
@@ -362,6 +376,8 @@ export interface Elaboration {
   netlist: NetlistDoc;
   /** net name -> engine node (for DC voltage lookup) */
   netNode: Map<string, Node>;
+  /** tb.ratings(...) options (datasheet rating checks). */
+  ratingOptions: RatingOptions;
   /** unique pin -> canonical "id.pinName" ref (registered components only) */
   refOf: Map<Pin, string>;
   /** net name -> member pins */
@@ -539,6 +555,10 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
     netPins.set(name, pins);
   }
 
+  for (const id of tb._ratings.ignore) {
+    if (!tb._components.has(id)) throw new Error(`tb.ratings({ ignore }): no component with id '${id}'`);
+  }
+
   // Validate probes now that nets are named.
   const knownNets = [...netNode.keys()].filter(n => n === 'gnd' || !/^n\d+$/.test(n));
   const validateProbe = (probe: string, at: string | undefined): void => {
@@ -553,10 +573,16 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
       }
       // The quantity must actually be exposed — custom components, for one,
       // report no current; a silent 0 would be a confidently-wrong PASS.
-      const quantity = m[2] === 'i' ? 'current' : 'voltage';
-      if (typeof (comp as unknown as Record<string, unknown>)[quantity] !== 'number') {
+      const available = probeQuantitiesOf(comp);
+      if (!available.includes(m[2])) {
+        if (isLegacyQuantity(m[2]) && available.length === 0) {
+          const quantity = m[2] === 'i' ? 'current' : 'voltage';
+          throw new Error(
+            `probe '${probe}'${where}: ${kindOf(comp)} does not expose ${quantity}. Probe a series Resistor's current or a named net's voltage instead`,
+          );
+        }
         throw new Error(
-          `probe '${probe}'${where}: ${kindOf(comp)} does not expose ${quantity}. Probe a series Resistor's current or a named net's voltage instead`,
+          `probe '${probe}'${where}: ${kindOf(comp)} '${m[1]}' has no quantity '${m[2]}'. Available: ${available.map(q => `'${m[1]}.${q}'`).join(', ') || '(none)'}`,
         );
       }
       return;
@@ -637,5 +663,6 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
     netNode,
     refOf,
     netPins,
+    ratingOptions: tb._ratings,
   };
 }

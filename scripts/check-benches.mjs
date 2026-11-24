@@ -34,7 +34,7 @@ function expectation(file) {
   const rel = path.relative(root, file).split(path.sep).join('/');
   if (!rel.startsWith('bench/broken/')) return { exit: 0 };
   const header = fs.readFileSync(file, 'utf8').match(/\/\*\*([\s\S]*?)\*\//)?.[1] ?? '';
-  const code = header.match(/Expected:\s*([FSAT]\d{3})/)?.[1];
+  const code = header.match(/Expected:\s*([A-Z]\d{3})/)?.[1];
   const exit = header.match(/\bexit (\d)\b/i)?.[1];
   if (!code || exit === undefined) {
     throw new Error(`${rel}: seeded-broken benches must state "Expected: <CODE> … exit <N>" in their header`);
@@ -69,6 +69,7 @@ for (const file of findBenches(path.join(root, 'bench'))) {
     const codes = new Set(record.diagnostics.map((d) => d.code));
     for (const stage of Object.values(record.stages)) {
       for (const a of stage.assertions ?? []) if (a.verdict === 'fail') codes.add('A301');
+      for (const r of stage.ratings ?? []) if (r.verdict === 'fail') codes.add(r.code);
     }
     if (!codes.has(want.code)) problems.push(`expected ${want.code}, got [${[...codes].join(', ')}]`);
   }
