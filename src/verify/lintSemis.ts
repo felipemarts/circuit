@@ -224,9 +224,9 @@ export function lintSemiconductors(elab: Elaboration, reached: Set<string>): Dia
           slug: 'reversed-polarity',
           severity: 'warning',
           stage: 'lint',
-          message: `${c.id} (${c.type}) has its ${name} on ${c.pins[ref]}, the ${where} potential in the circuit (${extreme} V): it can never be turned on — wired like ${pType ? 'an N' : 'a P'}-type device?`,
+          message: `${c.id} (${c.type}) has its ${name} on ${c.pins[ref]}, the ${where} potential in the circuit (${extreme} V): it can never conduct in its forward direction (any current flows backwards, uncontrolled) — wired like ${pType ? 'an N' : 'a P'}-type device?`,
           subject: { net: c.pins[ref], components: [c.id] },
-          note: `${pType ? 'a P-type device conducts when its control terminal is BELOW its ' + name : 'an N-type device conducts when its control terminal is ABOVE its ' + name}; in a circuit of resistors, diodes, transistors and ground-referenced sources no node can go ${pType ? 'below' : 'above'} ${extreme} V, so it stays off`,
+          note: `${pType ? 'a P-type device conducts when its control terminal is BELOW its ' + name : 'an N-type device conducts when its control terminal is ABOVE its ' + name}; in a circuit of resistors, diodes, transistors and ground-referenced sources no node can go ${pType ? 'below' : 'above'} ${extreme} V, so it never turns on forward; with the other terminal on the far side it conducts backwards (MOSFET body diode / swapped channel, BJT reverse-active) and the ${name === 'emitter' ? 'base' : 'gate'} cannot switch it off`,
           fixes: [
             {
               kind: 'rewire',

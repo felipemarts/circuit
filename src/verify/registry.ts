@@ -713,7 +713,10 @@ transistors, switches and ground-referenced voltage sources, no node can go
 below the most negative or above the most positive source voltage (no-gain
 property). So a PNP or enhancement PMOS with its emitter/source pinned at
 the lowest potential (or an NPN or enhancement NMOS at the highest) can never
-turn on: it is almost certainly wired like the opposite type.
+conduct in its forward direction: any current it carries flows backwards —
+through the MOSFET body diode / swapped channel, or a BJT in reverse-active
+mode — and the gate/base cannot switch it off. It is almost certainly wired
+like the opposite type.
 
 The rule only runs when that proof holds (no capacitors, inductors, current
 sources or custom parts; every voltage source referenced to gnd). Fix: move

@@ -224,7 +224,14 @@ export class MOSFET extends Component {
           vgs = a.value + vds;
           limited = a.limited || b.limited;
         }
-        if (!tied || this.params.Rs > 0) {
+        if (tied && this.params.Rs === 0) {
+          // vbs ≡ 0: the bulk-drain junction is −vds — limit it through vds (SPICE MOS1).
+          if (vds < 0 && !this.body) {
+            const c = this.bd.limit(-vds, -this._vds);
+            vds = -c.value;
+            limited = limited || c.limited;
+          }
+        } else {
           if (vds >= 0) {
             const c = this.bs.limit(vbs, this._vbs);
             vbs = c.value;
