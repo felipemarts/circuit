@@ -1,9 +1,12 @@
-<IfModule mod_rewrite.c>
-RewriteEngine On
-RewriteBase /subdirectory
-RewriteRule ^index\.html$ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME} !-l
-RewriteRule . /index.html [L]
+# Static multi-page site: unknown paths are real 404s (no SPA fallback, which made every
+# URL answer 200 with the landing page). Share links live in the URL fragment, so the
+# server never needs to route them.
+ErrorDocument 404 /404.html
+Options -Indexes
+
+<IfModule mod_headers.c>
+  # Pages change on every deploy; hashed assets under /assets/ are cached by nginx.
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
 </IfModule>

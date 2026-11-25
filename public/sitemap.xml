@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://circuitsvibe.com/</loc>
+    <lastmod>2026-11-25</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://circuitsvibe.com/"/>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://circuitsvibe.com/index.pt.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://circuitsvibe.com/"/>
+  </url>
+  <url>
+    <loc>https://circuitsvibe.com/index.pt.html</loc>
+    <lastmod>2026-11-25</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://circuitsvibe.com/"/>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://circuitsvibe.com/index.pt.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://circuitsvibe.com/"/>
+  </url>
+  <url>
+    <loc>https://circuitsvibe.com/docs.html</loc>
+    <lastmod>2026-11-25</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://circuitsvibe.com/docs.html"/>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://circuitsvibe.com/docs.pt.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://circuitsvibe.com/docs.html"/>
+  </url>
+  <url>
+    <loc>https://circuitsvibe.com/docs.pt.html</loc>
+    <lastmod>2026-11-25</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://circuitsvibe.com/docs.html"/>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://circuitsvibe.com/docs.pt.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://circuitsvibe.com/docs.html"/>
+  </url>
+  <url>
+    <loc>https://circuitsvibe.com/app.html</loc>
+    <lastmod>2026-11-25</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://circuitsvibe.com/app.html"/>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://circuitsvibe.com/app.pt.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://circuitsvibe.com/app.html"/>
+  </url>
+  <url>
+    <loc>https://circuitsvibe.com/app.pt.html</loc>
+    <lastmod>2026-11-25</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://circuitsvibe.com/app.html"/>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://circuitsvibe.com/app.pt.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://circuitsvibe.com/app.html"/>
+  </url>
+</urlset>

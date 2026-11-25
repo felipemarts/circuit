@@ -5,16 +5,31 @@
 <script>(function(){var L="pt",A="index.html";try{var p=localStorage.getItem("cv-lang");if(p&&p!==L){location.replace(A+location.search+location.hash);return;}}catch(e){}document.addEventListener("click",function(e){var t=e.target&&e.target.closest&&e.target.closest("[data-setlang]");if(!t)return;try{localStorage.setItem("cv-lang",t.getAttribute("data-setlang"));}catch(_){}});})();</script>
 <script>(function(){try{var t=localStorage.getItem("cv-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CircuitsVibe — Circuitos como código. Verificados por simulação. Feitos para agentes de IA.</title>
-<meta name="description" content="CircuitsVibe é o vitest dos circuitos: escreva uma bancada em TypeScript — analógico, semicondutores reais, amp-ops, CIs lógicos, VHDL, firmware Arduino — rode verify, leia diagnósticos com códigos estáveis e hints verificados por simulação, itere até passar. Share links reexecutam o mesmo motor no navegador.">
-<meta property="og:title" content="CircuitsVibe — Circuitos como código. Verificados por simulação.">
-<meta property="og:description" content="vitest dos circuitos: bancada em TypeScript, escada de verificação (lint → op → dc → ac → tran), peças reais com limites de datasheet, CIs lógicos, VHDL e firmware Arduino cossimulados, códigos de diagnóstico estáveis e hints verificados para agentes de IA.">
+<title>CircuitsVibe — Vibe hardware: agentes de IA projetam e verificam circuitos</title>
+<meta name="description" content="Vibe hardware: descreva um circuito e o seu agente de IA projeta, simula na sua máquina (analógico, peças reais, CIs lógicos, VHDL, Arduino) e te envia um link verificado.">
+<link rel="canonical" href="https://circuitsvibe.com/index.pt.html">
+<link rel="alternate" hreflang="en" href="https://circuitsvibe.com/">
+<link rel="alternate" hreflang="pt-BR" href="https://circuitsvibe.com/index.pt.html">
+<link rel="alternate" hreflang="x-default" href="https://circuitsvibe.com/">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="CircuitsVibe">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:locale:alternate" content="en_US">
 <meta property="og:url" content="https://circuitsvibe.com/index.pt.html">
+<meta property="og:title" content="CircuitsVibe — Vibe hardware">
+<meta property="og:description" content="Descreva o circuito. O seu agente de IA (Claude Code, Codex, Cursor) monta, simula localmente e te entrega um link com o resultado verificado.">
+<meta property="og:image" content="https://circuitsvibe.com/og-pt.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CircuitsVibe: vibe hardware. Descreva o circuito, o seu agente monta e verifica.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CircuitsVibe — Vibe hardware">
+<meta name="twitter:description" content="Descreva o circuito. O seu agente de IA (Claude Code, Codex, Cursor) monta, simula localmente e te entrega um link com o resultado verificado.">
+<meta name="twitter:image" content="https://circuitsvibe.com/og-pt.png">
 <meta name="theme-color" content="#070b14">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="alternate" hreflang="en" href="https://circuitsvibe.com/index.html">
-<link rel="alternate" hreflang="pt-BR" href="https://circuitsvibe.com/index.pt.html">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://circuitsvibe.com/#website","url":"https://circuitsvibe.com/","name":"CircuitsVibe","inLanguage":["en","pt-BR"]},{"@type":"SoftwareApplication","@id":"https://circuitsvibe.com/#app","name":"CircuitsVibe","url":"https://circuitsvibe.com/index.pt.html","description":"Vibe hardware: descreva um circuito e o seu agente de IA projeta, simula na sua máquina (analógico, peças reais, CIs lógicos, VHDL, Arduino) e te envia um link verificado.","image":"https://circuitsvibe.com/og-pt.png","inLanguage":"pt-BR","applicationCategory":"DeveloperApplication","applicationSubCategory":"Circuit simulator","operatingSystem":"Windows, macOS, Linux (Node.js 20+); web browser","softwareVersion":"0.2.0","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@type":"Person","name":"Felipe Martins"},"sameAs":["https://github.com/felipemarts/circuit","https://www.npmjs.com/package/circuitsvibe"],"keywords":"vibe hardware, AI agents, circuit simulator, SPICE, Arduino simulator, VHDL, Claude Code, electronics"},{"@type":"FAQPage","@id":"https://circuitsvibe.com/index.pt.html#faq","inLanguage":"pt-BR","mainEntity":[{"@type":"Question","name":"O que é vibe hardware?","acceptedAnswer":{"@type":"Answer","text":"Projetar eletrônica descrevendo o que você quer para um agente de IA, como o vibe coding faz com software. Hardware precisa de prova antes da solda, então o CircuitsVibe dá ao agente um simulador de circuitos com códigos de saída: o circuito é conferido por simulação antes de chegar a você."}},{"@type":"Question","name":"Quais agentes de IA conseguem usar?","acceptedAnswer":{"@type":"Answer","text":"Qualquer agente que rode comandos no terminal, como Claude Code, OpenAI Codex, Cursor, Gemini CLI ou GitHub Copilot no modo agente. Precisa do Node.js 20 ou mais novo. Assistentes só de chat podem ler o llms.txt e escrever a bancada para você rodar."}},{"@type":"Question","name":"O que ele simula?","acceptedAnswer":{"@type":"Answer","text":"Ponto de operação DC, varredura DC, AC (Bode) e transitório. Resistores, capacitores, indutores, fontes, diodos, Zeners, LEDs, transistores bipolares, MOSFETs, amp-ops e comparadores, lógica 74HC e CD4000, o NE555, blocos VHDL e um Arduino Uno, ATtiny85, ESP32 ou RP2040 rodando firmware em TypeScript. Peças reais do catálogo são conferidas contra os limites do datasheet."}},{"@type":"Question","name":"Meu circuito é enviado para algum lugar?","acceptedAnswer":{"@type":"Answer","text":"Não. A simulação roda na sua máquina. Um link de compartilhamento leva o circuito comprimido no fragmento da URL, que o navegador nunca envia ao servidor, e o visualizador simula de novo no seu navegador."}},{"@type":"Question","name":"É gratuito?","acceptedAnswer":{"@type":"Answer","text":"Sim. O CircuitsVibe é código aberto sob a licença MIT e é instalado pelo npm como circuitsvibe."}},{"@type":"Question","name":"Como ele se compara ao SPICE?","acceptedAnswer":{"@type":"Answer","text":"Usa os mesmos métodos numéricos (análise nodal modificada, Newton-Raphson, integração trapezoidal, modelos de dispositivo no estilo SPICE e cartões .model), mas é feito para agentes: especificações como asserções, códigos de saída, códigos de diagnóstico estáveis com arquivo:linha, hints de dimensionamento verificados por simulação e JSON determinístico. Não faz análise de ruído, efeitos de temperatura nem MOSFETs acima do nível 1."}}]}]}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -33,12 +48,13 @@
       <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
     <div class="nav-links" id="navlinks">
+      <a href="#agent">Prompt do agente</a>
       <a href="app.html">Visualizador</a>
       <a href="docs.pt.html">Docs</a>
-      <a href="#agent">Prompt do agente</a>
       <a href="#examples">Exemplos</a>
       <a href="#live">Ao vivo</a>
       <a href="#roadmap">Roadmap</a>
+      <a href="#faq">FAQ</a>
       <a href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener">GitHub</a>
       <div class="nav-row">
         <a href="index.html" class="lang-switch" data-setlang="en" hreflang="en" title="English version">EN</a>
@@ -59,15 +75,15 @@
   <div class="container hero-grid">
     <div>
       <span class="hero-badge"><i></i><b>npm</b> circuitsvibe · MIT · zero deps nativas</span>
-      <h1>Circuitos como código.<br>Verificados por simulação.<br><span class="grad">Feitos para agentes de IA.</span></h1>
+      <h1><span class="grad">Vibe hardware.</span><br>Você descreve.<br>O agente prova.</h1>
       <p class="hero-sub">
-        CircuitsVibe é o <strong>vitest dos circuitos</strong>. Um agente escreve uma bancada em TypeScript — de um LED a
-        transistores reais com limites de datasheet, amp-ops, CIs lógicos, VHDL e um Arduino rodando o seu firmware — roda
-        <strong>verify</strong> por op, varredura DC, AC e transitório, decide pelo exit code, aplica hints verificados
-        por simulação e itera até ficar verde. Um <strong>share link</strong> reexecuta o mesmo motor no navegador.
+        <strong>Vibe coding, agora para eletrônica.</strong> Diga ao seu agente de IA (Claude Code, Codex, Cursor) o que
+        você precisa. Ele escreve o circuito como código, simula na sua máquina — transistores reais com limites de
+        datasheet, amp-ops, CIs lógicos, VHDL, um Arduino rodando o firmware — corrige até todas as verificações passarem
+        e te envia um <strong>link</strong> que abre o circuito verificado no navegador.
       </p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#quickstart">Começar
+        <a class="btn btn-primary" href="#agent">Pegar o prompt do agente
           <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
         <a class="btn btn-ghost" href="#examples">Ver os exemplos</a>
       </div>
@@ -97,6 +113,55 @@
     </div>
   </div>
 </header>
+
+<!-- ═══════════════════════════ AGENT PROMPT ═══════════════════════════ -->
+<section class="section agent-section" id="agent">
+  <div class="glow glow-a" style="width:640px;height:640px;left:-240px;top:-80px"></div>
+  <div class="glow glow-b" style="width:560px;height:560px;right:-220px;bottom:-160px"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <div class="agent-card reveal">
+      <div class="eyebrow">Vibe hardware · para o seu agente</div>
+      <h2 class="h2 agent-h2">Cole um prompt. <span class="grad">Descreva o circuito.</span> Receba um link verificado.</h2>
+      <p class="lead">Qualquer agente que rode comandos no terminal consegue usar o CircuitsVibe. O prompt ensina o ciclo: ler o playbook, escrever a bancada, iterar no <code>verify</code> até sair com <code>0</code> e entregar um link que abre o circuito aqui.</p>
+
+      <ol class="agent-flow">
+          <li><b>1</b><div><strong>Copie o prompt</strong><span>no Claude Code, Codex, Cursor ou qualquer agente com terminal — ou salve no <code>CLAUDE.md</code> / <code>AGENTS.md</code></span></div></li>
+          <li><b>2</b><div><strong>Descreva o circuito</strong><span><em>“um driver de LED de 10 mA a partir de 5 V”</em>, <em>“um pisca-pisca de 1 kHz com NE555”</em>, <em>“um Uno que controla o brilho de um LED com um potenciômetro”</em></span></div></li>
+          <li><b>3</b><div><strong>Abra o link verificado</strong><span>esquemático, formas de onda e o mesmo veredito da execução do agente, simulados de novo no seu navegador</span></div></li>
+      </ol>
+
+      <div class="agent-grid">
+        <div class="code has-head prompt" data-copy>
+          <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span>prompt para o seu agente</span><span class="lang">texto</span></div>
+          <pre><code id="agent-prompt">Você pode projetar e simular circuitos eletrônicos com o CircuitsVibe, um simulador de circuitos feito para agentes de IA. Ele roda localmente com Node ≥ 20 via npx; não há nada para instalar.
+
+1. Antes de tudo, rode `npx circuitsvibe agents` e leia o playbook inteiro que ele imprime: API da bancada, componentes, asserções, códigos de diagnóstico e armadilhas. Siga-o à risca. Se você não puder rodar comandos, leia https://circuitsvibe.com/AGENTS.md.
+2. Para cada circuito que eu pedir, escreva uma bancada `&lt;nome&gt;.bench.ts` (comece com `npx circuitsvibe init &lt;nome&gt;`): o circuito, seus parâmetros livres (`tb.param`) e os meus requisitos como asserções (`tb.expect.*`). Quando eu citar uma peça real, use `Part('&lt;id&gt;')` e confira `npx circuitsvibe catalog &lt;id&gt;` para os pinos e os limites.
+3. Rode `npx circuitsvibe verify &lt;nome&gt;.bench.ts --json` e decida só pelo código de saída:
+   - 0: pronto, todas as etapas passaram.
+   - 1: o circuito é válido, mas um requisito ou um limite de peça falhou. Se a asserção que falhou tiver um hint com kind "verified-param-range", rode de novo com `--set &lt;id&gt;=&lt;hint.suggestedValue&gt;`; senão, mude valores ou a topologia.
+   - 2: o circuito é inválido ou não tem solução. Corrija a estrutura em `diagnostics[].at` antes de mexer em valores.
+   - 3: a bancada lançou um erro ou o comando estava errado. Corrija o código ou a chamada.
+   Rode `npx circuitsvibe explain &lt;código&gt;` para qualquer diagnóstico que você não entender e confira `npx circuitsvibe log list --json` antes de cada nova tentativa, para nunca repetir uma configuração que já falhou.
+4. Nunca invente valores de componentes nem medições. Deixe o `tb.param` encontrar a faixa que passa e só cite números que vêm do RunRecord.
+5. Quando o verify sair com 0, grave os valores aprovados na bancada, rode `npx circuitsvibe share &lt;nome&gt;.bench.ts` e me entregue o link que ele imprime, com um resumo curto do que foi verificado e dos valores medidos.
+
+Se o npx não tiver acesso à rede, baixe https://circuitsvibe.com/circuitsvibe-standalone.mjs e rode `node circuitsvibe-standalone.mjs &lt;comando&gt;`.</code></pre>
+        </div>
+        <div class="agent-side">
+          <button type="button" class="btn btn-primary agent-copy" data-copy-from="#agent-prompt" data-copied="Copiado!">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Copiar o prompt</span></button>
+          <div class="qs-notes">
+          <div class="qs-note"><span class="n">✓</span><div><strong>Nada sai da sua máquina.</strong> A simulação roda localmente, e o link leva o circuito inteiro dentro da URL: sem upload, sem conta.</div></div>
+          <div class="qs-note"><span class="n">✓</span><div><strong>O agente não tem como inventar.</strong> Todo número que ele cita vem do JSON do simulador, e os hints de dimensionamento são simulados antes de serem sugeridos.</div></div>
+          <div class="qs-note"><span class="n">?</span><div><strong>Chat sem terminal?</strong> O assistente ainda pode ler <a href="https://circuitsvibe.com/llms.txt">circuitsvibe.com/llms.txt</a> e escrever a bancada; você mesmo roda <code>npx circuitsvibe verify</code> e <code>share</code>.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 
 <!-- ═══════════════════════════ THE LOOP ═══════════════════════════ -->
 <section class="section" id="loop">
@@ -129,42 +194,6 @@
     </div>
   </div>
 </section>
-
-<!-- ═══════════════════════════ AGENT PROMPT ═══════════════════════════ -->
-<section class="section" id="agent">
-  <div class="glow glow-a" style="width:520px;height:520px;left:-220px;top:60px"></div>
-  <div class="container" style="position:relative;z-index:1">
-    <div class="eyebrow">Para o seu agente</div>
-    <h2 class="h2">Cole um prompt. Receba um circuito verificado e um link.</h2>
-    <p class="lead">Qualquer agente que rode comandos no terminal (Claude Code, Codex, Cursor e afins) consegue usar o CircuitsVibe. Este prompt ensina o ciclo: ler o playbook, escrever a bancada, iterar no <code>verify</code> até sair com <code>0</code> e entregar um link que abre o circuito aqui.</p>
-
-    <div class="agent-grid">
-      <div class="code has-head prompt reveal" data-copy>
-        <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span>prompt para o seu agente</span><span class="lang">texto</span></div>
-        <pre><code>Você pode projetar e simular circuitos eletrônicos com o CircuitsVibe, um simulador de circuitos feito para agentes de IA. Ele roda localmente com Node ≥ 20 via npx; não há nada para instalar.
-
-1. Antes de tudo, rode `npx circuitsvibe agents` e leia o playbook inteiro que ele imprime: API da bancada, componentes, asserções, códigos de diagnóstico e armadilhas. Siga-o à risca. Se você não puder rodar comandos, leia https://circuitsvibe.com/AGENTS.md.
-2. Para cada circuito que eu pedir, escreva uma bancada `&lt;nome&gt;.bench.ts` (comece com `npx circuitsvibe init &lt;nome&gt;`): o circuito, seus parâmetros livres (`tb.param`) e os meus requisitos como asserções (`tb.expect.*`). Quando eu citar uma peça real, use `Part('&lt;id&gt;')` e confira `npx circuitsvibe catalog &lt;id&gt;` para os pinos e os limites.
-3. Rode `npx circuitsvibe verify &lt;nome&gt;.bench.ts --json` e decida só pelo código de saída:
-   - 0: pronto, todas as etapas passaram.
-   - 1: o circuito é válido, mas um requisito ou um limite de peça falhou. Se a asserção que falhou tiver um hint com kind "verified-param-range", rode de novo com `--set &lt;id&gt;=&lt;hint.suggestedValue&gt;`; senão, mude valores ou a topologia.
-   - 2: o circuito é inválido ou não tem solução. Corrija a estrutura em `diagnostics[].at` antes de mexer em valores.
-   - 3: a bancada lançou um erro ou o comando estava errado. Corrija o código ou a chamada.
-   Rode `npx circuitsvibe explain &lt;código&gt;` para qualquer diagnóstico que você não entender e confira `npx circuitsvibe log list --json` antes de cada nova tentativa, para nunca repetir uma configuração que já falhou.
-4. Nunca invente valores de componentes nem medições. Deixe o `tb.param` encontrar a faixa que passa e só cite números que vêm do RunRecord.
-5. Quando o verify sair com 0, grave os valores aprovados na bancada, rode `npx circuitsvibe share &lt;nome&gt;.bench.ts` e me entregue o link que ele imprime, com um resumo curto do que foi verificado e dos valores medidos.
-
-Se o npx não tiver acesso à rede, baixe https://circuitsvibe.com/circuitsvibe-standalone.mjs e rode `node circuitsvibe-standalone.mjs &lt;comando&gt;`.</code></pre>
-      </div>
-      <div class="qs-notes reveal">
-        <div class="qs-note"><span class="n">1</span><div><strong>Cole uma vez,</strong> ou salve nas instruções do agente (<code>CLAUDE.md</code>, <code>AGENTS.md</code>, instruções personalizadas). Depois é só descrever o circuito: <em>“um driver de LED de 10 mA a partir de 5 V”</em>, <em>“um pisca-pisca de 1 kHz com NE555”</em>, <em>“um Uno que controla o brilho de um LED com um potenciômetro”</em>.</div></div>
-        <div class="qs-note"><span class="n">2</span><div><strong>Nada sai da sua máquina.</strong> A simulação roda localmente, e o link leva o circuito inteiro na URL: sem upload, sem conta.</div></div>
-        <div class="qs-note"><span class="n">3</span><div><strong>Chat sem terminal?</strong> O assistente ainda pode ler <a href="https://circuitsvibe.com/llms.txt">circuitsvibe.com/llms.txt</a> e escrever a bancada; você mesmo roda <code>npx circuitsvibe verify</code> e <code>share</code>.</div></div>
-      </div>
-    </div>
-  </div>
-</section>
-
 
 <!-- ═══════════════════════════ QUICK START ═══════════════════════════ -->
 <section class="section" id="quickstart">
@@ -448,6 +477,23 @@ export default bench('led-driver', (tb) => {
     </div>
   </div>
 </section>
+
+<!-- ═══════════════════════════ FAQ ═══════════════════════════ -->
+<section class="section" id="faq">
+  <div class="container">
+    <div class="eyebrow">Perguntas frequentes</div>
+    <h2 class="h2">Perguntas sobre vibe hardware</h2>
+    <div class="faq reveal">
+      <details class="faq-item"><summary>O que é vibe hardware?</summary><p>Projetar eletrônica descrevendo o que você quer para um agente de IA, como o vibe coding faz com software. Hardware precisa de prova antes da solda, então o CircuitsVibe dá ao agente um simulador de circuitos com códigos de saída: o circuito é conferido por simulação antes de chegar a você.</p></details>
+      <details class="faq-item"><summary>Quais agentes de IA conseguem usar?</summary><p>Qualquer agente que rode comandos no terminal, como Claude Code, OpenAI Codex, Cursor, Gemini CLI ou GitHub Copilot no modo agente. Precisa do Node.js 20 ou mais novo. Assistentes só de chat podem ler o <a href="https://circuitsvibe.com/llms.txt">llms.txt</a> e escrever a bancada para você rodar.</p></details>
+      <details class="faq-item"><summary>O que ele simula?</summary><p>Ponto de operação DC, varredura DC, AC (Bode) e transitório. Resistores, capacitores, indutores, fontes, diodos, Zeners, LEDs, transistores bipolares, MOSFETs, amp-ops e comparadores, lógica 74HC e CD4000, o NE555, blocos VHDL e um Arduino Uno, ATtiny85, ESP32 ou RP2040 rodando firmware em TypeScript. Peças reais do catálogo são conferidas contra os limites do datasheet.</p></details>
+      <details class="faq-item"><summary>Meu circuito é enviado para algum lugar?</summary><p>Não. A simulação roda na sua máquina. Um link de compartilhamento leva o circuito comprimido no fragmento da URL, que o navegador nunca envia ao servidor, e o visualizador simula de novo no seu navegador.</p></details>
+      <details class="faq-item"><summary>É gratuito?</summary><p>Sim. O CircuitsVibe é código aberto sob a licença MIT e é instalado pelo npm como <code>circuitsvibe</code>.</p></details>
+      <details class="faq-item"><summary>Como ele se compara ao SPICE?</summary><p>Usa os mesmos métodos numéricos (análise nodal modificada, Newton-Raphson, integração trapezoidal, modelos de dispositivo no estilo SPICE e cartões <code>.model</code>), mas é feito para agentes: especificações como asserções, códigos de saída, códigos de diagnóstico estáveis com arquivo:linha, hints de dimensionamento verificados por simulação e JSON determinístico. Não faz análise de ruído, efeitos de temperatura nem MOSFETs acima do nível 1.</p></details>
+    </div>
+  </div>
+</section>
+
 
 <!-- ═══════════════════════════ CTA ═══════════════════════════ -->
 <section class="section" id="start">

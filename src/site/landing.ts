@@ -56,3 +56,22 @@ function initGalleryFilter(): void {
 }
 
 initGalleryFilter();
+
+/** Big "copy the prompt" buttons: copy the text of the element named by data-copy-from. */
+function initCopyFrom(): void {
+  document.querySelectorAll<HTMLButtonElement>('button[data-copy-from]').forEach(btn => {
+    const source = document.querySelector<HTMLElement>(btn.dataset.copyFrom ?? '');
+    const label = btn.querySelector('span');
+    if (!source || !label) return;
+    const idle = label.textContent ?? '';
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText((source.textContent ?? '').replace(/\n$/, ''));
+        label.textContent = btn.dataset.copied ?? idle;
+        setTimeout(() => { label.textContent = idle; }, 1800);
+      } catch { /* clipboard blocked */ }
+    });
+  });
+}
+
+initCopyFrom();

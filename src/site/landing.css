@@ -86,12 +86,45 @@
 .exit.e0 b { color: var(--green); } .exit.e1 b { color: var(--amber); } .exit.e2 b { color: var(--red); } .exit.e3 b { color: var(--blue); }
 @media (max-width: 960px) { .qs-grid { grid-template-columns: 1fr; } }
 
-/* Agent prompt: prose, so it wraps instead of scrolling sideways */
-.agent-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.8fr); gap: 28px; align-items: start; margin-top: 28px; }
-.agent-grid .qs-notes { margin-top: 0; }
+/* Agent prompt — the headline feature: a gradient-bordered card right after the hero */
+.agent-section { padding-top: 72px; }
+.agent-card {
+  position: relative; border-radius: 24px; padding: clamp(22px, 4vw, 48px);
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 85%, transparent), rgba(167, 139, 250, .75) 55%, color-mix(in srgb, var(--accent) 30%, transparent)) border-box;
+  box-shadow: 0 40px 100px -40px color-mix(in srgb, var(--accent) 45%, transparent), var(--shadow-lg);
+}
+.agent-card .lead { margin-bottom: 28px; }
+.agent-h2 { font-size: clamp(30px, 4.6vw, 48px); max-width: 920px; }
+.agent-flow { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0 0 28px; padding: 0; counter-reset: none; }
+.agent-flow li { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: var(--radius-lg); border: 1px solid var(--border); background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.agent-flow li > b { flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-family: var(--mono); font-size: 15px; color: var(--accent-ink); background: linear-gradient(135deg, var(--accent), #a78bfa); }
+.agent-flow strong { display: block; color: var(--text); font-weight: 700; margin-bottom: 4px; }
+.agent-flow span { display: block; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.agent-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.75fr); gap: 28px; align-items: start; }
+.agent-side { display: grid; gap: 22px; }
+.agent-side .qs-notes { margin-top: 0; }
+.agent-copy { width: 100%; justify-content: center; font-size: 16px; padding: 15px 20px; cursor: pointer; border: none; }
+.agent-copy svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .code.prompt pre { font-size: 12.5px; line-height: 1.65; }
-.code.prompt pre code { white-space: pre-wrap; overflow-wrap: anywhere; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
-@media (max-width: 960px) { .agent-grid { grid-template-columns: 1fr; } }
+/* prose, so it wraps instead of scrolling sideways; no ligatures (-- and >= must read as typed) */
+.code.prompt pre code { white-space: pre-wrap; overflow-wrap: break-word; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+@media (max-width: 960px) {
+  .agent-flow { grid-template-columns: 1fr; }
+  .agent-grid { grid-template-columns: 1fr; }
+  .agent-side { order: -1; }
+}
+
+/* FAQ */
+.faq { display: grid; gap: 12px; max-width: 900px; }
+.faq-item { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); padding: 0 22px; }
+.faq-item summary { cursor: pointer; list-style: none; padding: 18px 0; font-weight: 600; font-size: 17px; color: var(--text); display: flex; justify-content: space-between; gap: 16px; }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: '+'; font-family: var(--mono); color: var(--accent); font-size: 20px; line-height: 1; }
+.faq-item[open] summary::after { content: '−'; }
+.faq-item p { color: var(--muted); padding: 0 0 20px; margin: 0; line-height: 1.65; }
 @media (max-width: 640px) { .exit-strip { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 
 /* ─── Why ───────────────────────────────────────────────────────────────── */
