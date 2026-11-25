@@ -2,7 +2,9 @@
  * Schematic symbol registry for the share-link viewer. Keyed by component
  * `type` (built-in engine types, logic IC catalog ids, logic primitives,
  * op-amp / comparator type names, and a generic labelled box for anything
- * else — MCU boards, VHDL blocks, custom definitions).
+ * else — custom definitions). Microcontroller boards (Arduino Uno, the bare
+ * Mcu profiles) and VHDL blocks get dedicated boxes: header-shaped pin rows,
+ * firmware / entity labels and port bits grouped into buses.
  *
  * Geometry is in symbol-local coordinates, unrotated, on a 10 px grid:
  * every pin sits on the symbol's bounding box edge at a grid point, with a
@@ -11,8 +13,10 @@
  * from each pin to the body are drawn by the renderer so they take the net
  * voltage color.
  */
-import type { CircuitComponent } from '../doc/types';
+import type { CircuitComponent, CircuitDoc } from '../doc/types';
 import { findIcDef } from '../mixed/ics';
+import { getMcuProfile } from '../mcu/profiles';
+import { compileVhdl } from '../vhdl/design';
 import { LOGIC_PRIMITIVE_TYPES } from '../mixed/device';
 import { PART_DEFS } from '../digital/parts';
 import { isZener, valueLabel } from './format';
@@ -115,18 +119,34 @@ interface BoxPin {
   side: Side;
   role: PinGeom['role'];
   number?: number;
+  /** Text drawn inside the body (defaults to the name; bus bits show their index). */
+  label?: string;
+  /** Bus the pin belongs to (adjacent pins of one bus get a bracket with this label). */
+  bus?: string;
+}
+
+interface BoxOptions {
+  minW?: number;
+  /** Extra body markup (board decorations), given the half extents. */
+  decor?: (hw: number, hh: number) => string;
+  /** CSS class added to the body rect. */
+  bodyClass?: string;
 }
 
 const ROW = 2 * G;
 
-function boxSymbol(kind: SymbolKind, c: CircuitComponent, pinsIn: BoxPin[], title: string, subtitle?: string, minW = 12 * G): SymbolGeom {
+function boxSymbol(kind: SymbolKind, c: CircuitComponent, pinsIn: BoxPin[], title: string, subtitle?: string, opts: BoxOptions | number = 12 * G): SymbolGeom {
+  const o: BoxOptions = typeof opts === 'number' ? { minW: opts } : opts;
+  const minW = o.minW ?? 12 * G;
+  const text = (p: BoxPin): string => p.label ?? p.name;
   const left = pinsIn.filter(p => p.side === 'l');
   const right = pinsIn.filter(p => p.side === 'r');
   const top = pinsIn.filter(p => p.side === 't');
   const bottom = pinsIn.filter(p => p.side === 'b');
   const rows = Math.max(left.length, right.length, 1);
-  const longest = Math.max(0, ...pinsIn.filter(p => p.side === 'l' || p.side === 'r').map(p => p.name.length));
-  const bodyW = Math.max(minW, Math.ceil((longest * 6.2 * 2 + 44 + Math.max(title.length, (subtitle ?? '').length) * 7) / ROW) * ROW, (Math.max(top.length, bottom.length) + 1) * ROW);
+  const sideLen = (list: BoxPin[]): number => Math.max(0, ...list.map(p => text(p).length + (p.bus ? p.bus.length + 2 : 0)));
+  const longest = Math.max(sideLen(left), sideLen(right));
+  const bodyW = Math.max(minW, Math.ceil((longest * 6.2 * 2 + 44 + Math.max(title.length * 7, (subtitle ?? '').length * 5.4)) / ROW) * ROW, (Math.max(top.length, bottom.length) + 1) * ROW);
   const bodyH = Math.max((rows + 1) * ROW, 4 * G + (top.length ? ROW : 0) + (bottom.length ? ROW : 0));
   const w = bodyW + 2 * G;
   const h = bodyH + 2 * G;
@@ -158,14 +178,17 @@ function boxSymbol(kind: SymbolKind, c: CircuitComponent, pinsIn: BoxPin[], titl
     p.bx = Math.round(p.bx / G) * G;
     p.by = Math.round(p.by / G) * G;
   }
-  let svg = `<rect class="sym ic-body" x="${-hw}" y="${-hh}" width="${bodyW}" height="${bodyH}" rx="3"/>`;
+  let svg = `<rect class="sym ic-body${o.bodyClass ? ` ${o.bodyClass}` : ''}" x="${-hw}" y="${-hh}" width="${bodyW}" height="${bodyH}" rx="3"/>`;
+  if (o.decor) svg += o.decor(hw, hh);
   svg += `<text class="sym-txt ic-title" x="0" y="${subtitle ? -2 : 4}" text-anchor="middle">${esc(title)}</text>`;
   if (subtitle) svg += `<text class="sym-txt ic-sub" x="0" y="12" text-anchor="middle">${esc(subtitle)}</text>`;
+  const labelOf = new Map(pinsIn.map(p => [p.name, text(p)]));
   for (const p of pins) {
-    if (p.side === 'l') svg += `<text class="sym-txt pin-name" x="${p.bx + 4}" y="${p.y + 3.5}">${esc(p.name)}</text>`;
-    else if (p.side === 'r') svg += `<text class="sym-txt pin-name" x="${p.bx - 4}" y="${p.y + 3.5}" text-anchor="end">${esc(p.name)}</text>`;
-    else if (p.side === 't') svg += `<text class="sym-txt pin-name" x="${p.x}" y="${p.by + 10}" text-anchor="middle">${esc(p.name)}</text>`;
-    else svg += `<text class="sym-txt pin-name" x="${p.x}" y="${p.by - 4}" text-anchor="middle">${esc(p.name)}</text>`;
+    const name = labelOf.get(p.name) ?? p.name;
+    if (p.side === 'l') svg += `<text class="sym-txt pin-name" x="${p.bx + 4}" y="${p.y + 3.5}">${esc(name)}</text>`;
+    else if (p.side === 'r') svg += `<text class="sym-txt pin-name" x="${p.bx - 4}" y="${p.y + 3.5}" text-anchor="end">${esc(name)}</text>`;
+    else if (p.side === 't') svg += `<text class="sym-txt pin-name" x="${p.x}" y="${p.by + 10}" text-anchor="middle">${esc(name)}</text>`;
+    else svg += `<text class="sym-txt pin-name" x="${p.x}" y="${p.by - 4}" text-anchor="middle">${esc(name)}</text>`;
     if (p.number !== undefined) {
       const nx = p.side === 'l' ? p.bx - 5 : p.side === 'r' ? p.bx + 5 : p.x + (p.side === 't' ? 4 : 4);
       const ny = p.side === 'l' || p.side === 'r' ? p.y - 3 : p.side === 't' ? p.by - 4 : p.by + 9;
@@ -178,6 +201,25 @@ function boxSymbol(kind: SymbolKind, c: CircuitComponent, pinsIn: BoxPin[], titl
     }
     if (/^(CLK|CLOCK|SRCLK|RCLK|clk|CP)$/i.test(p.name) && p.side === 'l') {
       svg += `<path class="sym" d="M${p.bx} ${p.y - 5}l6 5 -6 5"/>`;
+    }
+  }
+  // Bus brackets: adjacent pins of one side that belong to the same bus.
+  for (const side of ['l', 'r'] as const) {
+    const list = (side === 'l' ? left : right).map(bp => ({ bp, geom: pins.find(p => p.name === bp.name)! }));
+    let i = 0;
+    while (i < list.length) {
+      const bus = list[i].bp.bus;
+      let j = i;
+      while (bus && j + 1 < list.length && list[j + 1].bp.bus === bus) j++;
+      if (bus && j > i) {
+        const y0 = list[i].geom.y - 6;
+        const y1 = list[j].geom.y + 6;
+        const bitW = Math.max(...list.slice(i, j + 1).map(x => text(x.bp).length)) * 5.2 + 8;
+        const x = side === 'l' ? list[i].geom.bx + 4 + bitW : list[i].geom.bx - 4 - bitW;
+        svg += `<path class="sym bus-bracket" d="M${x} ${y0}v${y1 - y0}"/>`;
+        svg += `<text class="sym-txt bus-name" x="${side === 'l' ? x + 4 : x - 4}" y="${(y0 + y1) / 2 + 3}" text-anchor="${side === 'l' ? 'start' : 'end'}">${esc(bus)}</text>`;
+      }
+      i = j + 1;
     }
   }
   return { kind, w, h, pins, svg, label: c.id, value: valueLabel(c), showPinNames: true };
@@ -277,12 +319,22 @@ function opampSymbol(c: CircuitComponent, names: string[]): SymbolGeom {
   if (out) pins.push(pin(out, 40, 0, 'r', 24, 0, 'out'));
   if (vp) pins.push(pin(vp, 0, -30, 't', 0, -12, 'vcc'));
   if (vn) pins.push(pin(vn, 0, 30, 'b', 0, 12, 'gnd'));
-  leftovers.forEach((n, i) => pins.push(pin(n, 40, 20 + i * 0, 'r', 24, 10, 'analog')));
+  // Extra pins (LM311 'emit', balance / strobe…): along the bottom edge, right
+  // of V−; the stub ends on the triangle's lower side (y = (24 − x) / 2 at x).
+  leftovers.forEach((n, i) => {
+    const x = Math.min(20, 10 + i * 10);
+    pins.push(pin(n, x, 30, 'b', x, (24 - x) / 2, 'analog'));
+  });
   const comparator = /Comparator/.test(c.type);
   let svg = `<path ${S} d="M-24 -24v48l48 -24z"/>`;
   svg += `<text class="sym-txt gate-txt" x="-18" y="-6">+</text><text class="sym-txt gate-txt" x="-18" y="15">−</text>`;
   if (comparator) svg += `<path class="sym" d="M-8 6h6v-10h6"/>`;
-  return { kind: 'opamp', w, h, pins, svg, label: c.id, value: valueLabel(c) ?? (typeof c.params.part === 'string' ? c.params.part : c.type), showPinNames: false };
+  for (const n of leftovers) {
+    const p = pins.find(q => q.name === n)!;
+    svg += `<text class="sym-txt pin-name" x="${p.bx + 3}" y="${p.by - 3}">${esc(n)}</text>`;
+  }
+  const part = typeof c.params.part === 'string' ? c.params.part : undefined;
+  return { kind: 'opamp', w, h, pins, svg, label: c.id, value: part ?? (c.type === 'IdealOpAmp' ? 'ideal' : valueLabel(c)), showPinNames: false };
 }
 
 // ─── registry ────────────────────────────────────────────────────────────────
@@ -374,7 +426,151 @@ function primitiveSymbol(c: CircuitComponent): SymbolGeom | undefined {
   return boxSymbol('box', c, boxPins, c.type, undefined, 7 * G);
 }
 
-export function symbolFor(c: CircuitComponent): SymbolGeom {
+// ─── microcontroller boards ──────────────────────────────────────────────────
+
+const MCU_TYPES = new Set(['Mcu', 'ArduinoUno']);
+
+/** Basename of the firmware entry ('bench/mcu/blink.fw.ts' → 'blink.fw.ts'). */
+function firmwareLabel(c: CircuitComponent): string | undefined {
+  const fw = c.params.firmware;
+  if (typeof fw !== 'string') return undefined;
+  return fw.split('/').pop();
+}
+
+/**
+ * An Arduino Uno drawn as its header rows (D13…D0 down the right edge, A0…A5
+ * down the left, 5V / AREF on top, GND below), or a bare MCU box for the
+ * other profiles (VCC / GND, ADC-capable pins left, the rest right).
+ */
+function mcuSymbol(c: CircuitComponent): SymbolGeom | undefined {
+  const uno = c.type === 'ArduinoUno';
+  let profile;
+  try {
+    profile = getMcuProfile(uno ? 'atmega328p' : typeof c.params.profile === 'string' ? c.params.profile : 'atmega328p');
+  } catch {
+    return undefined;
+  }
+  const names = Object.keys(c.pins);
+  const order = new Map(profile.pins.map((p, k) => [p.name, k] as const));
+  const has = (n: string) => names.includes(n);
+  const boxPins: BoxPin[] = [];
+  const vccName = uno ? '5V' : 'VCC';
+  if (has(vccName)) boxPins.push({ name: vccName, side: 't', role: 'vcc' });
+  if (has('GND')) boxPins.push({ name: 'GND', side: 'b', role: 'gnd' });
+  const gpio = names.filter(n => n !== vccName && n !== 'GND' && n !== 'AREF');
+  if (uno) {
+    const digital = gpio.filter(n => /^D\d+$/.test(n)).sort((a, b) => Number(b.slice(1)) - Number(a.slice(1)));
+    const analog = gpio.filter(n => /^A\d+$/.test(n)).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+    const other = gpio.filter(n => !digital.includes(n) && !analog.includes(n)).sort();
+    if (has('AREF')) boxPins.push({ name: 'AREF', side: 't', role: 'analog' });
+    for (const n of analog) boxPins.push({ name: n, side: 'l', role: 'analog' });
+    for (const n of other) boxPins.push({ name: n, side: 'l', role: 'analog' });
+    for (const n of digital) boxPins.push({ name: n, side: 'r', role: 'out' });
+  } else {
+    if (has('AREF')) boxPins.push({ name: 'AREF', side: 't', role: 'analog' });
+    const sorted = [...gpio].sort((a, b) => (order.get(a) ?? 999) - (order.get(b) ?? 999) || a.localeCompare(b));
+    const adc = new Set(profile.pins.filter(p => p.adc !== undefined).map(p => p.name));
+    for (const n of sorted) boxPins.push(adc.has(n) ? { name: n, side: 'l', role: 'analog' } : { name: n, side: 'r', role: 'out' });
+  }
+  const title = uno ? 'Arduino Uno' : profile.part;
+  const subtitle = uno ? profile.part : profile.board.length <= 22 ? profile.board : profile.id;
+  const decor = (hw: number, hh: number): string => {
+    // Header strips along the pin rows, an ICSP 2×3 and a USB block: the board, not a DIP.
+    let d = '';
+    const left = boxPins.filter(p => p.side === 'l').length;
+    const right = boxPins.filter(p => p.side === 'r').length;
+    if (right) d += `<rect class="sym board-header" x="${hw - 26}" y="${-hh + 8}" width="6" height="${2 * hh - 16}" rx="1"/>`;
+    if (left) d += `<rect class="sym board-header" x="${-hw + 20}" y="${-hh + 8}" width="6" height="${2 * hh - 16}" rx="1"/>`;
+    if (uno) {
+      d += `<rect class="sym board-usb" x="${-hw + 8}" y="${-hh - 0}" width="18" height="10" rx="1.5"/>`;
+      d += `<text class="sym-txt board-txt" x="${-hw + 17}" y="${-hh + 7.5}" text-anchor="middle">USB</text>`;
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) d += `<circle class="sym board-icsp" cx="${hw - 44 + j * 5}" cy="${hh - 22 + i * 5}" r="1.4"/>`;
+    }
+    return d;
+  };
+  const geom = boxSymbol('ic', c, boxPins, title, subtitle, { minW: uno ? 16 * G : 12 * G, decor, bodyClass: 'board-body' });
+  geom.value = firmwareLabel(c);
+  return geom;
+}
+
+// ─── VHDL blocks ─────────────────────────────────────────────────────────────
+
+type PortMode = 'in' | 'out' | 'inout' | 'buffer';
+
+/** Port name → mode, from the compiled entity when the source is at hand (else undefined). */
+function vhdlPortModes(c: CircuitComponent, sources?: CircuitDoc['sources']): Map<string, PortMode> | undefined {
+  const path = c.params.source;
+  const entity = typeof c.params.entity === 'string' ? c.params.entity.toLowerCase() : undefined;
+  const src = sources?.find(s => s.path === path);
+  if (!src) return undefined;
+  try {
+    const r = compileVhdl({ text: src.text, path: src.path });
+    if (!r.ok || !r.design) return undefined;
+    const ents = r.design.entities();
+    const ent = (entity ? ents.find(e => e.name.toLowerCase() === entity) : undefined) ?? (ents.length === 1 ? ents[0] : undefined);
+    if (!ent) return undefined;
+    return new Map(ent.ports.map(p => [p.name.toLowerCase(), p.mode as PortMode] as const));
+  } catch {
+    return undefined;
+  }
+}
+
+const VHDL_INPUT_LIKE = /^(clk|clock|rst|reset|en|enable|ce|we|re|cs|load|up|down|dir|sel|d|a|b|in|din|x|y|start|set|clr|clear)\d*$/i;
+
+/**
+ * A VHDL entity as a box: inputs left (clock first), outputs right, port bits
+ * of one vector adjacent with a bus bracket ('q[3:0]'); title = entity,
+ * subtitle = the generics.
+ */
+function vhdlSymbol(c: CircuitComponent, sources?: CircuitDoc['sources']): SymbolGeom {
+  const fileStem = typeof c.params.source === 'string' ? c.params.source.split('/').pop()!.replace(/\.[^.]+$/, '') : undefined;
+  const entity = typeof c.params.entity === 'string' ? c.params.entity : fileStem ?? 'vhdl';
+  const modes = vhdlPortModes(c, sources);
+  const groups = new Map<string, { bits: { name: string; index: number }[]; scalar?: string }>();
+  for (const name of Object.keys(c.pins)) {
+    const m = name.match(/^(.*)\[(-?\d+)\]$/);
+    const port = (m ? m[1] : name).toLowerCase();
+    const g = groups.get(port) ?? { bits: [] };
+    if (m) g.bits.push({ name, index: Number(m[2]) });
+    else g.scalar = name;
+    groups.set(port, g);
+  }
+  const modeOf = (port: string): PortMode => modes?.get(port) ?? (VHDL_INPUT_LIKE.test(port) ? 'in' : 'out');
+  const ports = [...groups.keys()].sort((a, b) => {
+    const ra = /^(clk|clock)$/i.test(a) ? 0 : /^(rst|reset)$/i.test(a) ? 1 : 2;
+    const rb = /^(clk|clock)$/i.test(b) ? 0 : /^(rst|reset)$/i.test(b) ? 1 : 2;
+    return ra - rb || a.localeCompare(b);
+  });
+  const boxPins: BoxPin[] = [];
+  for (const port of ports) {
+    const g = groups.get(port)!;
+    const mode = modeOf(port);
+    const side: Side = mode === 'in' ? 'l' : 'r';
+    const role: PinGeom['role'] = mode === 'in' ? 'in' : mode === 'inout' ? 'analog' : 'out';
+    if (g.scalar !== undefined) boxPins.push({ name: g.scalar, side, role });
+    const bits = [...g.bits].sort((a, b) => b.index - a.index); // MSB on top
+    if (bits.length === 1) boxPins.push({ name: bits[0].name, side, role });
+    else if (bits.length > 1) {
+      const hi = bits[0].index;
+      const lo = bits[bits.length - 1].index;
+      const stem = bits[0].name.slice(0, bits[0].name.indexOf('['));
+      for (const b of bits) boxPins.push({ name: b.name, side, role, label: String(b.index), bus: `${stem}[${hi}:${lo}]` });
+    }
+  }
+  const generics = c.params.generics;
+  const gen = generics && typeof generics === 'object' && !Array.isArray(generics) ? Object.entries(generics as Record<string, unknown>).map(([k, v]) => `${k}=${String(v)}`).join(' ') : '';
+  const subtitle = gen ? gen : 'VHDL';
+  const geom = boxSymbol('ic', c, boxPins, entity, subtitle.length <= 20 ? subtitle : subtitle.slice(0, 19) + '…', { minW: 12 * G, bodyClass: 'vhdl-body' });
+  geom.value = typeof c.params.source === 'string' ? c.params.source.split('/').pop() : 'VHDL';
+  return geom;
+}
+
+/** Context a symbol may use: the document's embedded sources (VHDL port modes). */
+export interface SymbolContext {
+  sources?: CircuitDoc['sources'];
+}
+
+export function symbolFor(c: CircuitComponent, ctx: SymbolContext = {}): SymbolGeom {
   switch (c.type) {
     case 'Resistor':
       return twoTerminal(c, '1', '2', RESISTOR);
@@ -409,13 +605,18 @@ export function symbolFor(c: CircuitComponent): SymbolGeom {
       };
   }
   if (OPAMP_TYPES.has(c.type) || /op-?amp|comparator/i.test(c.type)) return opampSymbol(c, Object.keys(c.pins));
+  if (MCU_TYPES.has(c.type)) {
+    const s = mcuSymbol(c);
+    if (s) return s;
+  }
+  if (c.type === 'VhdlBlock') return vhdlSymbol(c, ctx.sources);
   if (LOGIC_PRIMITIVE_TYPES.includes(c.type)) {
     const s = primitiveSymbol(c);
     if (s) return s;
   }
   const ic = icSymbol(c);
   if (ic) return ic;
-  // Generic labelled box: MCU boards, VHDL blocks, custom definitions, anything new.
+  // Generic labelled box: custom definitions, anything new.
   const subtitle = typeof c.params.part === 'string' ? c.params.part : typeof c.params.board === 'string' ? c.params.board : typeof c.params.entity === 'string' ? c.params.entity : undefined;
   return boxSymbol('box', c, genericSides(Object.keys(c.pins)), c.type, subtitle, 10 * G);
 }

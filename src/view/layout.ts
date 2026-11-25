@@ -96,6 +96,8 @@ export interface Junction extends Point {
 
 export interface NoConnect extends Point {
   ref: string;
+  /** Accounted for but not drawn (open header pins of a microcontroller board). */
+  hidden?: boolean;
 }
 
 export interface Layout {
@@ -180,7 +182,7 @@ function pinCount(netPins: Map<string, string[]>, net: string): number {
 export function layoutCircuit(doc: CircuitDoc): Layout {
   const comps = [...doc.components].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const byId = new Map(comps.map(c => [c.id, c]));
-  const syms = new Map(comps.map(c => [c.id, symbolFor(c)]));
+  const syms = new Map(comps.map(c => [c.id, symbolFor(c, { sources: doc.sources })]));
   const netOfPin: Record<string, string> = {};
   const netPins = new Map<string, string[]>();
   for (const c of comps) {
@@ -821,7 +823,10 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
       else if (isRail(pin.net)) portPins.push({ p, pin, kind: 'rail', dirY: rails.get(pin.net)!.polarity > 0 ? -1 : 1 });
       else if (pinCount(netPins, pin.net) < 2) {
         const d = DELTA[pin.dir];
-        noConnects.push({ ref: pin.ref, x: pin.x + d.x * G, y: pin.y + d.y * G });
+        // Open header pins of a microcontroller board are the normal state, not a mistake: the mark is kept
+        // in the model (the pin is accounted for) but not drawn.
+        const hidden = p.type === 'Mcu' || p.type === 'ArduinoUno';
+        noConnects.push({ ref: pin.ref, x: pin.x + d.x * G, y: pin.y + d.y * G, ...(hidden ? { hidden } : {}) });
       }
     }
   }

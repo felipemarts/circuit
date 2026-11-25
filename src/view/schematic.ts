@@ -224,6 +224,7 @@ export class Schematic {
       addWireEl(j.net, dot);
     }
     for (const nc of L.noConnects) {
+      if (nc.hidden) continue;
       marks.appendChild(this.el('path', { class: 'nc', d: `M${nc.x - 3} ${nc.y - 3}l6 6M${nc.x - 3} ${nc.y + 3}l6 -6` }));
     }
     for (const lb of L.labels) {
@@ -487,7 +488,9 @@ export class Schematic {
       if (h.badge) {
         const bw = h.badge.length * 6.4 + 10;
         const bx = c.x + c.hw + pad - bw / 2;
-        const by = c.y - c.hh - pad - 8;
+        // Boxy parts carry their value label along the top edge: lift the badge above it.
+        const boxy = c.sym.kind === 'ic' || c.sym.kind === 'box' || c.sym.kind === 'gate' || c.sym.kind === 'opamp';
+        const by = c.y - c.hh - pad - 8 - (boxy && c.sym.value ? 14 : 0);
         this.badgeBoxes.push({ x0: bx - 4, y0: by - 4, x1: bx + bw + 4, y1: by + 20 });
         const g = this.el('g', { class: `hl-badge hl-${h.kind}`, transform: `translate(${bx} ${by})` });
         g.appendChild(this.el('rect', { width: bw, height: 16, rx: 4 }));
