@@ -1,22 +1,24 @@
 # CircuitsVibe
 
-> Circuits as code, verified by simulation. An agent-first circuit simulator: write a TypeScript bench (circuit + free parameters + assertions), run `npx circuitsvibe verify x.bench.ts --json`, branch on the exit code (0 pass, 1 spec failed, 2 invalid circuit, 3 tooling error), read structured diagnostics with stable codes and file:line locations, and apply simulation-verified sizing hints with `--set`. Pure TypeScript, zero native dependencies, runs in Node (≥ 20) and the browser. MIT.
+> Circuits as code, verified by simulation. An agent-first circuit simulator: write a TypeScript bench (circuit + free parameters + assertions), run `npx circuitsvibe verify x.bench.ts --json`, branch on the exit code (0 pass, 1 spec failed, 2 invalid circuit, 3 tooling error), read structured diagnostics with stable codes and file:line locations, and apply simulation-verified sizing hints with `--set`. Stages: lint → DC operating point → DC sweep → AC → adaptive transient, with logic ICs, VHDL blocks and Arduino-style microcontroller firmware co-simulated. Real parts (`Part('2N3904')`, `Part('LM358')`, `Part('74HC04')`) are checked against their datasheet ratings. Pure TypeScript, zero native dependencies, runs in Node (≥ 20) and the browser. MIT.
 
 ## Agent docs
 
-- [AGENTS.md](https://circuitsvibe.com/AGENTS.md): the exact verification loop, bench API cheat sheet, components, probes, assertions, units, diagnostic codes and pitfalls. Also printed by `npx circuitsvibe agents`.
-- [Documentation](https://circuitsvibe.com/docs.html): full human docs.
+- [AGENTS.md](https://circuitsvibe.com/AGENTS.md): the exact verification loop, bench API cheat sheet, components, probes, assertions, units, diagnostic codes and pitfalls. Also printed by `npx circuitsvibe agents` and written by `npx circuitsvibe init`.
+- [Documentation](https://circuitsvibe.com/docs.html): full human docs — getting started, the agent loop, bench API, analyses and sources, passives, semiconductors and datasheet ratings, op-amps and comparators, logic ICs / NE555 / primitives, VHDL blocks, microcontrollers and firmware, assertions, share links and the circuit document, CLI, every diagnostic code, the real-parts catalog, limitations. Every example is a bench from the repository with an "Open in viewer" link.
+- [Claude skill](https://github.com/felipemarts/circuit/blob/main/skills/circuitsvibe/SKILL.md): the same workflow as a skill.
 
 ## Tools
 
-- [npm package](https://www.npmjs.com/package/circuitsvibe): `npx circuitsvibe init <name>` scaffolds a passing bench + AGENTS.md; `verify`, `log list`, `explain <code>`, `catalog`.
-- Share links: `npx circuitsvibe share x.bench.ts` (or `verify --share`) prints a URL with the whole circuit in its fragment (`#c=1.…`, no server); Opening the link at circuitsvibe.com shows the schematic and re-runs the simulation in the browser (same verdict as the CLI); `npx circuitsvibe open <link>` decodes one.
-- Circuit document: `npx circuitsvibe export x.bench.ts` writes the language-neutral JSON (`circuitsvibe-circuit/1`); `verify x.circuit.json` simulates it like the bench.
+- [npm package](https://www.npmjs.com/package/circuitsvibe): `npx circuitsvibe init <name>` scaffolds a passing bench + AGENTS.md; `verify`, `sweep`, `log list`, `explain <code>`, `catalog [type|part] [--json]`.
+- Share links: `npx circuitsvibe share x.bench.ts` (or `verify --json --share`) prints a URL with the whole circuit in its fragment (`#c=1.…`, no server). Opening the link at circuitsvibe.com draws the schematic and re-runs the simulation in the browser (same verdict, exit code and netlist hash as the CLI) with assertions, ratings, waveforms, Bode/DC plots, logic analyzer and serial output; `npx circuitsvibe open <link>` decodes one.
+- Circuit document: `npx circuitsvibe export x.bench.ts` writes the language-neutral JSON (`circuitsvibe-circuit/1`, firmware and VHDL embedded in `sources[]`); `verify x.circuit.json` simulates it like the bench.
 - [circuitsvibe-standalone.mjs](https://circuitsvibe.com/circuitsvibe-standalone.mjs): the whole CLI as one zero-dependency file for offline sandboxes — `node circuitsvibe-standalone.mjs verify x.bench.ts --json`.
 
 ## Optional
 
 - [Source code](https://github.com/felipemarts/circuit)
-- [Circuit document format](https://github.com/felipemarts/circuit/blob/main/docs/CIRCUIT-FORMAT.md): the JSON contract, share-link encoding, versioning.
+- [Circuit document format](https://github.com/felipemarts/circuit/blob/main/docs/CIRCUIT-FORMAT.md): the JSON contract, share-link encoding, versioning, producing a document from another language.
 - [Diagnostics reference](https://github.com/felipemarts/circuit/blob/main/docs/DIAGNOSTICS.md): code taxonomy and RunRecord JSON format.
+- [Parts catalog data](https://github.com/felipemarts/circuit/blob/main/docs/PARTS.md), [op-amp models](https://github.com/felipemarts/circuit/blob/main/docs/OPAMPS.md)
 - [Vision](https://github.com/felipemarts/circuit/blob/main/docs/VISION.md)

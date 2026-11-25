@@ -540,13 +540,14 @@ function interpLinArr(xs: number[], ys: number[], x: number): number {
 
 // ─── logic analyzer ──────────────────────────────────────────────────────────
 
-export const logicRow = 34;
+/** Row height: a label line (assertion windows) above the waveform. */
+export const logicRow = 44;
 export const logicHeight = (model: LogicModel): number => model.signals.length * logicRow + 30;
 
 export function drawLogic(canvas: HTMLCanvasElement, model: LogicModel, opts: { cursorT?: number; hoverX?: number | null; maxRows?: number } = {}): { hoverT?: number } {
   const rows = model.signals.slice(0, opts.maxRows ?? model.signals.length);
   const { ctx, W, th } = begin(canvas, rows.length * logicRow + 30);
-  const nameW = Math.min(150, Math.max(60, ...rows.map(s => s.name.length * 6.8 + 24)));
+  const nameW = Math.min(170, Math.max(60, ...rows.map(s => s.name.length * 6.8 + 24)));
   const x0 = nameW;
   const x1 = W - RIGHT;
   const tEnd = model.tEnd;
@@ -554,9 +555,10 @@ export function drawLogic(canvas: HTMLCanvasElement, model: LogicModel, opts: { 
   const hoverT = opts.hoverX !== undefined && opts.hoverX !== null && opts.hoverX >= x0 && opts.hoverX <= x1 ? ((opts.hoverX - x0) / (x1 - x0)) * tEnd : undefined;
   const cur = hoverT ?? opts.cursorT;
   rows.forEach((s, row) => {
-    const top = row * logicRow + 6;
-    const hiY = top + 6;
-    const loY = top + logicRow - 10;
+    const top = row * logicRow + 4;
+    const labelY = top + 9; // assertion labels live on their own line…
+    const hiY = top + 16; // …above the waveform
+    const loY = top + logicRow - 8;
     const midY = (hiY + loY) / 2;
     ctx.fillStyle = s.verdict === 'fail' ? th.fail : th.fg;
     ctx.textAlign = 'left';
@@ -569,38 +571,36 @@ export function drawLogic(canvas: HTMLCanvasElement, model: LogicModel, opts: { 
     ctx.moveTo(x0, loY + 4);
     ctx.lineTo(x1, loY + 4);
     ctx.stroke();
-    // markers (windows / points); window labels alternate start/end so they never overlap
-    let win = 0;
-    for (const m of s.markers) {
+    // Markers: windows (tinted) and instants (dashed). Labels are laid out
+    // left to right on the label line and never overlap: each one starts at
+    // its marker or right after the previous label, whichever is further.
+    let nextFree = x0;
+    const markers = [...s.markers].sort((a, b) => a.t - b.t);
+    for (const m of markers) {
       const col = m.verdict === 'pass' ? th.pass : th.fail;
       if (m.to !== undefined) {
         ctx.fillStyle = col;
         ctx.globalAlpha = 0.12;
-        ctx.fillRect(tx(m.t), top, tx(m.to) - tx(m.t), logicRow - 6);
+        ctx.fillRect(tx(m.t), hiY - 4, tx(m.to) - tx(m.t), loY - hiY + 8);
         ctx.globalAlpha = 1;
-        ctx.fillStyle = col;
-        ctx.textBaseline = 'alphabetic';
-        if (win % 2 === 0) {
-          ctx.textAlign = 'left';
-          ctx.fillText(m.label, tx(m.t) + 4, top + 8);
-        } else {
-          ctx.textAlign = 'right';
-          ctx.fillText(m.label, tx(m.to) - 14, top + 8);
-        }
-        win++;
       } else {
         ctx.strokeStyle = col;
         ctx.setLineDash([2, 2]);
         ctx.beginPath();
-        ctx.moveTo(tx(m.t), top);
+        ctx.moveTo(tx(m.t), hiY - 4);
         ctx.lineTo(tx(m.t), loY + 4);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = col;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillText(m.label, tx(m.t) + 3, top + 8);
       }
+      const w = ctx.measureText(m.label).width;
+      let lx = Math.max(tx(m.t) + 3, nextFree);
+      if (lx + w > x1) lx = Math.max(nextFree, x1 - w); // keep the last label inside the plot
+      if (lx + w > x1 + 2) continue; // no room left on this line
+      ctx.fillStyle = col;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(m.label, lx, labelY);
+      nextFree = lx + w + 10;
     }
     // waveform
     const ch = s.changes;

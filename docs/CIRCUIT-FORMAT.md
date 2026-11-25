@@ -330,11 +330,14 @@ An invalid document given to `verify` still yields a RunRecord (T010–T014, exi
 
 ## Opening a link in the browser
 
-The web app at circuitsvibe.com does **not yet** read `#c=` links — viewer support is
-being built in the next phase. Until then, open links with `circuitsvibe open <link>`.
-A viewer implements it by calling `decodeShareUrl(location.hash)` and rendering the
-returned document (`components`, `pins` → nets, `nets`, `meta`, optional `layout`), and
-`runLadder(benchFromDoc(doc), { overrides: doc.overrides })` to simulate it.
+Opening a share link at circuitsvibe.com (`app.html#c=1.…`) draws the schematic (auto-layout),
+re-runs the same verification ladder in the browser (`runLadderAsync(benchFromDoc(doc), { overrides:
+doc.overrides })` — identical verdict, exit code and netlist hash as the CLI) and shows the
+assertions, diagnostics, ratings, scope / Bode / DC-sweep plots, the logic analyzer, the serial
+console of microcontrollers and the embedded firmware / VHDL sources. `circuitsvibe open <link>`
+decodes a link without a browser. A third-party viewer implements the same thing by calling
+`decodeShareUrl(location.hash)` and rendering the returned document (`components`, `pins` →
+nets, `nets`, `meta`, `sources`, optional `layout`).
 
 ## Versioning policy
 

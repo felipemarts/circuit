@@ -1,7 +1,8 @@
 /**
  * Share-link viewer: `app.html#c=1.<payload>` → decode → auto-layout →
  * simulate in a worker → verdict / assertions / diagnostics / ratings /
- * scope / Bode / DC / logic panels + live animation on the schematic.
+ * scope / Bode / DC / logic / serial / sources panels + live animation on
+ * the schematic.
  */
 import './viewer.css';
 import { decodeShareUrl } from '../doc/share';
@@ -25,6 +26,9 @@ import {
   logicModel,
   ratingGroups,
   scopeModel,
+  serialModels,
+  sourceLocation,
+  sourceModels,
   verdictModel,
   type AssertionModel,
   type BodeCurve,
@@ -33,8 +37,13 @@ import {
   type LogicModel,
   type RatingGroup,
   type ScopeModel,
+  type SerialModel,
+  type SourceLocation,
+  type SourceMark,
+  type SourceModel,
   type VerdictModel,
 } from './models';
+import { highlightLines } from './highlight';
 import { bodeHeight, dcHeight, drawBode, drawDc, drawLogic, drawScope, logicHeight, scopeHeight } from './plots';
 import { eng, secs, valueLabel } from './format';
 import { voltageGradientCSS, setVoltageZeroColor } from '../ui/voltageColor';
@@ -324,6 +333,8 @@ function presentResults(
   const bode = bodeModel(record, sim);
   const dc = dcModel(doc, record, sim);
   const logic = logicModel(record, sim.tran?.logic);
+  const serial = serialModels(record, sim);
+  const sources = sourceModels(doc, record);
 
   renderVerdict(ui.verdictCard, vm, wallMs, sim);
 
@@ -348,7 +359,14 @@ function presentResults(
 
   const errCount = diags.filter(d => d.severity === 'error').length;
   const dPanel = addBefore('diagnostics', t('Diagnostics'), { n: diags.length, kind: errCount ? 'fail' : diags.length ? 'warn' : undefined });
-  renderDiagnostics(dPanel, diags, schematic);
+  let jumpToSource: ((loc: SourceLocation) => void) | undefined;
+  renderDiagnostics(dPanel, diags, schematic, {
+    locate: at => sourceLocation(at, doc),
+    jump: loc => {
+      panels.show('sources');
+      jumpToSource?.(loc);
+    },
+  });
 
   if (ratings.length > 0) {
     const rf = ratings.filter(g => g.failed).length;
@@ -452,6 +470,18 @@ function presentResults(
     window.addEventListener('cv-theme', redraw);
   }
 
+  if (serial.length > 0) {
+    const n = serial.reduce((acc, c) => acc + c.lines.length, 0);
+    const sPanel = addBefore('serial', t('Serial'), { n, kind: serial.some(c => c.verdict === 'fail') ? 'fail' : serial.some(c => c.verdict === 'pass') ? 'pass' : undefined });
+    renderSerial(sPanel, serial, anim, schematic);
+  }
+
+  if (sources.length > 0) {
+    const marks = sources.reduce((acc, f) => acc + f.marks.length, 0);
+    const srcPanel = addBefore('sources', t('Sources'), { n: marks || sources.length, kind: marks ? (sources.some(f => f.marks.some(m => m.severity === 'error')) ? 'fail' : 'warn') : undefined });
+    jumpToSource = renderSources(srcPanel, sources, schematic).jumpTo;
+  }
+
   // default tab
   if (record.verdict === 'error') panels.show('diagnostics');
   else if (ratings.some(g => g.failed) && failCount === 0) panels.show('ratings');
@@ -479,7 +509,7 @@ function renderVerdict(card: HTMLElement, vm: VerdictModel, wallMs: number, sim:
   const timing = Object.entries(sim.timing)
     .map(([k, v]) => `${k} ${Math.round(v)} ms`)
     .join(' · ');
-  meta.innerHTML = `<span class="cli" title="runLadder(benchFromDoc(doc)) — the browser runs the very same engine">${esc(t('Same result as the CLI'))}: <b>${esc(vm.verdict)}</b> · ${esc(t('exit code'))} <b>${vm.exitCode}</b> · ${esc(t('netlist hash'))} <b>${esc(vm.hash)}</b> · <b>${esc(vm.engine)}</b></span>
+  meta.innerHTML = `<span class="cli" title="runLadderAsync(benchFromDoc(doc)) — the browser runs the very same engine">${esc(t('Same result as the CLI'))}: <b>${esc(vm.verdict)}</b> · ${esc(t('exit code'))} <b>${vm.exitCode}</b> · ${esc(t('netlist hash'))} <b>${esc(vm.hash)}</b> · <b>${esc(vm.engine)}</b></span>
     <span class="stage-pills">${stages}</span>
     <span title="${esc(timing)}">${esc(t('Simulation took'))} <b>${Math.round(wallMs)} ms</b> ${esc(t('in your browser'))}</span>
     ${vm.overrides ? `<span>${esc(t('overrides'))}: <b>${esc(Object.entries(vm.overrides).map(([k, v]) => `${k}=${eng(v)}`).join(', '))}</b></span>` : ''}`;
@@ -533,7 +563,7 @@ function renderAssertions(panel: HTMLElement, list: AssertionModel[], schematic:
   };
 }
 
-function renderDiagnostics(panel: HTMLElement, list: DiagnosticModel[], schematic: Schematic): void {
+function renderDiagnostics(panel: HTMLElement, list: DiagnosticModel[], schematic: Schematic, src?: { locate(at: string): SourceLocation | undefined; jump(loc: SourceLocation): void }): void {
   if (list.length === 0) {
     panel.innerHTML = `<p class="empty">${esc(t('No diagnostics — the structure is clean.'))}</p>`;
     return;
@@ -541,7 +571,7 @@ function renderDiagnostics(panel: HTMLElement, list: DiagnosticModel[], schemati
   panel.innerHTML = '';
   for (const d of list) {
     const el = h(`<div class="diag ${d.severity}">
-      <div class="dhead"><span class="code">${esc(d.code)}</span><span class="slug">${esc(d.slug)}</span><span class="pill stage-pill ${d.severity}"><i></i>${esc(d.stage)}</span>${d.at ? `<span class="slug">${esc(t('at'))} ${esc(d.at)}</span>` : ''}</div>
+      <div class="dhead"><span class="code">${esc(d.code)}</span><span class="slug">${esc(d.slug)}</span><span class="pill stage-pill ${d.severity}"><i></i>${esc(d.stage)}</span>${d.at ? (src?.locate(d.at) ? `<button class="at-link" data-at="${esc(d.at)}" title="${esc(t('open in Sources'))}">${esc(t('at'))} ${esc(d.at)}</button>` : `<span class="slug">${esc(t('at'))} ${esc(d.at)}</span>`) : ''}</div>
       <div class="msg">${esc(d.message)}</div>
       ${d.note ? `<div class="dnote">${esc(d.note)}</div>` : ''}
       ${d.components.length || d.net ? `<div class="subjects">${d.components.map(c => `<button data-comp="${esc(c)}">${esc(c)}</button>`).join('')}${d.net ? `<button disabled>net ${esc(d.net)}</button>` : ''}</div>` : ''}
@@ -553,9 +583,132 @@ function renderDiagnostics(panel: HTMLElement, list: DiagnosticModel[], schemati
       b.addEventListener('mouseleave', () => schematic.focusComponent(null));
       b.addEventListener('click', () => schematic.focusComponent(b.dataset.comp!));
     });
+    const at = el.querySelector<HTMLElement>('.at-link');
+    if (at && src) {
+      at.addEventListener('click', () => {
+        const loc = src.locate(at.dataset.at!);
+        if (loc) src.jump(loc);
+      });
+    }
     panel.appendChild(el);
   }
 }
+
+/**
+ * Serial console: one block per microcontroller, every line with its
+ * completion time. Lines not yet printed at the animation cursor are dimmed
+ * ("future"), and the console follows the cursor while it plays.
+ */
+function renderSerial(panel: HTMLElement, consoles: SerialModel[], anim: Anim, schematic: Schematic): void {
+  panel.innerHTML = `<p class="lead"><b>${esc(t('Serial console'))}</b> · ${esc(t('every line with the simulated time it was completed; lines after the cursor are dimmed'))}</p>`;
+  const blocks: { el: HTMLElement; lines: { el: HTMLElement; t: number }[] }[] = [];
+  for (const c of consoles) {
+    const el = h(`<div class="serial ${c.verdict}">
+      <div class="shead"><code>${esc(c.mcu)}</code><span class="port">Serial</span>${c.verdict !== 'none' ? `<span class="pill stage-pill ${c.verdict}"><i></i>${esc(c.verdict === 'pass' ? t('serial assertions pass') : t('serial assertion failed'))}</span>` : ''}<span class="count">${c.lines.length} ${esc(t(c.lines.length === 1 ? 'line' : 'lines'))}${c.truncated ? ` · ${esc(t('truncated'))}` : ''}</span></div>
+      <div class="sbody" role="log" aria-live="off"></div>
+    </div>`);
+    const body = $(el, '.sbody');
+    const lines: { el: HTMLElement; t: number }[] = [];
+    if (c.lines.length === 0) body.appendChild(h(`<div class="sline empty">${esc(t('no output'))}</div>`));
+    for (const l of c.lines) {
+      const row = h(`<div class="sline${l.partial ? ' partial' : ''}" title="${esc(secs(l.t, 6))}"><span class="st">${esc(secs(l.t, 3))}</span><span class="stx">${esc(l.text)}${l.partial ? `<em> ${esc(t('(no line end yet)'))}</em>` : ''}</span></div>`);
+      row.addEventListener('click', () => anim.seek(l.t));
+      body.appendChild(row);
+      lines.push({ el: row, t: l.t });
+    }
+    const head = $(el, '.shead');
+    head.addEventListener('mouseenter', () => schematic.focusComponent(c.mcu));
+    head.addEventListener('mouseleave', () => schematic.focusComponent(null));
+    panel.appendChild(el);
+    blocks.push({ el: body, lines });
+  }
+  let lastShown = -1;
+  const follow = () => {
+    if (!panel.classList.contains('active')) return;
+    const tc = anim.time();
+    if (tc === undefined) return;
+    let shown = 0;
+    for (const b of blocks) {
+      let lastVisible: HTMLElement | undefined;
+      for (const l of b.lines) {
+        const future = l.t > tc + 1e-12;
+        l.el.classList.toggle('future', future);
+        if (!future) {
+          lastVisible = l.el;
+          shown++;
+        }
+      }
+      if (shown !== lastShown && lastVisible) lastVisible.scrollIntoView({ block: 'nearest' });
+    }
+    lastShown = shown;
+  };
+  anim.onFrame(follow);
+  window.addEventListener('vw-tab', follow);
+}
+
+/**
+ * Embedded sources (firmware entry + its imports, VHDL files) with syntax
+ * highlighting, line numbers and the diagnostics that point into them as
+ * gutter marks. `jumpTo(loc)` (used by the Diagnostics panel) selects the
+ * file and scrolls to the line.
+ */
+function renderSources(panel: HTMLElement, files: SourceModel[], schematic: Schematic): { jumpTo(loc: SourceLocation): void } {
+  const kindLabel = (f: SourceModel) => (f.kind === 'vhdl' ? 'VHDL' : f.kind === 'firmware' ? t('firmware') : t('import'));
+  panel.innerHTML = `<p class="lead"><b>${esc(t('Sources'))}</b> · ${esc(t('the firmware and VHDL files carried by this link; diagnostics with a location jump here'))}</p>
+    <div class="src-tabs" role="tablist"></div><div class="src-files"></div>`;
+  const tabs = $(panel, '.src-tabs');
+  const host = $(panel, '.src-files');
+  const views = new Map<string, { tab: HTMLElement; view: HTMLElement }>();
+  const show = (path: string) => {
+    for (const [p, v] of views) {
+      v.tab.setAttribute('aria-selected', String(p === path));
+      v.view.hidden = p !== path;
+    }
+  };
+  for (const f of files) {
+    const marksByLine = new Map<number, SourceMark[]>();
+    for (const m of f.marks) marksByLine.set(m.line, [...(marksByLine.get(m.line) ?? []), m]);
+    const tab = h(`<button class="src-tab" role="tab" aria-selected="false" title="${esc(f.path)}"><span class="kind">${esc(kindLabel(f))}</span>${esc(f.name)}${f.marks.length ? `<span class="n ${f.marks.some(m => m.severity === 'error') ? 'fail' : 'warn'}">${f.marks.length}</span>` : ''}</button>`);
+    tab.addEventListener('click', () => show(f.path));
+    tabs.appendChild(tab);
+    const view = h(`<div class="src-view" hidden><div class="src-meta"><code>${esc(f.path)}</code>${f.owners.length ? `<span>${esc(t('used by'))} ${f.owners.map(o => `<button class="owner" data-comp="${esc(o)}">${esc(o)}</button>`).join(' ')}</span>` : ''}<span>${f.text.split('\n').length} ${esc(t('lines'))}</span></div><pre class="src"><code></code></pre></div>`);
+    const code = $(view, 'pre.src > code');
+    const lines = highlightLines(f.text, f.lang);
+    const frag = document.createDocumentFragment();
+    lines.forEach((html, i) => {
+      const n = i + 1;
+      const marks = marksByLine.get(n);
+      const row = document.createElement('span');
+      row.className = `ln${marks ? ` mark ${marks.some(m => m.severity === 'error') ? 'error' : 'warning'}` : ''}`;
+      row.dataset.line = String(n);
+      row.innerHTML = `<span class="no">${n}</span><span class="tx">${html || ' '}</span>${marks ? `<span class="mk" title="${esc(marks.map(m => `${m.code} ${m.message}`).join('\n'))}">${marks.map(m => esc(m.code)).join(' ')}</span>` : ''}`;
+      frag.appendChild(row);
+    });
+    code.appendChild(frag);
+    view.querySelectorAll<HTMLElement>('[data-comp]').forEach(b => {
+      b.addEventListener('mouseenter', () => schematic.focusComponent(b.dataset.comp!));
+      b.addEventListener('mouseleave', () => schematic.focusComponent(null));
+    });
+    host.appendChild(view);
+    views.set(f.path, { tab, view });
+  }
+  if (files.length > 0) show(files[0].path);
+  if (files.length < 2) tabs.hidden = true;
+  return {
+    jumpTo(loc) {
+      const v = views.get(loc.path);
+      if (!v) return;
+      show(loc.path);
+      const row = v.view.querySelector<HTMLElement>(`.ln[data-line="${loc.line}"]`);
+      if (!row) return;
+      v.view.querySelectorAll('.ln.flash').forEach(r => r.classList.remove('flash'));
+      row.classList.add('flash');
+      row.scrollIntoView({ block: 'center' });
+      setTimeout(() => row.classList.remove('flash'), 2400);
+    },
+  };
+}
+
 
 function renderRatings(panel: HTMLElement, groups: RatingGroup[], schematic: Schematic): void {
   panel.innerHTML = `<p class="lead spec-kind"><b>${esc(t('real spec'))}</b> — ${esc(t('absolute maximum ratings of catalog parts, checked after each stage'))}</p>`;
@@ -756,6 +909,8 @@ function exportSvg(schematic: Schematic): string {
     .chip text{font:600 9.5px ${v('--mono')};fill:${v('--text')}}.chip-pass .chip-mark{fill:${v('--green')}}.chip-fail .chip-mark{fill:${v('--red')}}
     .hl{fill:none;stroke-width:2;stroke-dasharray:6 4}.hl-error{stroke:${v('--red')}}.hl-warning{stroke:${v('--amber')}}.hl-rating{stroke:${v('--red')}}
     .hl-badge rect{fill:${v('--red')}}.hl-badge text{font:700 9.5px ${v('--mono')};fill:#0b1120}
+    .board-body{fill:${v('--panel-2')}}.vhdl-body{fill:${v('--panel-2')}}.board-header{fill:${v('--border')};stroke-width:.8}.board-usb{fill:${v('--bg-2')};stroke-width:1}.board-icsp{fill:${v('--dim')};stroke:none}
+    .board-txt{font:700 6.5px ${v('--mono')};fill:${v('--dim')}}.bus-bracket{stroke:${v('--dim')};stroke-width:1}.bus-name{font:700 8px ${v('--mono')};fill:${v('--accent')}}
   </style>`;
   const svg = schematic.toSvgString();
   return svg.replace(/<defs>/, `${style}<rect width="100%" height="100%" fill="${v('--bg-2')}"/><defs>`).replace(/<svg /, `<svg xmlns="http://www.w3.org/2000/svg" `);

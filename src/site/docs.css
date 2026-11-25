@@ -1,6 +1,7 @@
 /* ─── Docs layout ───────────────────────────────────────────────────────── */
 
 .docs-wrap { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 48px; padding-top: calc(var(--nav-h) + 36px); padding-bottom: 80px; align-items: start; }
+.docs-wrap > div:first-child { align-self: stretch; } /* the column must span the whole page for sticky to hold */
 .docs-side { position: sticky; top: calc(var(--nav-h) + 24px); max-height: calc(100vh - var(--nav-h) - 48px); overflow-y: auto; scrollbar-width: thin; padding-right: 6px; }
 .docs-side-title { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin: 0 0 10px 10px; }
 .docs-filter { position: relative; margin-bottom: 14px; }
@@ -56,6 +57,30 @@ h2:hover .anchor, h3:hover .anchor { opacity: 1; }
 .cards3 .card p { font-size: 13.5px; margin: 0; }
 .c-green { color: var(--green); } .c-cyan { color: var(--accent); } .c-amber { color: var(--amber); }
 .kbd { display: inline-block; font-family: var(--mono); font-size: 12px; color: var(--text); border: 1px solid var(--border-2); border-bottom-width: 2px; border-radius: 6px; padding: 1px 7px; background: var(--panel-2); }
+
+/* ─── Examples: "Open in viewer" ─────────────────────────────────────────── */
+.example-actions { display: flex; justify-content: flex-end; gap: 10px; margin: -12px 0 24px; }
+.viewer-link { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--text); padding: 8px 14px 8px 16px; border-radius: 10px; border: 1px solid var(--border-2); background: color-mix(in srgb, var(--panel) 80%, transparent); text-decoration: none; transition: border-color .15s, color .15s, background .15s, transform .15s; }
+.viewer-link svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.viewer-link:hover { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); text-decoration: none; }
+.viewer-link:hover svg { transform: translateX(3px); }
+.viewer-link[href="#"] { pointer-events: none; opacity: .5; }
+
+/* ─── Diagnostic badges for the newer families ───────────────────────────── */
+.bd-d { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.bd-r { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border-color: color-mix(in srgb, var(--red) 28%, transparent); }
+.bd-m { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+.bd-v { color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 12%, transparent); border-color: color-mix(in srgb, var(--accent-2) 30%, transparent); }
+.docs-main h3 .bd { font-size: 11px; align-self: center; }
+
+/* ─── Wide reference tables (diagnostics, parts catalog) ─────────────────── */
+.tbl-diag table { min-width: 680px; }
+.tbl-diag td:nth-child(2) code, .tbl-parts td:nth-child(2) code { white-space: normal; overflow-wrap: anywhere; }
+.tbl-parts table { min-width: 860px; }
+.tbl-parts td:first-child { min-width: 170px; }
+.tbl-parts .sub { font-size: 12px; color: var(--dim); margin-top: 4px; line-height: 1.4; }
+.tbl-parts tr.grp td, .docs-main table tr.grp td { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); background: color-mix(in srgb, var(--panel-2) 70%, transparent); padding-top: 9px; padding-bottom: 9px; }
+.tbl-parts .bd { white-space: nowrap; }
 .docs-pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; }
 .docs-pager a { flex: 1; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; color: var(--text); text-decoration: none; background: color-mix(in srgb, var(--panel) 80%, transparent); }
 .docs-pager a:hover { border-color: var(--accent); }
@@ -76,4 +101,13 @@ h2:hover .anchor, h3:hover .anchor { opacity: 1; }
   .docs-pager { flex-direction: column; }
   .docs-pager a.next { text-align: left; }
   .docs-main p, .docs-main ul.list { font-size: 15px; }
+  .docs-main h2 { font-size: 22px; flex-wrap: wrap; }
+  .docs-main .code pre { padding: 14px 14px; font-size: 12.5px; }
+  .example-actions { justify-content: stretch; }
+  .viewer-link { width: 100%; justify-content: center; }
+  .api .sig { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .viewer-link, .viewer-link svg, .docs-nav a, .docs-filter input { transition: none; }
+  .viewer-link:hover svg { transform: none; }
 }

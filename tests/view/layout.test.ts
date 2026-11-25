@@ -105,7 +105,7 @@ describe('viewer auto-layout (every bench)', () => {
   });
 
   it('symbol registry covers unknown types with a labelled box', () => {
-    const s = symbolFor({ id: 'U9', type: 'ArduinoUno', params: { board: 'uno' }, pins: { D13: 'n1', GND: 'gnd', '5V': 'vcc', A0: 'n2', TX: 'n3' } });
+    const s = symbolFor({ id: 'U9', type: 'SomeNewPart', params: { board: 'uno' }, pins: { D13: 'n1', GND: 'gnd', '5V': 'vcc', A0: 'n2', TX: 'n3' } });
     expect(s.kind).toBe('box');
     expect(s.pins.map(p => p.name).sort()).toEqual(['5V', 'A0', 'D13', 'GND', 'TX']);
     expect(s.pins.find(p => p.name === 'GND')!.side).toBe('b');

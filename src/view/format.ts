@@ -32,10 +32,8 @@ export function eng(value: number, unit = '', digits = 3): string {
       break;
     }
   }
-  if (abs < 1e-15 * 0.9995) {
-    scale = 1e-15;
-    prefix = 'f';
-  }
+  // Below a femto-unit the value is numerical noise (an off transistor's 1e-29 A): read it as zero.
+  if (abs < 1e-15 * 0.9995) return unit ? `0 ${unit}` : '0';
   let scaled = value / scale;
   let text = Number(scaled.toPrecision(digits)).toString();
   // 999.6 → "1000": bump the prefix instead.
