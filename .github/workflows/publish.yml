@@ -1,0 +1,83 @@
+name: 📦 Publish to npm
+
+# Publishes when main carries a package.json version that is not on npm yet:
+# bump "version" (and CHANGELOG.md), merge to main, and this releases it.
+# The same checks as CI run first; nothing is published if any of them fails.
+on:
+  push:
+    branches: [ main ]
+    paths: [ package.json ]
+  workflow_dispatch:
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish circuitsvibe
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the v<version> tag
+      id-token: write   # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Is this version already on npm?
+        id: check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "circuitsvibe@$VERSION" version >/dev/null 2>&1; then
+            echo "circuitsvibe@$VERSION is already published — nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.publish == 'true'
+        run: npm ci
+
+      - name: Version matches the engine string
+        if: steps.check.outputs.publish == 'true'
+        run: grep -q "VERSION = '${{ steps.check.outputs.version }}'" src/schema/version.ts
+
+      - name: Typecheck
+        if: steps.check.outputs.publish == 'true'
+        run: npm run typecheck
+
+      - name: Tests
+        if: steps.check.outputs.publish == 'true'
+        run: npm test
+
+      - name: Build package (dist/)
+        if: steps.check.outputs.publish == 'true'
+        run: npm run build:lib
+
+      - name: Benches (src and dist)
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          npm run benches
+          node scripts/check-benches.mjs --dist
+
+      - name: Pack + install smoke test
+        if: steps.check.outputs.publish == 'true'
+        run: npm run smoke:pack
+
+      - name: Publish
+        if: steps.check.outputs.publish == 'true'
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Tag v${{ steps.check.outputs.version }}
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          git tag "v${{ steps.check.outputs.version }}"
+          git push origin "v${{ steps.check.outputs.version }}"
