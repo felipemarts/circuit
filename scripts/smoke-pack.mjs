@@ -150,6 +150,66 @@ export default bench('typed', (tb: TB) => {
     sh(process.execPath, [tsc, '-p', 'tsconfig.json'], project);
   });
 
+  step('MCU bench from the tarball: firmware imports circuitsvibe/arduino (typed), verify, share → open → verify', () => {
+    fs.writeFileSync(
+      path.join(project, 'blink.fw.ts'),
+      `import { pinMode, digitalWrite, delay, Serial, OUTPUT, HIGH, LOW, LED_BUILTIN } from 'circuitsvibe/arduino';
+export async function setup(): Promise<void> {
+  Serial.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.println('up');
+}
+export async function loop(): Promise<void> {
+  digitalWrite(LED_BUILTIN, HIGH);
+  await delay(100);
+  digitalWrite(LED_BUILTIN, LOW);
+  await delay(100);
+}
+`,
+    );
+    fs.writeFileSync(
+      path.join(project, 'uno.bench.ts'),
+      `import { bench, ArduinoUno, VoltageSource, Resistor, LED } from 'circuitsvibe';
+export default bench('uno', (tb) => {
+  const v5 = tb.add('V5', new VoltageSource(5));
+  const u1 = tb.add('U1', new ArduinoUno({ firmware: './blink.fw.ts' }));
+  const r1 = tb.add('R1', new Resistor('330'));
+  const d1 = tb.add('D1', new LED());
+  v5.pin('-').connect(tb.gnd);
+  u1.pin('5V').connect(v5.pin('+'));
+  u1.pin('GND').connect(tb.gnd);
+  u1.pin('D13').connect(r1.pin('1'));
+  r1.pin('2').connect(d1.pin('anode'));
+  d1.pin('cathode').connect(tb.gnd);
+  const run = tb.expect.tran({ tstop: '0.45', maxStep: '5m' });
+  run.logic('U1.D13').toHaveFrequency(5, 1e-9, { from: '0.05' });
+  run.serial('U1').toContain('up');
+});
+`,
+    );
+    // Editors type-check firmware through package.json#exports['./arduino'].
+    fs.writeFileSync(
+      path.join(project, 'tsconfig.fw.json'),
+      JSON.stringify({
+        compilerOptions: { strict: true, noEmit: true, module: 'nodenext', moduleResolution: 'nodenext', target: 'es2022', types: [] },
+        files: ['blink.fw.ts', 'uno.bench.ts'],
+      }),
+    );
+    const tsc = path.join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+    sh(process.execPath, [tsc, '-p', 'tsconfig.fw.json'], project);
+    const npx = (...args) => ['--yes', `--package=${tarball}`, 'circuitsvibe', ...args];
+    const record = JSON.parse(sh('npx', npx('verify', 'uno.bench.ts', '--json', '--no-ledger'), project));
+    if (record.verdict !== 'pass' || record.stages.tran.serial?.[0]?.lines?.[0]?.[1] !== 'up') throw new Error(`MCU bench verdict ${record.verdict}`);
+    const url = sh('npx', npx('share', 'uno.bench.ts'), project).trim();
+    const doc = JSON.parse(sh('npx', npx('open', url), project));
+    if (!doc.sources?.some((s) => s.path === 'blink.fw.ts' && s.text.includes("from 'circuitsvibe/arduino'"))) throw new Error('shared document does not embed the firmware');
+    fs.writeFileSync(path.join(project, 'uno.circuit.json'), JSON.stringify(doc));
+    const fromLink = JSON.parse(sh('npx', npx('verify', 'uno.circuit.json', '--json', '--no-ledger'), project));
+    if (fromLink.verdict !== 'pass' || JSON.stringify(fromLink.stages.tran.assertions) !== JSON.stringify(record.stages.tran.assertions.map(({ at, ...a }) => a))) {
+      throw new Error('verify of the shared MCU document differs from the bench');
+    }
+  });
+
   const offline = path.join(work, 'offline');
   fs.mkdirSync(offline);
   step('standalone file alone, no node_modules', () => {

@@ -3,6 +3,7 @@ import type { Component } from '../core/Component';
 import type { Node } from '../core/Node';
 import type { MNAMatrix } from '../solver/MNAMatrix';
 import { SimulationSystem, TransientEngine, type TranTelemetry } from './engine';
+import { drainAsync, drainSync, type Steps } from './steps';
 
 export interface TransientConfig {
   /** Fixed step (legacy) — or, with `adaptive: true`, the initial step. */
@@ -75,6 +76,16 @@ export function readProbe(spec: ProbeSpec, x: ArrayLike<number>, matrix: MNAMatr
 
 export class TransientAnalysis {
   run(circuit: Circuit, config: TransientConfig, probeSpecs: ProbeSpec[]): TransientResult {
+    return drainSync(this.runSteps(circuit, config, probeSpecs));
+  }
+
+  /** The same analysis for circuits whose co-simulation runs asynchronous firmware (src/mixed/mcu-cosim.ts). */
+  runAsync(circuit: Circuit, config: TransientConfig, probeSpecs: ProbeSpec[]): Promise<TransientResult> {
+    return drainAsync(this.runSteps(circuit, config, probeSpecs));
+  }
+
+  /** The analysis as a step generator (see ./steps.ts): yields only for asynchronous co-simulation work. */
+  *runSteps(circuit: Circuit, config: TransientConfig, probeSpecs: ProbeSpec[]): Steps<TransientResult> {
     validateTransientConfig(config);
     const system = new SimulationSystem(circuit);
     const method = config.method ?? 'trap';
@@ -99,7 +110,7 @@ export class TransientAnalysis {
       beAfterBreakpoint: config.beAfterBreakpoint,
     };
     try {
-      if (adaptive) engine.runAdaptive(opts, sink);
+      if (adaptive) yield* engine.adaptiveSteps(opts, sink);
       else engine.runFixed(opts, sink);
       system.publish(engine.x);
     } finally {

@@ -5,6 +5,7 @@
 
 import { mixedCatalog, MIXED_GRAMMAR_NOTES } from '../mixed/catalog';
 import { AMPLIFIER_CATALOG } from '../opamps/catalog';
+import { mcuCatalog, MCU_GRAMMAR_NOTES } from '../mixed/mcu-catalog';
 
 export interface CatalogEntry {
   type: string;
@@ -123,6 +124,7 @@ export const COMPONENT_CATALOG: CatalogEntry[] = [
   ...mixedCatalog(),
   // Op-amps and comparators (IdealOpAmp, OpAmp, Comparator) and the real parts behind Part('LM358')…
   ...AMPLIFIER_CATALOG,
+  ...mcuCatalog(),
 ];
 
 export const GRAMMAR_NOTES = `PROBES (every stage)
@@ -180,4 +182,6 @@ OP-AMPS            pins 'inp' (+), 'inn' (-), 'out', 'v+', 'v-' (supply REQUIRED
                    probes: U1.v = V(out), U1.i = output current (+ = sourcing)
 COMPARATORS        Part('LM393') | Part('LM311') (wire 'emit') | new Comparator(): open collector,
                    output low when V(inp) < V(inn); needs a pull-up; hysteresis = external resistors
-OP-AMP RATINGS     Part() amplifiers: R420-R425 at the op point in stages.op.ratings (fail = exit 1)`;
+OP-AMP RATINGS     Part() amplifiers: R420-R425 at the op point in stages.op.ratings (fail = exit 1)
+
+${MCU_GRAMMAR_NOTES}`;

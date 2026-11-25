@@ -1,10 +1,13 @@
 import type { Elaboration } from '../elab/bench';
-import type { ProbeSpec } from '../analysis/TransientAnalysis';
+import { TransientAnalysis, type ProbeSpec } from '../analysis/TransientAnalysis';
+import { drainAsync, drainSync, type Steps } from '../analysis/steps';
 import { evaluateTranCheck, type Waveform } from './measure';
 import { solverDiagnostic } from './solverDiag';
 import type { StageOutcome } from './op';
-import type { AssertionResult, AssertionSpec, Diagnostic, LogicCapture, TranConfig, TranRunTelemetry } from '../schema/types';
+import type { AssertionResult, AssertionSpec, Diagnostic, LogicCapture, RatingResult, SerialCapture, TranConfig, TranRunTelemetry } from '../schema/types';
 import { isLogicCheck } from '../elab/logic';
+import { isSerialCheck } from '../elab/serial';
+import { evaluateSerialCheck } from '../mixed/serial-measure';
 import { evaluateLogicCheck } from '../mixed/measure';
 import { evaluateTranRatings, ratingProbes } from './ratings';
 
@@ -43,6 +46,16 @@ export function configLabel(c: TranConfig): string {
  * samples).
  */
 export function runTran(elab: Elaboration): StageOutcome {
+  return drainSync(runTranSteps(elab));
+}
+
+/** runTran for benches with microcontroller firmware (asynchronous co-simulation). */
+export function runTranAsync(elab: Elaboration): Promise<StageOutcome> {
+  return drainAsync(runTranSteps(elab));
+}
+
+/** The transient stage as a step generator (src/analysis/steps.ts). */
+export function* runTranSteps(elab: Elaboration): Steps<StageOutcome> {
   const tranAssertions = elab.assertions.filter(a => a.stage === 'tran');
   if (tranAssertions.length === 0) {
     return { stage: { verdict: 'pass', assertions: [] }, diagnostics: [] };
@@ -63,20 +76,24 @@ export function runTran(elab: Elaboration): StageOutcome {
   const mixedDiags: Diagnostic[] = [];
   const seenDiags = new Set<string>();
   const captures: LogicCapture[] = [];
+  const serialCaptures: SerialCapture[] = [];
+  const mcuRatings = new Map<string, RatingResult>();
   // Datasheet ratings of Part() devices: their quantities ride along in every analog run.
   const ratingRuns: { label: string; waveforms: Map<string, Waveform> }[] = [];
   const extraProbes = ratingProbes(elab, 'tran');
 
   for (const key of [...groups.keys()].sort()) {
     const { config, assertions: all } = groups.get(key)!;
-    const assertions = all.filter(a => !isLogicCheck(a.check));
+    const assertions = all.filter(a => !isLogicCheck(a.check) && !isSerialCheck(a.check));
     const logicAssertions = all.filter(a => isLogicCheck(a.check));
+    const serialAssertions = all.filter(a => isSerialCheck(a.check));
     const probeExprs = [...new Set(assertions.map(a => a.probe))].sort();
     const simulated = [...new Set([...probeExprs, ...extraProbes])].sort();
     const specs = simulated.map(expr => probeSpecFor(elab, expr));
 
     let waveforms: Map<string, Waveform> = new Map();
     mixed?.controller.setTimeScale(config.tstop);
+    if (mixed) mixed.controller.config = configLabel(config);
     if (mixed?.digitalOnly) {
       // Pure-digital bench: the event engine alone over [0, tstop].
       mixed.controller.runDigitalOnly(config.tstop);
@@ -94,8 +111,8 @@ export function runTran(elab: Elaboration): StageOutcome {
         ...(mixed.controller.run.events !== undefined ? { digitalEvents: mixed.controller.run.events } : {}),
       });
     } else try {
-      const result = elab.circuit.analyze(
-        'transient',
+      const result = yield* new TransientAnalysis().runSteps(
+        elab.circuit,
         {
           timeStep: config.dt,
           duration: config.tstop,
@@ -142,6 +159,29 @@ export function runTran(elab: Elaboration): StageOutcome {
       for (const a of logicAssertions) signals.set(a.probe, mixed.logicSignal(a.probe)!);
       const cap = mixed.controller.capture(configLabel(config), signals);
       if (cap && Object.keys(cap.signals).length > 0) captures.push(cap);
+      serialCaptures.push(...mixed.controller.serialCaptures());
+      for (const r of mixed.controller.mcuRatings()) {
+        const key = `${r.component}|${r.code}|${r.quantity}`;
+        const prev = mcuRatings.get(key);
+        if (!prev || r.value > prev.value) mcuRatings.set(key, r);
+      }
+      for (const spec of serialAssertions) {
+        const outcome = evaluateSerialCheck(spec.check, mixed.controller.serialLog(spec.probe) ?? []);
+        const result: AssertionResult = {
+          id: spec.id,
+          stage: 'tran',
+          probe: spec.probe,
+          check: spec.check,
+          verdict: outcome.pass ? 'pass' : 'fail',
+          ...(outcome.measured !== undefined ? { measured: outcome.measured } : {}),
+          ...(spec.at ? { at: spec.at } : {}),
+        };
+        if (!outcome.pass) {
+          if (outcome.outsideBy !== undefined) result.margin = { outsideBy: outcome.outsideBy };
+          if (outcome.note) result.note = outcome.note;
+        }
+        results.push(result);
+      }
       for (const spec of logicAssertions) {
         const tr = mixed.controller.trace(mixed.logicSignal(spec.probe)!)!;
         const outcome = evaluateLogicCheck(spec.check, tr, config.tstop);
@@ -198,7 +238,10 @@ export function runTran(elab: Elaboration): StageOutcome {
 
   // Assertion results in declaration order, independent of group order.
   results.sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
-  const ratings = evaluateTranRatings(elab, ratingRuns);
+  const ratings = [
+    ...evaluateTranRatings(elab, ratingRuns),
+    ...[...mcuRatings.values()].sort((a, b) => (a.component !== b.component ? (a.component < b.component ? -1 : 1) : a.code !== b.code ? (a.code < b.code ? -1 : 1) : a.quantity < b.quantity ? -1 : a.quantity > b.quantity ? 1 : 0)),
+  ];
   const failed = results.some(r => r.verdict === 'fail') || ratings.some(r => r.verdict === 'fail');
   const mixedError = mixedDiags.some(d => d.severity === 'error');
   const totals = runs.reduce(
@@ -224,6 +267,7 @@ export function runTran(elab: Elaboration): StageOutcome {
       },
       assertions: results,
       ...(captures.length > 0 ? { logic: captures } : {}),
+      ...(serialCaptures.length > 0 ? { serial: serialCaptures } : {}),
       ...(ratings.length > 0 ? { ratings } : {}),
     },
     diagnostics: mixedDiags,

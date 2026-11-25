@@ -6,6 +6,10 @@ import { transform } from 'sucrase';
 import * as platform from '../forge';
 import type { BenchDescriptor } from '../elab/bench';
 import { PACKAGE_NAME } from '../schema/version';
+import { installNodeFirmwareHost } from '../mcu/node/firmware-host';
+
+// `new Mcu({ firmware: './blink.fw.ts' })` in a bench: firmware files are read from disk, relative to the bench file.
+installNodeFirmwareHost();
 
 export const EXAMPLE = `a bench file looks like:
 

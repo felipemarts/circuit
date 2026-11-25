@@ -30,12 +30,13 @@ import type { IcOptions } from '../mixed/device';
 import { semiPart, semiPartIds, partUnsupportedReason } from '../components/Part';
 import { findPart } from '../parts';
 import { opampPart, AMPLIFIER_PART_IDS } from '../opamps/parts';
+import { mcuPart, mcuPartIds, type McuOptions } from '../mixed/mcu';
 
 /**
  * Options of `Part()`. Logic ICs / timers take `{ corner, clamp }`;
  * semiconductor and op-amp / comparator parts take none (their model and ratings come from the catalog).
  */
-export type PartOptions = IcOptions;
+export type PartOptions = IcOptions & Partial<Omit<McuOptions, 'profile'>>;
 
 /** One part family of the `Part()` dispatch chain. */
 export interface PartResolver {
@@ -60,6 +61,7 @@ export const PART_RESOLVERS: readonly PartResolver[] = [
   { family: 'logic ICs / timers', resolve: icPart, ids: icPartIds },
   { family: 'op-amps / comparators', resolve: (id, opts) => noOptions(id, opts, opampPart(id)), ids: () => [...AMPLIFIER_PART_IDS] },
   { family: 'semiconductors', resolve: (id, opts) => noOptions(id, opts, semiPart(id)), ids: semiPartIds },
+  { family: 'microcontroller boards', resolve: mcuPart, ids: mcuPartIds },
 ];
 
 export function Part(id: string, opts: PartOptions = {}): Component {

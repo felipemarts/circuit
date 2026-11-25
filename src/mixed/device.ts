@@ -140,7 +140,7 @@ export class OutputStage {
 }
 
 /** Clamp-diode junction with Newton limiting (per-iteration state). */
-class Junction {
+export class Junction {
   vd = 0;
   /** Small-signal conductance at the last linearization point. */
   get g(): number {
@@ -343,7 +343,7 @@ export class LogicIC extends Component {
   stamp(_matrix: MNAMatrix): void {}
 }
 
-function stampStage(m: MNAMatrix, ctx: LoadContext, st: OutputStage, kind: string, n: number, vcc: number, gnd: number): void {
+export function stampStage(m: MNAMatrix, ctx: LoadContext, st: OutputStage, kind: string, n: number, vcc: number, gnd: number): void {
   const e = st.eAt(ctx);
   if (e <= 0) return;
   const s = st.sAt(ctx);

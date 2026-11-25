@@ -15,6 +15,13 @@ import { LogicIC, LogicPrimitive, OutputStage } from './device';
 import { FAMILY_REFERENCE_PART, logicFamilyModel, ne555Model } from './families';
 import { MixedController, icPinNet, primitiveRamp, type IcEntry, type InputBridge, type MixedPlan, type OutputBridge } from './controller';
 import { mixedDiagnostic } from './diagnostics';
+import { DigitalCircuit } from '../digital/circuit';
+import { compileVhdl } from '../vhdl/design';
+import { lintFirmware } from '../mcu/lint';
+import type { Mcu } from './mcu';
+import { McuCosim, mcuToDiagnostic } from './mcu-cosim';
+import type { VhdlBlock } from './vhdl-block';
+import { DEFAULT_RATING_OPTIONS, type RatingOptions } from '../verify/ratings';
 
 export interface MixedElabInput {
   components: Map<string, Component>;
@@ -24,6 +31,8 @@ export interface MixedElabInput {
   locOf: Map<string, string | undefined>;
   /** Names given with tb.name. */
   userNets: Set<string>;
+  /** tb.ratings(...) options (MCU pin-current ratings R410–R413). */
+  ratings?: RatingOptions;
 }
 
 export interface MixedInfo {
@@ -48,10 +57,14 @@ export interface MixedInfo {
 
 const isIC = (c: Component): c is LogicIC => (c as { kind?: string }).kind === 'IC';
 const isPrim = (c: Component): c is LogicPrimitive => (c as { kind?: string }).kind === 'LogicPrimitive';
+const isVhdl = (c: Component): c is VhdlBlock => (c as { kind?: string }).kind === 'VhdlBlock';
+const isMcu = (c: Component): c is Mcu => (c as { kind?: string }).kind === 'Mcu';
+/** Elements of the event engine with ideal-rail bridges: logic primitives and VHDL blocks. */
+const isDigitalPart = (c: Component): boolean => isPrim(c) || isVhdl(c);
 
-/** Whether a component is a mixed-signal device (IC or logic primitive). */
+/** Whether a component is a mixed-signal device (IC, logic primitive, VHDL block, MCU). */
 export function isMixedDevice(c: Component): boolean {
-  return isIC(c) || isPrim(c);
+  return isIC(c) || isPrim(c) || isVhdl(c) || isMcu(c);
 }
 
 export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
@@ -63,10 +76,10 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
   // ── net classification ──
   const analogNets = new Set<string>(['gnd']);
   for (const [net, pins] of netPins) {
-    if (pins.some(p => !isPrim(p.component))) analogNets.add(net);
+    if (pins.some(p => !isDigitalPart(p.component))) analogNets.add(net);
   }
   const pureNets = new Set([...netPins.keys()].filter(n => !analogNets.has(n)));
-  const digitalOnly = ids.every(id => isPrim(components.get(id)!));
+  const digitalOnly = ids.every(id => isDigitalPart(components.get(id)!));
 
   const display = new Map<string, string>();
   const inputs: InputBridge[] = [];
@@ -76,6 +89,77 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
   const digitalOnlyComps = new Set<string>();
   const pinSignal = new Map<string, string>(); // 'U1.1Y' (canonical) → digital net
   const pinNodes = new Map<string, Pin>();
+  const vhdl: NonNullable<MixedPlan['vhdl']> = [];
+  const mcus: McuCosim[] = [];
+  const lint: Diagnostic[] = [];
+
+  /** A VHDL block: per-bit pins bridged like primitive pins, the entity elaborated onto the bench's digital nets. */
+  const elaborateVhdlBlock = (id: string, c: VhdlBlock): void => {
+    const at = locOf.get(id);
+    c._bridged.clear();
+    c._stages.clear();
+    const fam = logicFamilyModel(FAMILY_REFERENCE_PART[c.family]);
+    const pinNet = new Map<string, string>();
+    for (const [name, pin] of c.pinEntries()) {
+      const net = netOf(pin);
+      const ref = `${id}.${name}`;
+      if (!analogNets.has(net)) {
+        pinNet.set(name, net);
+        pinSignal.set(ref, net);
+        continue;
+      }
+      const mode = c.modeOfPin(name);
+      if (mode === 'inout') {
+        throw new Error(`VHDL block '${id}': inout port bit '${name}' is on an analog net (${net}) — bidirectional VHDL ports are supported on pure-digital nets only; split it into an 'in' and an 'out' port`);
+      }
+      c._bridged.add(name);
+      const dnet = `_${id}_${name}`;
+      pinNet.set(name, dnet);
+      display.set(dnet, ref);
+      pinSignal.set(ref, dnet);
+      pinNodes.set(ref, pin);
+      const supply = { kind: 'ideal' as const, vcc: c.vcc };
+      if (mode === 'in') {
+        inputs.push({ owner: id, pin: name, display: ref, net: dnet, pinObj: pin, kind: 'logic', supply, fam, checkZone: true });
+      } else {
+        const stage = new OutputStage();
+        c._stages.set(name, stage);
+        outputs.push({ owner: id, pin: name, display: ref, net: dnet, pinObj: pin, kind: 'tristate', supply, stage, fam, ramp: () => primitiveRamp(0) });
+      }
+    }
+    // Compile again with the bench location as origin: diagnostics of inline text read `<bench>:<line> (vhdl l:c)`.
+    const r = compileVhdl(c.input(), { origin: at });
+    const vdiags: Diagnostic[] = [...(r.diagnostics as Diagnostic[])];
+    const add = (ds: Diagnostic[]) => {
+      for (const d of ds) if (!vdiags.some(x => x.code === d.code && x.message === d.message)) vdiags.push(d);
+    };
+    if (r.ok && r.design && !c.broken) {
+      const ports: Record<string, string[]> = {};
+      for (const p of c.ports) {
+        // An input port left fully unconnected keeps its VHDL default (`en : in std_logic := '1'`);
+        // without a default it is an undriven net (F130).
+        const open = p.mode === 'in' && p.pins.every(n => (netPins.get(netOf(c.pin(n))) ?? []).length <= 1);
+        if (!open) ports[p.name] = p.pins.map(n => pinNet.get(n)!);
+      }
+      try {
+        const tmp = new DigitalCircuit();
+        const inst = r.design.instantiate(tmp, id, { ...(c.entity ? { entity: c.entity } : {}), ...(c.architecture ? { architecture: c.architecture } : {}), generics: c.generics, ports });
+        add(inst.diagnostics as Diagnostic[]);
+        const comps = tmp.netlist().components;
+        vhdl.push({ id, components: comps });
+        for (const k of comps) display.set(k.id, id);
+      } catch (err) {
+        const ds = (err as { diagnostics?: Diagnostic[] }).diagnostics;
+        if (!ds) throw err;
+        add(ds);
+      }
+    } else if (r.ok && c.broken) {
+      add(c._constructDiagnostics as Diagnostic[]);
+    }
+    for (const d of vdiags) {
+      lint.push({ ...d, stage: 'lint', subject: { ...(d.subject ?? {}), components: [id] }, ...(d.at ? {} : at ? { at } : {}) });
+    }
+  };
 
   for (const id of ids) {
     const c = components.get(id)!;
@@ -136,6 +220,22 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
       }
       continue;
     }
+    if (isMcu(c)) {
+      const cosim = new McuCosim(id, c, locOf.get(id), input.ratings ?? DEFAULT_RATING_OPTIONS);
+      mcus.push(cosim);
+      for (const name of cosim.pinNames()) {
+        const ref = `${id}.${name}`;
+        pinNodes.set(ref, c.pin(name));
+        pinSignal.set(ref, `mcu:${ref}`);
+      }
+      pinNodes.set(`${id}.${c.vccName}`, c.vccPin());
+      pinNodes.set(`${id}.GND`, c.gndPin());
+      continue;
+    }
+    if (isVhdl(c)) {
+      elaborateVhdlBlock(id, c);
+      continue;
+    }
     if (!isPrim(c)) continue;
     const layout = c.layout();
     const fam = logicFamilyModel(FAMILY_REFERENCE_PART[c.family]);
@@ -191,11 +291,10 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
   for (const n of pureNets) display.set(n, n);
   for (const o of outputs) o.dangling = (netPins.get(netOf(o.pinObj)) ?? []).length <= 1;
 
-  const plan: MixedPlan = { ics, prims, inputs, outputs, locOf, display };
+  const plan: MixedPlan = { ics, prims, inputs, outputs, locOf, display, vhdl, mcus };
   const controller = new MixedController(plan);
 
   // ── lint ──
-  const lint: Diagnostic[] = [];
   const netsMembers = (net: string): Pin[] => netPins.get(net) ?? [];
   const pinRole = (p: Pin): 'in' | 'out' | 'tri' | 'oc' | 'supply' | 'analog' | 'other' => {
     const c = p.component;
@@ -211,6 +310,7 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
       if (l.inputs.includes(p.name)) return 'in';
       return partDef(c.logicType).driver === 'tristate' ? 'tri' : 'out';
     }
+    if (isVhdl(c)) return c.modeOfPin(p.name) === 'in' ? 'in' : 'out';
     return 'other';
   };
   const refOf = (p: Pin): string => {
@@ -240,6 +340,33 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
           at: locOf.get(e.id),
         }),
       );
+    }
+  }
+
+  // F139 MCU supply pins; firmware load errors (M608) and firmware lint (F140–F149)
+  for (const m of mcus) {
+    const c = m.mcu;
+    const vNet = netOf(c.vccPin());
+    const gNet = netOf(c.gndPin());
+    const problems: string[] = [];
+    if (netsMembers(vNet).length <= 1 && vNet !== 'gnd') problems.push(`${c.vccName} is not connected`);
+    if (netsMembers(gNet).length <= 1 && gNet !== 'gnd') problems.push('GND is not connected');
+    if (vNet === gNet) problems.push(`${c.vccName} and GND are on the same net (${vNet})`);
+    if (problems.length > 0) {
+      lint.push(
+        mixedDiagnostic('F139', 'lint', {
+          message: `${m.id} (${c.profile.part}): ${problems.join('; ')} — the MCU has no supply`,
+          subject: { components: [m.id], pins: [`${m.id}.${c.vccName}`, `${m.id}.GND`] },
+          note: `a microcontroller runs, drives its pins and thresholds its inputs only from its supply pins (${c.profile.part}: ${c.electrical.vccRecommended[0]}–${c.electrical.vccRecommended[1]} V); without them the firmware never starts`,
+          fixes: [{ kind: 'rewire', confidence: 'mechanical', detail: `connect ${m.id}.pin('${c.vccName}') to a ${c.profile.vcc} V source's + terminal and ${m.id}.pin('GND') to tb.gnd`, patch: `${m.id.toLowerCase()}.pin('${c.vccName}').connect(v1.pin('+'));\n${m.id.toLowerCase()}.pin('GND').connect(tb.gnd);` }],
+          at: locOf.get(m.id),
+        }),
+      );
+    }
+    if (c.compiled && !c.compiled.ok) lint.push(mcuToDiagnostic(m.id, c.compiled.diagnostic, 'lint', locOf.get(m.id)));
+    else if (c.bundle) {
+      const text = c.bundle.files[c.bundle.entry] ?? '';
+      for (const d of lintFirmware(text, { file: c.bundle.entry, profile: c.profile })) lint.push(mcuToDiagnostic(m.id, d, 'lint'));
     }
   }
 
@@ -357,6 +484,7 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
     if (!d) return undefined;
     try {
       const pin = d.c.pin(d.rest);
+      if (isMcu(d.c)) return `${d.id}.${d.c.canonicalPinName(pin)}`;
       return isIC(d.c) ? `${d.id}.${d.c.pinInfo(pin).name}` : `${d.id}.${pin.name}`;
     } catch {
       return undefined;
@@ -368,7 +496,10 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
     const outs = members.filter(p => ['out', 'tri'].includes(pinRole(p))).map(refOf).sort();
     const ins = members.filter(p => pinRole(p) === 'in').map(refOf).sort();
     const ref = outs[0] ?? ins[0];
-    return ref ? pinSignal.get(ref) : undefined;
+    if (ref) return pinSignal.get(ref);
+    // A named net on an MCU pin: that pin's logic trace.
+    const mcuRefs = members.filter(p => isMcu(p.component)).map(p => `${idOf.get(p.component)!}.${(p.component as Mcu).canonicalPinName(p)}`).sort();
+    return mcuRefs.length > 0 ? pinSignal.get(mcuRefs[0]) : undefined;
   };
   const namedSignals = new Map<string, string>();
   for (const net of [...input.userNets].sort()) {
@@ -385,6 +516,9 @@ export function elaborateMixed(input: MixedElabInput): MixedInfo | undefined {
     pureNets,
     namedSignals,
     logicSignal(probe: string): string | undefined {
+      // A VHDL block that does not compile (V7xx, the lint stops the run) accepts any pin.
+      const dev = deviceOf(probe);
+      if (dev && isVhdl(dev.c) && dev.c.broken) return pinSignal.get(`${dev.id}.${dev.rest}`) ?? `_${dev.id}_${dev.rest}`;
       const ref = canonicalRef(probe);
       if (ref) return pinSignal.get(ref);
       if (input.userNets.has(probe) || pureNets.has(probe)) return signalOfNet(probe);

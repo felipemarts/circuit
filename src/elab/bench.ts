@@ -9,6 +9,7 @@ import { normalizeRatingOptions, type RatingOptions } from '../verify/ratings';
 import { describeComponent, rebuildWithValue, isOverridable, kindOf } from './describe';
 import { DcExpect, AcExpect, type DcSweepInput, type AcSweepInput } from './expect';
 import { LogicExpect, isLogicCheck } from './logic';
+import { SerialExpect, isSerialCheck } from './serial';
 import { elaborateMixed, type MixedInfo } from '../mixed/elab';
 import type {
   AcSweepConfig,
@@ -179,6 +180,18 @@ export class TB {
       }
       return new LogicExpect(this, tran, probe);
     },
+    /**
+     * Serial-output assertions on a microcontroller ('U1') over a transient
+     * run (`config`, default: the window of the last tb.expect.tran / logic / serial call).
+     */
+    serial: (mcu: string, config?: TranInput): SerialExpect => {
+      const tran = config ? normalizeTran(config) : this._lastTran;
+      if (config) this._lastTran = tran;
+      if (!tran) {
+        throw new Error(`tb.expect.serial('${mcu}') needs a simulation window: tb.expect.serial('${mcu}', { tstop: '1' }) (or declare tb.expect.tran({...}) first)`);
+      }
+      return new SerialExpect(this, tran, mcu);
+    },
   };
 
   /** @internal */
@@ -305,6 +318,11 @@ export class TranExpect {
   logic(probe: string): LogicExpect {
     return new LogicExpect(this.tb, this._config, probe);
   }
+
+  /** Serial-output assertions on a microcontroller of this transient run. */
+  serial(mcu: string): SerialExpect {
+    return new SerialExpect(this.tb, this._config, mcu);
+  }
 }
 
 export class TranProbeExpect {
@@ -318,6 +336,11 @@ export class TranProbeExpect {
   /** Logic assertions on a signal of the same transient run. */
   logic(probe: string): LogicExpect {
     return this.parent.logic(probe);
+  }
+
+  /** Serial-output assertions on a microcontroller of the same transient run. */
+  serial(mcu: string): SerialExpect {
+    return this.parent.serial(mcu);
   }
 
   /** Settles into target ± tol (fraction) no later than `by`, and stays there. */
@@ -593,6 +616,7 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
     netNode,
     locOf: tb._locOf,
     userNets: new Set(tb._namedNets.map(n => n.name)),
+    ratings: tb._ratings,
   });
 
   for (const id of tb._ratings.ignore) {
@@ -648,6 +672,14 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
     );
   };
   for (const a of tb._assertions) {
+    if (isSerialCheck(a.check)) {
+      const comp = tb._components.get(a.probe);
+      if (!comp || kindOf(comp) !== 'Mcu') {
+        const mcus = [...tb._components.entries()].filter(([, c]) => kindOf(c) === 'Mcu').map(([id]) => id);
+        throw new Error(`tb.expect.serial('${a.probe}')${a.at ? ` at ${a.at}` : ''}: '${a.probe}' is not a microcontroller. MCUs in this bench: ${mcus.join(', ') || '(none)'}`);
+      }
+      continue;
+    }
     if (isLogicCheck(a.check)) {
       validateLogicProbe(a.probe, a.at);
       continue;
@@ -686,10 +718,18 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
   for (const name of [...netNode.keys()].sort()) {
     nets[name] = (netPins.get(name) ?? []).map(p => refOf.get(p)!).sort();
   }
+  // Firmware / VHDL files are referenced by path in params: their content is part of the identity.
+  const sourceDigests: [string, string][] = [];
+  for (const id of [...tb._components.keys()].sort()) {
+    const files = (tb._components.get(id) as { sourceFiles?: () => { path: string; text: string }[] }).sourceFiles?.() ?? [];
+    for (const f of files) if (!sourceDigests.some(([p]) => p === f.path)) sourceDigests.push([f.path, fnv1a64(f.text)]);
+  }
+  sourceDigests.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const hash = fnv1a64(
     stableStringify({
       components: components.map(({ id, type, params, pins }) => ({ id, type, params, pins })),
       nets,
+      ...(sourceDigests.length > 0 ? { sources: sourceDigests } : {}),
     }),
   );
 

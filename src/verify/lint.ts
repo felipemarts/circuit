@@ -18,7 +18,8 @@ export function runLint(elab: Elaboration): Diagnostic[] {
   const ids = doc.components.map(c => c.id).filter(id => !mixed?.digitalOnlyComps.has(id));
   const byId = new Map(doc.components.map(c => [c.id, c]));
   const compOf = (id: string): Component => elab.components.get(id)!;
-  const isLogicPrimitive = (id: string): boolean => (compOf(id) as { kind?: string }).kind === 'LogicPrimitive';
+  // Logic primitives and VHDL blocks are bridged at ideal rails referenced to ground.
+  const isLogicPrimitive = (id: string): boolean => ['LogicPrimitive', 'VhdlBlock'].includes((compOf(id) as { kind?: string }).kind ?? '');
 
   // A bridged logic primitive is referenced to the ground (ideal rails); its pure-digital nets are not analog.
   const netsOf = (id: string): string[] => {

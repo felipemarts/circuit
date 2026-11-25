@@ -17,6 +17,8 @@
  */
 import { AMPLIFIER_DIAGNOSTIC_DOCS } from '../opamps/registry';
 
+import { MCU_INTEGRATION_DOCS } from './registry-mcu';
+
 export interface DiagnosticDoc {
   code: string;
   slug: string;
@@ -1421,6 +1423,7 @@ are accepted silently.`,
   },
   // ── op-amps and comparators (src/opamps): F120–F124 lint, R420–R425 datasheet checks ──
   ...AMPLIFIER_DIAGNOSTIC_DOCS,
+  ...MCU_INTEGRATION_DOCS,
 ];
 
 export function findDiagnosticDoc(code: string): DiagnosticDoc | undefined {

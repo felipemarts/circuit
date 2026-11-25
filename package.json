@@ -38,6 +38,10 @@
       "types": "./dist/types/forge.d.ts",
       "import": "./dist/index.js"
     },
+    "./arduino": {
+      "types": "./dist/types/mcu/arduino.d.ts",
+      "import": "./dist/arduino.js"
+    },
     "./circuit.schema.json": "./schema/circuit.schema.json",
     "./package.json": "./package.json"
   },

@@ -1,7 +1,8 @@
 import { elaborate, type BenchDescriptor, type Elaboration } from '../elab/bench';
 import { runLint } from './lint';
 import { runOp } from './op';
-import { runTran } from './tran';
+import { runTranSteps } from './tran';
+import { drainAsync, drainSync, type Steps } from '../analysis/steps';
 import { runDc } from './dc';
 import { runAc } from './ac';
 import type { StageOutcome } from './op';
@@ -36,6 +37,19 @@ function failReason(stage: string, rec: { assertions?: { verdict: string }[]; ra
 }
 
 export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunRecord {
+  return drainSync(ladderSteps(desc, opts));
+}
+
+/**
+ * The ladder for every bench, including microcontroller firmware (which runs
+ * asynchronously, in lockstep with the transient). Same RunRecord as
+ * runLadder for benches without firmware; the CLI always uses this one.
+ */
+export function runLadderAsync(desc: BenchDescriptor, opts: LadderOptions = {}): Promise<RunRecord> {
+  return drainAsync(ladderSteps(desc, opts));
+}
+
+function* ladderSteps(desc: BenchDescriptor, opts: LadderOptions): Steps<RunRecord> {
   const requested = opts.stages ?? STAGE_ORDER;
   const overrides = opts.overrides ?? {};
   const record: RunRecord = {
@@ -120,10 +134,14 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
 
   // ── L2: dc sweep · L2b: ac · L3: tran — each runs only when the bench
   // asserts on it, and each gates the next (fail-fast).
-  const later: [Exclude<StageName, 'lint' | 'op'>, (e: Elaboration) => StageOutcome][] = [
-    ['dc', runDc],
-    ['ac', runAc],
-    ['tran', runTran],
+  // eslint-disable-next-line require-yield
+  const sync = (f: (e: Elaboration) => StageOutcome) => function* (e: Elaboration): Steps<StageOutcome> {
+    return f(e);
+  };
+  const later: [Exclude<StageName, 'lint' | 'op'>, (e: Elaboration) => Steps<StageOutcome>][] = [
+    ['dc', sync(runDc)],
+    ['ac', sync(runAc)],
+    ['tran', runTranSteps],
   ];
   for (const [stage, run] of later) {
     if (!requested.includes(stage) || !elab.assertions.some(a => a.stage === stage)) continue;
@@ -132,7 +150,7 @@ export function runLadder(desc: BenchDescriptor, opts: LadderOptions = {}): RunR
       continue;
     }
     try {
-      const outcome = run(elab);
+      const outcome = yield* run(elab);
       record.stages[stage] = outcome.stage;
       record.diagnostics.push(...outcome.diagnostics);
       if (outcome.stage.verdict === 'error') gate = `${stage} failed`;

@@ -12,9 +12,11 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "circuitsvibe": ["src/forge.ts"]
+      "circuitsvibe": ["src/forge.ts"],
+      "circuitsvibe/arduino": ["src/mcu/arduino.ts"]
     },
     "types": ["node"]
   },
-  "include": ["src", "bench"]
+  "include": ["src", "bench"],
+  "exclude": ["bench/broken/syntax.fw.ts"]
 }

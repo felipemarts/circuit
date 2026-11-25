@@ -87,7 +87,12 @@ export type CheckSpec =
   | { op: 'logicEdges'; edge: 'rising' | 'falling' | 'both'; from?: number; to?: number; count?: number; min?: number; max?: number }
   | { op: 'logicFrequency'; value: number; tol: number; from?: number; to?: number }
   | { op: 'logicDutyCycle'; value: number; tol: number; from?: number; to?: number }
-  | { op: 'logicStable'; from: number; to: number; value?: LogicLevel };
+  | { op: 'logicStable'; from: number; to: number; value?: LogicLevel }
+  // Serial-output checks — tran stage, probe = MCU id (tb.expect.serial)
+  | { op: 'serialContains'; text: string; by?: number }
+  | { op: 'serialNotContains'; text: string }
+  | { op: 'serialMatches'; pattern: string; flags?: string }
+  | { op: 'serialLines'; count?: number; min?: number; max?: number };
 
 /** A logic value: 0, 1, unknown 'X' or high-impedance 'Z'. */
 export type LogicLevel = 0 | 1 | 'X' | 'Z';
@@ -104,6 +109,20 @@ export interface LogicCapture {
   truncated?: string[];
   /** Digital events processed. */
   events?: number;
+}
+
+/** Serial output of one MCU in one transient run. */
+export interface SerialCapture {
+  /** Transient configuration label (same as the probe keys). */
+  config: string;
+  /** MCU component id. */
+  mcu: string;
+  /** Complete lines as [completion time (s), text] (line terminators stripped). */
+  lines: [number, string][];
+  /** Text after the last line terminator: [time of its last chunk, text]. */
+  partial?: [number, string];
+  /** More lines than the capture limit (2000) were printed. */
+  truncated?: boolean;
 }
 
 export interface AssertionSpec {
@@ -237,6 +256,8 @@ export interface StageRecord {
   assertions?: AssertionResult[];
   /** tran: logic-analyzer capture per transient run (mixed-signal / digital benches). */
   logic?: LogicCapture[];
+  /** tran: serial output of each microcontroller per transient run (timestamped lines). */
+  serial?: SerialCapture[];
   /**
    * Real-part datasheet checks (absolute maximum ratings of Part() devices),
    * kept apart from the bench's own assertions (the simulated spec). Present

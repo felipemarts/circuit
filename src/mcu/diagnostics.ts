@@ -38,6 +38,8 @@ export const MCU_CODES = {
   M619: { slug: 'invalid-argument', severity: 'error', stage: 'mcu', title: 'invalid argument to an Arduino API call' },
   M620: { slug: 'value-clamped', severity: 'warning', stage: 'mcu', title: 'value out of range — clamped' },
   M621: { slug: 'timer-pwm-conflict', severity: 'warning', stage: 'mcu', title: 'hardware timer shared with PWM pins' },
+  M622: { slug: 'mcu-reset-unpowered', severity: 'error', stage: 'mcu', title: 'MCU held in reset: supply below the brown-out / power-on threshold' },
+  M623: { slug: 'mcu-supply-out-of-range', severity: 'error', stage: 'mcu', title: 'MCU supply outside its recommended range (error above the absolute maximum)' },
 
   F140: { slug: 'delay-not-awaited', severity: 'error', stage: 'lint', title: 'delay() call without await' },
   F141: { slug: 'missing-entry-points', severity: 'error', stage: 'lint', title: 'firmware does not export setup()/loop()' },

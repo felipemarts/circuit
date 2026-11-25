@@ -1,4 +1,4 @@
-import { STAGE_ORDER, type LogicCapture, type RatingResult, type AssertionResult, type CheckSpec, type Diagnostic, type RunRecord, type ScalarCheck, type StageRecord } from '../schema/types';
+import { STAGE_ORDER, type LogicCapture, type SerialCapture, type RatingResult, type AssertionResult, type CheckSpec, type Diagnostic, type RunRecord, type ScalarCheck, type StageRecord } from '../schema/types';
 import { formatEng } from '../elab/units';
 import { CLI } from '../schema/version';
 
@@ -41,6 +41,7 @@ export function renderHuman(record: RunRecord): string {
       lines.push(`        ${passed} assertion${passed > 1 ? 's' : ''} passed`);
     }
     if (stage?.logic && stage.logic.length > 0) lines.push(...renderLogic(stage.logic));
+    if (stage?.serial && stage.serial.length > 0) lines.push(...renderSerial(stage.serial));
     if (stage?.ratings && stage.ratings.length > 0) lines.push(...renderRatings(stage.ratings));
   }
 
@@ -86,6 +87,16 @@ function renderDiagnostic(d: Diagnostic): string[] {
 }
 
 const LOGIC_SIGNALS_SHOWN = 8;
+const SERIAL_LINES_SHOWN = 3;
+
+/** Serial output per MCU and run: line count and the last lines (full log: --json). */
+function renderSerial(captures: SerialCapture[]): string[] {
+  return captures.map(cap => {
+    const last = cap.lines.slice(-SERIAL_LINES_SHOWN).map(([t, text]) => `${formatEng(t, 's')} ${JSON.stringify(text)}`);
+    const n = cap.lines.length;
+    return `        serial ${cap.mcu} [${cap.config}]: ${n} line${n === 1 ? '' : 's'}${last.length ? ` — last: ${last.join(' · ')}` : ''}${cap.partial ? ` · partial ${JSON.stringify(cap.partial[1])}` : ''}${cap.truncated ? ' (truncated)' : ''}`;
+  });
+}
 
 /**
  * Logic-analyzer capture of a mixed-signal transient, one line per run:
@@ -225,6 +236,14 @@ export function describeCheck(check: CheckSpec): string {
       return `duty cycle ${check.value} ± ${check.tol}${logicWindow(check.from, check.to)}`;
     case 'logicStable':
       return `stable${check.value !== undefined ? ` at ${check.value}` : ''} from ${formatEng(check.from, 's')} to ${formatEng(check.to, 's')}`;
+    case 'serialContains':
+      return `serial output contains ${JSON.stringify(check.text)}${check.by !== undefined ? ` by ${formatEng(check.by, 's')}` : ''} (measured: time printed)`;
+    case 'serialNotContains':
+      return `serial output never contains ${JSON.stringify(check.text)}`;
+    case 'serialMatches':
+      return `serial output matches /${check.pattern}/${check.flags ?? ''}`;
+    case 'serialLines':
+      return `serial output has ${check.count !== undefined ? `exactly ${check.count}` : check.max === undefined ? `at least ${check.min}` : check.min === undefined ? `at most ${check.max}` : `${check.min}–${check.max}`} lines (measured: lines)`;
   }
 }
 

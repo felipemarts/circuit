@@ -69,6 +69,7 @@ Same shape as `RunRecord.netlist.components[]`:
 |-------|---------|
 | `id` | `/^[A-Za-z][A-Za-z0-9_]*$/`, unique; the name in every diagnostic, probe and override |
 | `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `NPN`, `PNP`, `NMOS`, `PMOS`, `Switch`, `Button`, `IdealOpAmp`, `OpAmp`, `Comparator`, a logic IC / NE555 catalog id such as `74HC04`, a logic primitive such as `Nand`) or the name of a custom definition supplied by the reader (T012 otherwise) |
+| `type` | a built-in type (`circuitsvibe catalog`: `Resistor`, `Capacitor`, `Inductor`, `VoltageSource`, `CurrentSource`, `Diode`, `LED`, `NPN`, `PNP`, `NMOS`, `PMOS`, `Switch`, `Button`, a logic IC / NE555 catalog id such as `74HC04`, a logic primitive such as `Nand`, `Mcu`, `ArduinoUno`, `VhdlBlock`) or the name of a custom definition supplied by the reader (T012 otherwise) |
 | `params` | the component configuration, exactly as in the RunRecord netlist (see below) |
 | `pins` | `{ pinName: netName }` with **every** canonical pin of the type, and only those (T014) |
 | `free` | optional `{ min, max, scale: "lin" \| "log" }` — a `tb.param` sweep range (verified hints) |
@@ -90,6 +91,9 @@ Same shape as `RunRecord.netlist.components[]`:
 | `NMOS` / `PMOS` | `{ …Level-1 parameters that differ from their defaults (vto, kp, lambda, rd, cgso…, bulkPin, bodyDiode), model?, part? }` | `d`, `g`, `s` (+ `b` with `bulkPin: true`) |
 | `74HC04`, `NE555`, … | the IC options that differ from the defaults (`corner`, `clamp`); the type is the catalog id | datasheet pin names (`1A`, `1Y`, `VCC`, `GND`, …) |
 | `Nand`, `DFF`, `Clock`, … | the primitive's options (`inputs`, `delay`, `family`, `vcc`, …) | as in the bench DSL (`a`, `b`, `y`, `clk`, `q`, …) |
+| `Mcu` | `{ profile, firmware: "<entry path in sources>", pwm?: "average", randomSeed? }` | the profile's pin names (`D0`…`D13`, `A0`…`A5`, `AREF` / `PB0`… / `GPIOn` / `GPn`), `VCC`, `GND` |
+| `ArduinoUno` | `{ firmware, pwm?, randomSeed? }` | `D0`…`D13`, `A0`…`A5`, `AREF`, `5V`, `GND` |
+| `VhdlBlock` | `{ source: "<path>" \| ["<path>", …] \| text: "<vhdl>", entity, architecture?, generics?, family, vcc }` | one per port bit: `clk`, `q[0]`, … |
 | `Switch` | `{ closed }` (boolean) | `com`, `a`, `b` |
 | `Button` | `{ pressed }` (boolean) | `1`, `2` |
 | `IdealOpAmp` | `{ gain }` | `inp`, `inn`, `out`, `v+`, `v-` (supply pins may sit alone on `n<digits>` nets = unused) |
@@ -133,8 +137,9 @@ Exactly `AssertionSpec` from the RunRecord (`docs/DIAGNOSTICS.md`):
   and the others are forbidden. `ref` only on `ac`.
 - `probe` / `ref`: `'<id>.i'`, `'<id>.v'`, a semiconductor device quantity `'<id>.<q>'`
   (`'Q1.ic'`, `'Q1.vbe'`, `'M1.vgs'`, `'D1.p'`… — the quantity must be one the rebuilt device
-  exposes, T010 otherwise), a logic IC / primitive pin `'<id>.<pin>'` (`'U1.1Y'`, checked at
-  elaboration), a name listed in `nets`, or `gnd`.
+  exposes, T010 otherwise), a logic IC / primitive / VHDL-block / MCU pin `'<id>.<pin>'`
+  (`'U1.1Y'`, `'U2.q[0]'`, `'U1.D13'`, checked at elaboration), a name listed in `nets`, or
+  `gnd`. Serial checks take the MCU's id as `probe` (`"U1"`).
 - `check` by stage — op: `within {min,max}`, `closeTo {value,tol}`, `above {value}`,
   `below {value}`; dc: `at {x,check}`, `slopeAt {x,check}`, `monotonic {direction}`,
   `crosses {level, min?, max?}`; ac: `gainAt {f,check}`, `phaseAt {f,check}`,
@@ -143,7 +148,10 @@ Exactly `AssertionSpec` from the RunRecord (`docs/DIAGNOSTICS.md`):
   `stayAbove {value,from?}`, `stayBelow {value,from?}`, `rippleBelow {amplitude,from?}`,
   `finalCloseTo {value,tol}`, and the logic checks `logicAt {t,value}`,
   `logicEdges {edge,from?,to?,count?,min?,max?}`, `logicFrequency {value,tol,from?,to?}`,
-  `logicDutyCycle {value,tol,from?,to?}`, `logicStable {from,to,value?}` (value: 0, 1, "X", "Z").
+  `logicDutyCycle {value,tol,from?,to?}`, `logicStable {from,to,value?}` (value: 0, 1, "X", "Z"),
+  and the serial checks `serialContains {text,by?}`, `serialNotContains {text}`,
+  `serialMatches {pattern,flags?}` (a RegExp source and flags from `imsuy`),
+  `serialLines {count}` or `{min?,max?}`.
 - configs — `tran: { tstop, dt, maxStep?, minStep?, method?: "trap"|"be", ic?: "zero"|"op", reltol? }`,
   `dc: { source | param, from, to, points }`, `ac: { from, to, pointsPerDecade }`.
 
@@ -172,13 +180,34 @@ bench's.
 "ratings": { "derate": 0.8, "ignore": ["D1"] }
 ```
 
-### `sources[]` (reserved slot)
+### `sources[]`
 
-`{ path, language, text }` — embedded text files, for VHDL entities and MCU firmware once
-those are part of benches. `path` is a relative POSIX path (no `.`/`..` segments, no `\`,
-no `:`, no leading `/`), unique; `language` a lowercase tag (`vhdl`, `typescript`, `text`, …).
-In `circuitsvibe-circuit/1` sources are validated and carried verbatim (export, share,
-open) but **not executed**; no component type references them yet.
+`{ path, language, text }` — embedded text files. `path` is a relative POSIX path (no
+`.`/`..` segments, no `\`, no `:`, no leading `/`), unique; `language` a lowercase tag
+(`vhdl`, `typescript`, `javascript`, `json`, `text`, …).
+
+Two component types reference sources by path, so a document (and a share link) carries
+everything needed to reproduce the run — no file system:
+
+- **Microcontrollers** (`Mcu`, `ArduinoUno`): `params.firmware` is the firmware entry path;
+  the entry and every file it imports relatively (`import { f } from './util'`, resolved with
+  the `.ts`/`.js`/`index` rules) are in `sources` with `language: "typescript"` (or
+  `"javascript"`, `"json"`). Example: `{ "type": "ArduinoUno", "params": { "firmware":
+  "bench/mcu/blink.fw.ts" } }` + `{ "path": "bench/mcu/blink.fw.ts", "language":
+  "typescript", "text": "import { pinMode, … } from 'circuitsvibe/arduino'; …" }`. Readers
+  transpile and run the firmware (`circuitsvibe/arduino` is the only bare import allowed);
+  firmware diagnostics point at `<path>:<line>`. Other params: `profile` (`Mcu` only:
+  `atmega328p` | `attiny85` | `esp32` | `rp2040`), `pwm: "average"`, `randomSeed`.
+- **VHDL blocks** (`VhdlBlock`): `params.source` is the `.vhd` path (or an array of paths
+  compiled together; `language: "vhdl"`), or `params.text` holds inline VHDL; plus `entity`,
+  `architecture?`, `generics?` (keys sorted), `family`, `vcc`. Pins are the port bits
+  (`"clk"`, `"q[0]"`).
+
+The TypeScript writer uses cwd-relative paths (what diagnostics print, e.g.
+`bench/vhdl/counter.vhd:12:5`); files outside the working directory become `external/<name>`.
+A component whose source is missing from `sources` is T014. Sources no component references
+are carried verbatim. A share link keeps `sources` (only `at` lines are dropped), so firmware
+and VHDL locations survive in its RunRecords.
 
 ### `layout` (viewer-only)
 
@@ -194,12 +223,15 @@ documents have none; a document that has one keeps it through `benchFromDoc` →
 
 ## Guarantees
 
-- **Round trip**: for every bench, `runLadder(bench)` and
-  `runLadder(benchFromDoc(toCircuitDoc(bench)))` produce byte-identical RunRecords — the
-  document carries the `at` locations. `npm test` (tests/share) and `npm run benches`
-  enforce it for every file in `bench/`. Through a share link (no locations), records are
-  identical once `at` fields are removed.
+- **Round trip**: for every bench, `runLadderAsync(bench)` and
+  `runLadderAsync(benchFromDoc(toCircuitDoc(bench)))` produce byte-identical RunRecords — the
+  document carries the `at` locations and the firmware / VHDL sources. `npm test`
+  (tests/share) and `npm run benches` enforce it for every file in `bench/`, MCU and VHDL
+  benches included. Through a share link (no bench locations), records are identical once
+  `at` fields are removed.
 - **Determinism**: the same bench gives a byte-identical document and the same share URL.
+- **Inline firmware**: an MCU given `{ setup, loop }` functions (not a file) cannot be
+  serialized either (T013); give it a firmware file.
 - **Custom components**: `defineComponent` parts are code and cannot be serialized. The CLI
   refuses with T013 naming the parts; the library accepts a definition registry
   (`toCircuitDoc(bench, overrides, { definitions })`, `benchFromDoc(doc, { definitions })`) and

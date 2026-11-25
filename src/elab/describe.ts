@@ -17,6 +17,7 @@ import type { SourceOptions } from '../components/source';
 import type { ParamValue } from '../schema/types';
 import { buildMixedComponent } from '../mixed/device';
 import { buildAmplifier, describeAmplifier } from '../opamps/describe';
+import { buildSourcedComponent, type SourceFile } from '../mixed/build';
 
 export interface ComponentInfo {
   type: string;
@@ -70,6 +71,13 @@ export function describeComponent(comp: Component): ComponentInfo {
     case 'LogicPrimitive': {
       const lp = comp as unknown as { logicType: string; describeParams(): Record<string, ParamValue> };
       return { type: lp.logicType, params: lp.describeParams() };
+    }
+    case 'Mcu':
+    case 'VhdlBlock': {
+      // Microcontrollers (type 'Mcu' or a board such as 'ArduinoUno') and VHDL blocks:
+      // params reference their source files by path (embedded in the document's `sources`).
+      const d = comp as unknown as { typeName?: string; describeParams(): Record<string, ParamValue> };
+      return { type: d.typeName ?? kindOf(comp), params: d.describeParams() };
     }
     default: {
       // defineComponent parts carry their params in _params; without them,
@@ -154,6 +162,8 @@ export function buildComponent(
   type: string,
   params: Record<string, ParamValue>,
   customDefs: Record<string, ComponentDef> = {},
+  /** Source files (circuit document `sources`) that MCU firmware / VHDL params refer to. */
+  sources?: SourceFile[],
 ): Component {
   const n = (key: string): number => {
     const v = params[key];
@@ -216,7 +226,7 @@ export function buildComponent(
     case 'Button':
       return new Button(params.pressed === true);
     default: {
-      const mixed = customDefs[type] ? undefined : buildMixedComponent(type, params);
+      const mixed = customDefs[type] ? undefined : (buildMixedComponent(type, params) ?? buildSourcedComponent(type, params, sources));
       if (mixed) return mixed;
       const def = customDefs[type];
       if (!def) throw new Error(`cannot rebuild component type '${type}': unknown type (pass its definition in customDefs)`);

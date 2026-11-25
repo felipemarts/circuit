@@ -1,6 +1,7 @@
 import { elaborate, type BenchDescriptor, type TB } from '../elab/bench';
 import { buildComponent, kindOf, restoreModelCard } from '../elab/describe';
 import { isLogicCheck } from '../elab/logic';
+import { isSerialCheck } from '../elab/serial';
 import type { Component } from '../core/Component';
 import type { ComponentDef } from '../core/CustomComponent';
 import type { Pin } from '../core/Pin';
@@ -80,9 +81,24 @@ export function toCircuitDoc(
   }
 
   const offenders: string[] = [];
+  const inlineFirmware: string[] = [];
   for (const [id, comp] of elab.components) {
     const isCustom = (comp as { _def?: unknown })._def !== undefined;
     if (isCustom && !(kindOf(comp) in defs)) offenders.push(id);
+    if ((comp as { serializable?: boolean }).serializable === false) inlineFirmware.push(id);
+  }
+  if (inlineFirmware.length > 0) {
+    throw new CircuitDocError([
+      docDiagnostic(
+        'T013',
+        `${inlineFirmware.join(', ')} run${inlineFirmware.length > 1 ? '' : 's'} inline firmware functions: a circuit document carries source text, not live functions, so ${inlineFirmware.length > 1 ? 'they' : 'it'} cannot be exported or shared`,
+        {
+          components: inlineFirmware,
+          note: 'firmware given as { setup, loop } functions only exists in the running process; a document (and a share link) embeds firmware SOURCE files',
+          fixes: [{ kind: 'firmware-file', confidence: 'mechanical', detail: "move the firmware into a file and pass its path: new Mcu({ firmware: './app.fw.ts' })" }],
+        },
+      ),
+    ]);
   }
   if (offenders.length > 0) {
     const named = offenders.map(id => `${id} (${kindOf(elab.components.get(id)!)})`).join(', ');
@@ -125,6 +141,25 @@ export function toCircuitDoc(
     if (!keepAt || copy.at === undefined) delete copy.at;
     return copy;
   });
+  // Firmware and VHDL files of the components travel in `sources` (params reference them by path).
+  const sourceMap = new Map<string, { path: string; language: string; text: string }>();
+  for (const s of carried?.sources ?? []) sourceMap.set(s.path, clone(s));
+  for (const id of [...elab.components.keys()].sort()) {
+    const files = (elab.components.get(id) as { sourceFiles?: () => { path: string; language: string; text: string }[] }).sourceFiles?.() ?? [];
+    for (const f of files) {
+      const prev = sourceMap.get(f.path);
+      if (prev && prev.text !== f.text) {
+        throw new CircuitDocError([
+          docDiagnostic('T014', `two different files are embedded under the same source path '${f.path}' (component ${id})`, {
+            components: [id],
+            fixes: [{ kind: 'rename-file', confidence: 'suggested', detail: 'give the files distinct paths' }],
+          }),
+        ]);
+      }
+      sourceMap.set(f.path, { ...f });
+    }
+  }
+  const sources = [...sourceMap.values()];
   const meta: CircuitMeta = { ...(carried?.meta ?? {}), ...(options.meta ?? {}) };
   for (const k of Object.keys(meta) as (keyof CircuitMeta)[]) if (!meta[k]) delete meta[k];
 
@@ -137,7 +172,7 @@ export function toCircuitDoc(
     assertions,
     ...(Object.keys(overrides).length > 0 ? { overrides: { ...overrides } } : {}),
     ...(ratings ? { ratings } : {}),
-    ...(carried?.sources ? { sources: clone(carried.sources) } : {}),
+    ...(sources.length > 0 ? { sources } : {}),
     ...(carried?.layout ? { layout: clone(carried.layout) } : {}),
   };
   return canonicalizeDoc(doc);
@@ -174,7 +209,7 @@ export function benchFromDoc(input: unknown, opts: { definitions?: ComponentDefi
   const build = (tb: TB): void => {
     const comps = new Map<string, Component>();
     for (const c of doc.components) {
-      const built = buildComponent(c.type, clone(c.params), defs);
+      const built = buildComponent(c.type, clone(c.params), defs, doc.sources);
       if (c.modelCard !== undefined) restoreModelCard(built, c.modelCard);
       const added = tb.add(c.id, built);
       tb._locOf.set(c.id, c.at);
@@ -245,6 +280,10 @@ const LOGIC_KEY_ORDER: Record<string, string[]> = {
   logicFrequency: ['op', 'value', 'tol', 'from', 'to'],
   logicDutyCycle: ['op', 'value', 'tol', 'from', 'to'],
   logicStable: ['op', 'from', 'to', 'value'],
+  serialContains: ['op', 'text', 'by'],
+  serialNotContains: ['op', 'text'],
+  serialMatches: ['op', 'pattern', 'flags'],
+  serialLines: ['op', 'count', 'min', 'max'],
 };
 
 function replayAssertion(tb: TB, a: AssertionSpec): void {
@@ -287,7 +326,7 @@ function replayAssertion(tb: TB, a: AssertionSpec): void {
       break;
     }
     case 'tran': {
-      if (isLogicCheck(ch)) {
+      if (isLogicCheck(ch) || isSerialCheck(ch)) {
         // Logic checks are plain data already validated against the document
         // schema; record them directly, in the key order the fluent API emits
         // (RunRecords are compared byte for byte), on the DSL-normalized window.

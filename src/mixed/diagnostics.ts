@@ -21,6 +21,7 @@ export const MIXED_CODES: Record<string, MixedCodeInfo> = {
   F136: { code: 'F136', slug: 'outputs-tied', severity: 'error', stage: 'lint', title: 'two push-pull logic outputs on one analog net' },
   F137: { code: 'F137', slug: 'floating-logic-input', severity: 'error', stage: 'lint', title: 'logic input with nothing that sets its voltage' },
   F138: { code: 'F138', slug: 'output-on-rail', severity: 'error', stage: 'lint', title: 'logic output tied to ground or to an ideal source' },
+  F139: { code: 'F139', slug: 'mcu-supply-unconnected', severity: 'error', stage: 'lint', title: 'MCU supply pin (VCC/GND) unconnected or shorted to the other' },
   D508: { code: 'D508', slug: 'input-forbidden-zone', severity: 'error', stage: 'runtime', title: 'logic input between VIL and VIH for too long' },
   D509: { code: 'D509', slug: 'supply-out-of-range', severity: 'error', stage: 'runtime', title: 'IC supply outside its operating range (error above the absolute maximum)' },
   D510: { code: 'D510', slug: 'ic-unpowered', severity: 'error', stage: 'runtime', title: 'IC unpowered (supply below half the minimum operating voltage)' },

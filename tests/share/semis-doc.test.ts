@@ -51,7 +51,7 @@ describe('unified Part()', () => {
     expect((Part('2N3904') as { kind?: string }).kind).toBe('NPN');
     expect((Part('IRLZ44N') as { kind?: string }).kind).toBe('NMOS');
     expect((Part('LED-RED-5MM') as { kind?: string }).kind).toBe('LED');
-    expect(PART_RESOLVERS.map(r => r.family)).toEqual(['logic ICs / timers', 'op-amps / comparators', 'semiconductors']);
+    expect(PART_RESOLVERS.map(r => r.family)).toEqual(['logic ICs / timers', 'op-amps / comparators', 'semiconductors', 'microcontroller boards']);
     expect((Part('LM358') as { kind?: string }).kind).toBe('OpAmp');
     expect((Part('LM393') as { kind?: string }).kind).toBe('Comparator');
   });

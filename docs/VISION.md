@@ -175,6 +175,16 @@ $ circuitsvibe catalog                                 # component datasheet for
   `Comparator`, in op/dc/ac/tran; `Part('LM358')` and six more real parts with parameters
   derived from cited datasheet data; lint F120–F124 and datasheet checks R420–R425 at the
   operating point.
+- ✅ Microcontrollers and VHDL in benches: Arduino-style TypeScript firmware
+  (`new ArduinoUno({ firmware: './blink.fw.ts' })`, ATmega328P / ATtiny85 / ESP32 / RP2040
+  profiles) co-simulated in lockstep with the transient — firmware wake times are
+  breakpoints, interrupt pins cut steps at their analog crossing, pins are datasheet-derived
+  output stages / pull-ups / thresholds / ADC; serial assertions, firmware `file:line` in every
+  M6xx diagnostic, pin-current ratings R410–R413, brown-out. VHDL blocks (a synthesizable
+  subset) as per-bit pins on the same bridges. Firmware and VHDL travel inside the circuit
+  document, so share links reproduce MCU benches; the firmware path is browser-safe
+  (sucrase + eval from source text) for the web viewer. The transient is a step generator
+  that awaits firmware only where it is due (`runLadderAsync`).
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap

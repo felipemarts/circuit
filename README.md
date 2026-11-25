@@ -210,11 +210,13 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | Semiconductors | ✅ Diode (Rs, junction/diffusion charge, Zener breakdown), LED, BJT NPN/PNP (Gummel-Poon subset), MOSFET N/P (Level 1, body diode), SPICE `.model` cards · ❌ JFET, MOSFET levels > 1, temperature |
 | Op-amps, comparators | ✅ `IdealOpAmp`, `OpAmp` macro model (Aol, GBW, 2nd pole, slew, swing, current limit, Vos/Ib), open-collector `Comparator`; `Part('LM358')`, LM741, TL072, MCP6002, NE5532, LM393, LM311 from datasheet data — [docs/OPAMPS.md](docs/OPAMPS.md) |
 | Digital logic, mixed-signal | ✅ event-driven logic co-simulated with the transient: real ICs `Part('74HC00' / '74HC04' / '74HC14' / '74HC74' / '74HC595' / '74HCT04' / 'CD4017' / 'CD4011' / 'NE555')` with datasheet pins, levels, drive and tpd per VCC; generic logic primitives; `tb.expect.logic(...)`; logic capture + `--vcd` |
-| Microcontrollers | ❌ |
+| Microcontrollers | ✅ `new ArduinoUno({ firmware: './blink.fw.ts' })` / `new Mcu({ profile: 'atmega328p' \| 'attiny85' \| 'esp32' \| 'rp2040', firmware })`: Arduino-style TypeScript firmware (`import … from 'circuitsvibe/arduino'`, `await delay()`) co-simulated in lockstep with the transient — pins as datasheet-derived push-pull stages, pull-ups, VIL/VIH, ADC, PWM edges, interrupts at the analog crossing; `tb.expect.serial(...)`, `stages.tran.serial`, firmware `file:line` in M6xx diagnostics, pin/port/supply current ratings R410–R413, brown-out M622 · ❌ instruction timing, UART timing, I2C/SPI, sleep |
+| VHDL | ✅ `new VhdlBlock({ source: importedVhd, generics })`: a synthesizable VHDL subset on the event engine, ports as per-bit pins bridged to analog nets or wired to logic primitives, V7xx diagnostics with `.vhd` locations |
 | Noise, distortion, pole-zero analysis | ❌ |
-| Real-part catalog with datasheet ratings | ✅ one `Part()` for every simulated family (data for every family in docs/PARTS.md): semiconductors (diodes, LEDs, Zeners, BJTs, MOSFETs) checked after op/dc/tran, mixed-signal transients included (R401–R404); op-amps/comparators checked at the op point (R420–R425); logic ICs / NE555 (row above) · MCUs are catalog data only |
+| Real-part catalog with datasheet ratings | ✅ one `Part()` for every simulated family (data in docs/PARTS.md): semiconductors (diodes, LEDs, Zeners, BJTs, MOSFETs) checked after op/dc/tran, mixed-signal transients included (R401–R404); op-amps/comparators checked at the op point (R420–R425); logic ICs / NE555 (row above); `Part('ArduinoUno', { firmware })` with per-pin / port / total current checks (R410–R413) |
 | SPICE netlist import/export | ❌ |
 | Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer opens links and re-simulates in the browser |
+| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` (firmware and VHDL files travel in `sources[]`) · web viewer support in progress |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
 | Linear solver | dense LU (sub-second at ~200 nodes, see `npm run perf`); no sparse LU yet |
 
