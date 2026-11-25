@@ -33,7 +33,7 @@ describe('circuitsvibe CLI (end-to-end)', () => {
     expect(code).toBe(0);
     const record = JSON.parse(stdout);
     expect(record.schema).toBe('circuitsvibe-run/0.1');
-    expect(record.engine).toBe('circuitsvibe@0.1.0');
+    expect(record.engine).toBe('circuitsvibe@0.2.0');
     expect(record.verdict).toBe('pass');
     expect(record.netlist.components.map((c: { id: string }) => c.id)).toEqual(['D1', 'R1', 'V1']);
   }, 60000);

@@ -295,7 +295,7 @@ does not exist; never emit an unsimulated number without a `suggested` label.
   "runId": "cb4f1e998fc8-001",        // present when recorded in the ledger
   "schema": "circuitsvibe-run/0.1",
   "bench": "led-overcurrent",
-  "engine": "circuitsvibe@0.1.0",
+  "engine": "circuitsvibe@0.2.0",
   "netlist": {
     "hash": "cb4f1e998fc8…",          // FNV-1a 64 of the canonical netlist (identity)
     "components": [
@@ -438,7 +438,7 @@ Format and encoding: [CIRCUIT-FORMAT.md](CIRCUIT-FORMAT.md).
 ```jsonc
 {
   "schema": "circuitsvibe-sweep/0.1",
-  "bench": "divider-dc-sweep", "engine": "circuitsvibe@0.1.0", "netlist": "9daed3db…",
+  "bench": "divider-dc-sweep", "engine": "circuitsvibe@0.2.0", "netlist": "9daed3db…",
   "sweep": { "source": "V1", "from": 0, "to": 10, "points": 6 },
   "x": [0, 2, 4, 6, 8, 10],
   "probes": { "out": [0, 1, 2, 3, 4, 5] },

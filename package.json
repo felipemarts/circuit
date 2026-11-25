@@ -1,6 +1,6 @@
 {
   "name": "circuitsvibe",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Circuits as code, verified by simulation — an agent-first circuit simulator with a CLI that lints, solves and asserts TypeScript benches and returns structured, simulation-verified diagnostics.",
   "keywords": [
     "circuit",
@@ -55,7 +55,8 @@
     "AGENTS.md",
     "skills",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "dev": "vite",

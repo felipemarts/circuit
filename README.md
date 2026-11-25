@@ -35,7 +35,7 @@ export default bench('led-driver', (tb) => {
 
 ```
 $ npx circuitsvibe verify led-driver.bench.ts
-bench led-driver  netlist cb4f1e998fc8  (circuitsvibe@0.1.0)
+bench led-driver  netlist cb4f1e998fc8  (circuitsvibe@0.2.0)
 
   ✓ lint  pass
   ✗ op    fail

@@ -2,7 +2,7 @@
 export const PACKAGE_NAME = 'circuitsvibe';
 
 /** Kept in sync with package.json (asserted by tests/platform/package.test.ts). */
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 /** Engine identity pinned into every RunRecord, for replay comparisons. */
 export const ENGINE = `${PACKAGE_NAME}@${VERSION}`;
