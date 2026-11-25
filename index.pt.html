@@ -35,6 +35,7 @@
     <div class="nav-links" id="navlinks">
       <a href="app.html">Visualizador</a>
       <a href="docs.pt.html">Docs</a>
+      <a href="#agent">Prompt do agente</a>
       <a href="#examples">Exemplos</a>
       <a href="#live">Ao vivo</a>
       <a href="#roadmap">Roadmap</a>
@@ -128,6 +129,42 @@
     </div>
   </div>
 </section>
+
+<!-- ═══════════════════════════ AGENT PROMPT ═══════════════════════════ -->
+<section class="section" id="agent">
+  <div class="glow glow-a" style="width:520px;height:520px;left:-220px;top:60px"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <div class="eyebrow">Para o seu agente</div>
+    <h2 class="h2">Cole um prompt. Receba um circuito verificado e um link.</h2>
+    <p class="lead">Qualquer agente que rode comandos no terminal (Claude Code, Codex, Cursor e afins) consegue usar o CircuitsVibe. Este prompt ensina o ciclo: ler o playbook, escrever a bancada, iterar no <code>verify</code> até sair com <code>0</code> e entregar um link que abre o circuito aqui.</p>
+
+    <div class="agent-grid">
+      <div class="code has-head prompt reveal" data-copy>
+        <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span>prompt para o seu agente</span><span class="lang">texto</span></div>
+        <pre><code>Você pode projetar e simular circuitos eletrônicos com o CircuitsVibe, um simulador de circuitos feito para agentes de IA. Ele roda localmente com Node ≥ 20 via npx; não há nada para instalar.
+
+1. Antes de tudo, rode `npx circuitsvibe agents` e leia o playbook inteiro que ele imprime: API da bancada, componentes, asserções, códigos de diagnóstico e armadilhas. Siga-o à risca. Se você não puder rodar comandos, leia https://circuitsvibe.com/AGENTS.md.
+2. Para cada circuito que eu pedir, escreva uma bancada `&lt;nome&gt;.bench.ts` (comece com `npx circuitsvibe init &lt;nome&gt;`): o circuito, seus parâmetros livres (`tb.param`) e os meus requisitos como asserções (`tb.expect.*`). Quando eu citar uma peça real, use `Part('&lt;id&gt;')` e confira `npx circuitsvibe catalog &lt;id&gt;` para os pinos e os limites.
+3. Rode `npx circuitsvibe verify &lt;nome&gt;.bench.ts --json` e decida só pelo código de saída:
+   - 0: pronto, todas as etapas passaram.
+   - 1: o circuito é válido, mas um requisito ou um limite de peça falhou. Se a asserção que falhou tiver um hint com kind "verified-param-range", rode de novo com `--set &lt;id&gt;=&lt;hint.suggestedValue&gt;`; senão, mude valores ou a topologia.
+   - 2: o circuito é inválido ou não tem solução. Corrija a estrutura em `diagnostics[].at` antes de mexer em valores.
+   - 3: a bancada lançou um erro ou o comando estava errado. Corrija o código ou a chamada.
+   Rode `npx circuitsvibe explain &lt;código&gt;` para qualquer diagnóstico que você não entender e confira `npx circuitsvibe log list --json` antes de cada nova tentativa, para nunca repetir uma configuração que já falhou.
+4. Nunca invente valores de componentes nem medições. Deixe o `tb.param` encontrar a faixa que passa e só cite números que vêm do RunRecord.
+5. Quando o verify sair com 0, grave os valores aprovados na bancada, rode `npx circuitsvibe share &lt;nome&gt;.bench.ts` e me entregue o link que ele imprime, com um resumo curto do que foi verificado e dos valores medidos.
+
+Se o npx não tiver acesso à rede, baixe https://circuitsvibe.com/circuitsvibe-standalone.mjs e rode `node circuitsvibe-standalone.mjs &lt;comando&gt;`.</code></pre>
+      </div>
+      <div class="qs-notes reveal">
+        <div class="qs-note"><span class="n">1</span><div><strong>Cole uma vez,</strong> ou salve nas instruções do agente (<code>CLAUDE.md</code>, <code>AGENTS.md</code>, instruções personalizadas). Depois é só descrever o circuito: <em>“um driver de LED de 10 mA a partir de 5 V”</em>, <em>“um pisca-pisca de 1 kHz com NE555”</em>, <em>“um Uno que controla o brilho de um LED com um potenciômetro”</em>.</div></div>
+        <div class="qs-note"><span class="n">2</span><div><strong>Nada sai da sua máquina.</strong> A simulação roda localmente, e o link leva o circuito inteiro na URL: sem upload, sem conta.</div></div>
+        <div class="qs-note"><span class="n">3</span><div><strong>Chat sem terminal?</strong> O assistente ainda pode ler <a href="https://circuitsvibe.com/llms.txt">circuitsvibe.com/llms.txt</a> e escrever a bancada; você mesmo roda <code>npx circuitsvibe verify</code> e <code>share</code>.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 
 <!-- ═══════════════════════════ QUICK START ═══════════════════════════ -->
 <section class="section" id="quickstart">

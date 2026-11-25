@@ -35,6 +35,7 @@
     <div class="nav-links" id="navlinks">
       <a href="app.html">Viewer</a>
       <a href="docs.html">Docs</a>
+      <a href="#agent">Agent prompt</a>
       <a href="#examples">Examples</a>
       <a href="#live">Live</a>
       <a href="#roadmap">Roadmap</a>
@@ -128,6 +129,42 @@
     </div>
   </div>
 </section>
+
+<!-- ═══════════════════════════ AGENT PROMPT ═══════════════════════════ -->
+<section class="section" id="agent">
+  <div class="glow glow-a" style="width:520px;height:520px;left:-220px;top:60px"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <div class="eyebrow">For your agent</div>
+    <h2 class="h2">Paste one prompt. Get back a verified circuit and a link.</h2>
+    <p class="lead">Any agent that can run a terminal command (Claude Code, Codex, Cursor and the like) can use CircuitsVibe. This prompt teaches it the loop: read the playbook, write the bench, iterate on <code>verify</code> until exit <code>0</code>, then hand you a link that opens the circuit here.</p>
+
+    <div class="agent-grid">
+      <div class="code has-head prompt reveal" data-copy>
+        <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span>prompt for your agent</span><span class="lang">text</span></div>
+        <pre><code>You can design and simulate electronic circuits with CircuitsVibe, a circuit simulator built for AI agents. It runs locally with Node ≥ 20 through npx; there is nothing to install.
+
+1. Before anything else, run `npx circuitsvibe agents` and read the whole playbook it prints: bench API, components, assertions, diagnostic codes and pitfalls. Follow it exactly. If you cannot run commands, read https://circuitsvibe.com/AGENTS.md instead.
+2. For each circuit I ask for, write a bench `&lt;name&gt;.bench.ts` (start with `npx circuitsvibe init &lt;name&gt;`): the circuit, its free parameters (`tb.param`) and my requirements as assertions (`tb.expect.*`). When I name a real part, use `Part('&lt;id&gt;')` and check `npx circuitsvibe catalog &lt;id&gt;` for its pins and ratings.
+3. Run `npx circuitsvibe verify &lt;name&gt;.bench.ts --json` and decide only from the exit code:
+   - 0: done, every stage passed.
+   - 1: the circuit is valid but a requirement or a part rating failed. If the failed assertion has a hint with kind "verified-param-range", re-run with `--set &lt;id&gt;=&lt;hint.suggestedValue&gt;`; otherwise change values or topology.
+   - 2: the circuit is invalid or unsolvable. Fix the structure at `diagnostics[].at` before touching values.
+   - 3: the bench threw or the command was wrong. Fix the code or the invocation.
+   Run `npx circuitsvibe explain &lt;code&gt;` for any diagnostic you don't understand, and check `npx circuitsvibe log list --json` before each retry so you never repeat a configuration that already failed.
+4. Never invent component values or measurements. Let `tb.param` find the passing range, and only quote numbers that come from the RunRecord.
+5. When verify exits 0, write the passing values back into the bench, run `npx circuitsvibe share &lt;name&gt;.bench.ts` and give me the link it prints, with a short summary of what was verified and the measured values.
+
+If npx has no network access, download https://circuitsvibe.com/circuitsvibe-standalone.mjs and run `node circuitsvibe-standalone.mjs &lt;command&gt;` instead.</code></pre>
+      </div>
+      <div class="qs-notes reveal">
+        <div class="qs-note"><span class="n">1</span><div><strong>Paste it once,</strong> or save it in your agent's instructions (<code>CLAUDE.md</code>, <code>AGENTS.md</code>, custom instructions). Then just describe the circuit: <em>“an LED driver for 10 mA from 5 V”</em>, <em>“a 1 kHz NE555 blinker”</em>, <em>“an Uno that dims an LED with a potentiometer”</em>.</div></div>
+        <div class="qs-note"><span class="n">2</span><div><strong>Nothing leaves your machine.</strong> The simulation runs locally, and the share link carries the whole circuit in the URL: no upload, no account.</div></div>
+        <div class="qs-note"><span class="n">3</span><div><strong>Chat without a terminal?</strong> The assistant can still read <a href="https://circuitsvibe.com/llms.txt">circuitsvibe.com/llms.txt</a> and write the bench; you run <code>npx circuitsvibe verify</code> and <code>share</code> yourself.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 
 <!-- ═══════════════════════════ QUICK START ═══════════════════════════ -->
 <section class="section" id="quickstart">

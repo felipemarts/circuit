@@ -85,6 +85,13 @@
 .exit span { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
 .exit.e0 b { color: var(--green); } .exit.e1 b { color: var(--amber); } .exit.e2 b { color: var(--red); } .exit.e3 b { color: var(--blue); }
 @media (max-width: 960px) { .qs-grid { grid-template-columns: 1fr; } }
+
+/* Agent prompt: prose, so it wraps instead of scrolling sideways */
+.agent-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.8fr); gap: 28px; align-items: start; margin-top: 28px; }
+.agent-grid .qs-notes { margin-top: 0; }
+.code.prompt pre { font-size: 12.5px; line-height: 1.65; }
+.code.prompt pre code { white-space: pre-wrap; overflow-wrap: anywhere; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+@media (max-width: 960px) { .agent-grid { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .exit-strip { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 
 /* ─── Why ───────────────────────────────────────────────────────────────── */
