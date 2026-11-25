@@ -3,10 +3,11 @@
  * to what each viewer panel shows. No DOM — fully unit-testable.
  */
 import type { CircuitDoc } from '../doc/types';
-import type { AssertionResult, CheckSpec, Diagnostic, LogicCapture, LogicLevel, RatingResult, RunRecord, StageName, VerifiedParamHint } from '../schema/types';
+import type { AssertionResult, CheckSpec, Diagnostic, LogicCapture, LogicLevel, RatingResult, RunRecord, Severity, StageName, VerifiedParamHint } from '../schema/types';
 import { STAGE_ORDER } from '../schema/types';
 import { checkLabel, eng, measuredUnit, probeUnit, secs } from './format';
 import type { SimResult } from './simulate';
+import { languageOf, type SourceLang } from './highlight';
 
 // ─── verdict ─────────────────────────────────────────────────────────────────
 
@@ -642,4 +643,101 @@ export function niceScale(maxAbs: number): number {
   const m = maxAbs / base;
   const nice = m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10;
   return nice * base;
+}
+
+// ─── serial console (microcontrollers) ───────────────────────────────────────
+
+export interface SerialLineModel {
+  /** Completion time of the line (s). */
+  t: number;
+  text: string;
+  /** Text after the last line terminator (still being printed at tstop). */
+  partial?: boolean;
+}
+
+export interface SerialModel {
+  mcu: string;
+  config: string;
+  lines: SerialLineModel[];
+  truncated: boolean;
+  assertionIds: string[];
+  verdict: 'pass' | 'fail' | 'none';
+}
+
+export const isSerialOp = (op: string): boolean => op.startsWith('serial');
+
+/** One console per microcontroller that printed (`stages.tran.serial[]`). */
+export function serialModels(record: RunRecord, sim?: SimResult): SerialModel[] {
+  const caps = sim?.tran?.serial ?? record.stages.tran?.serial ?? [];
+  const results = (record.stages.tran?.assertions ?? []).filter(a => isSerialOp(a.check.op));
+  return caps.map(c => {
+    const mine = results.filter(a => a.probe === c.mcu);
+    const lines: SerialLineModel[] = c.lines.map(([t, text]) => ({ t, text }));
+    if (c.partial) lines.push({ t: c.partial[0], text: c.partial[1], partial: true });
+    return {
+      mcu: c.mcu,
+      config: c.config,
+      lines,
+      truncated: !!c.truncated,
+      assertionIds: mine.map(a => a.id),
+      verdict: mine.length === 0 ? 'none' : mine.every(a => a.verdict === 'pass') ? 'pass' : 'fail',
+    };
+  });
+}
+
+// ─── embedded sources (firmware, VHDL) ───────────────────────────────────────
+
+export interface SourceMark {
+  line: number;
+  col?: number;
+  code: string;
+  severity: Severity;
+  message: string;
+}
+
+export interface SourceModel {
+  path: string;
+  /** Basename, for the file tabs. */
+  name: string;
+  lang: SourceLang;
+  text: string;
+  kind: 'firmware' | 'vhdl' | 'other';
+  /** Components that reference this file (U1 → firmware, U2 → VHDL entity). */
+  owners: string[];
+  marks: SourceMark[];
+}
+
+export interface SourceLocation {
+  path: string;
+  line: number;
+  col?: number;
+}
+
+/** `bench/mcu/blink.fw.ts:12` / `x.vhd:16:5` → a location inside an embedded source (undefined otherwise). */
+export function sourceLocation(at: string | undefined, doc: CircuitDoc): SourceLocation | undefined {
+  if (!at) return undefined;
+  const m = at.match(/^(.*?):(\d+)(?::(\d+))?$/);
+  if (!m) return undefined;
+  const path = m[1];
+  if (!doc.sources?.some(s => s.path === path)) return undefined;
+  return { path, line: Number(m[2]), col: m[3] !== undefined ? Number(m[3]) : undefined };
+}
+
+/** The document's embedded files with every diagnostic that points into them. */
+export function sourceModels(doc: CircuitDoc, record: RunRecord): SourceModel[] {
+  const out: SourceModel[] = [];
+  for (const s of doc.sources ?? []) {
+    const lang = languageOf(s.path);
+    const owners = doc.components.filter(c => c.params.firmware === s.path || c.params.source === s.path).map(c => c.id);
+    const isVhdl = lang === 'vhdl';
+    const marks: SourceMark[] = [];
+    for (const d of record.diagnostics) {
+      const loc = sourceLocation(d.at, doc);
+      if (loc && loc.path === s.path) marks.push({ line: loc.line, col: loc.col, code: d.code, severity: d.severity, message: d.message });
+    }
+    marks.sort((a, b) => a.line - b.line || a.code.localeCompare(b.code));
+    out.push({ path: s.path, name: s.path.split('/').pop() ?? s.path, lang, text: s.text, kind: isVhdl ? 'vhdl' : owners.length ? 'firmware' : 'other', owners, marks });
+  }
+  // Files with diagnostics first, then entry files (owned), then imports; stable by path.
+  return out.sort((a, b) => Number(b.marks.length > 0) - Number(a.marks.length > 0) || Number(b.owners.length > 0) - Number(a.owners.length > 0) || a.path.localeCompare(b.path));
 }

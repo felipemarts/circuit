@@ -106,6 +106,22 @@ const PT: Record<string, string> = {
   'logic level': 'nível lógico',
   'playing': 'tocando',
   'paused': 'pausado',
+  'Serial': 'Serial',
+  'Serial console': 'Console serial',
+  'every line with the simulated time it was completed; lines after the cursor are dimmed': 'cada linha com o tempo simulado em que foi concluída; linhas após o cursor ficam esmaecidas',
+  'serial assertions pass': 'asserções seriais passam',
+  'serial assertion failed': 'asserção serial falhou',
+  'line': 'linha',
+  'lines': 'linhas',
+  'truncated': 'truncado',
+  'no output': 'sem saída',
+  '(no line end yet)': '(linha ainda sem fim)',
+  'Sources': 'Fontes',
+  'the firmware and VHDL files carried by this link; diagnostics with a location jump here': 'os arquivos de firmware e VHDL que este link carrega; diagnósticos com localização saltam para aqui',
+  'firmware': 'firmware',
+  'import': 'importação',
+  'used by': 'usado por',
+  'open in Sources': 'abrir em Fontes',
 };
 
 export const isPT = typeof document !== 'undefined' && document.documentElement.lang.toLowerCase().startsWith('pt');
