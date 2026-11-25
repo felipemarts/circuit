@@ -1,9 +1,18 @@
 /**
- * Landing-page hero: a live LED-driver loop (5 V · 330 Ω · LED) drawn on a
- * canvas. Current is shown EveryCircuit-style as glowing dots whose speed is
- * proportional to the current; wires are colored by node voltage; the LED
- * glow follows the current. The numbers come from a small illustrative model
- * (Ohm's law with a logarithmic diode drop) — the real engine runs in the app.
+ * Landing-page hero: the LED-driver loop of bench/led-driver.bench.ts
+ * (5 V · 330 Ω · LED) drawn on a canvas. Current is shown EveryCircuit-style
+ * as glowing dots whose speed is proportional to the current; wires are
+ * colored by node voltage; the LED glow follows the current.
+ *
+ * The numbers are NOT modelled here: they are the CLI's exact DC operating
+ * point, copied from
+ *
+ *   node bin/dev.mjs verify bench/led-driver.bench.ts --json
+ *     stages.op.assertions[0].measured  (D1.i) = 0.008680396325699481 A
+ *     stages.op.assertions[1].measured  (led)  = 2.1354692118144647 V
+ *
+ * V1 is the ideal 5 V source, so R1.v = 5 − 2.13547 = 2.86453 V. The readouts
+ * are therefore constant (an ideal source does not drift); only the dots move.
  */
 import { voltageColor, setVoltageZeroColor } from '../ui/voltageColor';
 
@@ -17,6 +26,17 @@ interface Readouts {
 const W = 520;
 const H = 400;
 
+/** Operating point of bench/led-driver.bench.ts (see the header comment). */
+export const LED_DRIVER_OP = {
+  v1: 5,                       // V1 — ideal DC source
+  i: 0.008680396325699481,     // D1.i — stages.op.assertions[0].measured
+  vf: 2.1354692118144647,      // net 'led' = D1.v — stages.op.assertions[1].measured
+  vr: 5 - 2.1354692118144647,  // R1.v = V1 − V(led) = 2.86453 V
+} as const;
+
+export function fmtA(i: number): string { return `${(i * 1000).toFixed(2)} mA`; }
+export function fmtV(v: number): string { return `${v.toFixed(2)} V`; }
+
 export function initHero(canvas: HTMLCanvasElement, readouts: Readouts): () => void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return () => {};
@@ -28,7 +48,6 @@ export function initHero(canvas: HTMLCanvasElement, readouts: Readouts): () => v
   let visible = true;
   let lastT = 0;
   let phase = 0;        // arc-length offset of the current dots (px)
-  let simT = 0;         // model time (s)
 
   const fontMono = "500 12px 'JetBrains Mono', ui-monospace, monospace";
   const fontMonoSm = "500 11px 'JetBrains Mono', ui-monospace, monospace";
@@ -80,42 +99,23 @@ export function initHero(canvas: HTMLCanvasElement, readouts: Readouts): () => v
     return { x: L, y: B, seg: 3 };
   }
 
-  // ── Illustrative model ───────────────────────────────────────────────────
-  // V1 drifts a few tens of millivolts so the readouts tick; the LED drop is
-  // Vf = 1.95 V + n·Vt·ln(I/9 mA) and I = (V1 − Vf)/R, solved by fixed point.
-  const Rr = 330;
-  function model(t: number): { v1: number; i: number; vf: number } {
-    const v1 = 5 + 0.035 * Math.sin(t * 0.9) + 0.012 * Math.sin(t * 2.7 + 1.3);
-    let i = 0.009;
-    let vf = 1.95;
-    for (let k = 0; k < 4; k++) {
-      vf = 1.95 + 2 * 0.02585 * Math.log(Math.max(1e-6, i) / 0.009);
-      i = (v1 - vf) / Rr;
-    }
-    return { v1, i, vf };
-  }
-
-  function fmtA(i: number): string { return `${(i * 1000).toFixed(2)} mA`; }
-  function fmtV(v: number): string { return `${v.toFixed(2)} V`; }
+  // ── Operating point (constant; from the CLI run quoted in the header) ────
+  const { v1, i, vf } = LED_DRIVER_OP;
+  const vMid = vf;          // node 'led' between R1 and the LED anode
+  const vTop = v1;          // battery + / resistor input node
+  const vmax = 5;
+  const bright = Math.max(0, Math.min(1.4, i / 0.009));   // LED halo intensity ∝ current
+  const speed = i * 8900;                                  // dots: speed ∝ current (8.68 mA ≈ 77 px/s)
 
   // ── Drawing ──────────────────────────────────────────────────────────────
   function draw(now: number): void {
     const dt = lastT ? Math.min(0.05, (now - lastT) / 1000) : 0;
     lastT = now;
-    simT += dt;
-    const { v1, i, vf } = model(simT);
-    const vMid = vf;          // node between R1 and LED anode (LED forward drop above gnd)
-    const vTop = v1;          // battery + / resistor input node
-    const vmax = 5;
-
-    // dots: speed ∝ current (9 mA ≈ 80 px/s)
-    const speed = reduced ? 0 : i * 8900;
-    phase += speed * dt;
+    if (!reduced) phase += speed * dt;
 
     ctx!.clearRect(0, 0, W, H);
 
     // LED halo (behind everything), intensity ∝ current
-    const bright = Math.max(0, Math.min(1.4, i / 0.009));
     const haloR = 44 + 10 * bright;
     const g = ctx!.createRadialGradient(R, LED.y, 2, R, LED.y, haloR);
     g.addColorStop(0, `rgba(251,191,36,${(0.42 * bright).toFixed(3)})`);
@@ -128,7 +128,7 @@ export function initHero(canvas: HTMLCanvasElement, readouts: Readouts): () => v
     ctx!.lineCap = 'round'; ctx!.lineJoin = 'round';
     const wireRuns: Array<{ pts: number[][]; v: number }> = [
       { pts: [[L, BATT.top], [L, T], [RES.x1, T]], v: vTop },                      // + node
-      { pts: [[RES.x2, T], [R, T], [R, LED.y - LED.half]], v: vMid },              // mid node
+      { pts: [[RES.x2, T], [R, T], [R, LED.y - LED.half]], v: vMid },              // 'led' node
       { pts: [[R, LED.y + LED.half], [R, B], [L, B], [L, BATT.bot]], v: 0 },       // ground node
     ];
     for (const run of wireRuns) {
@@ -213,12 +213,6 @@ export function initHero(canvas: HTMLCanvasElement, readouts: Readouts): () => v
       dot(p.x, p.y, 6.5, halo);
       dot(p.x, p.y, 2.9, dotCol);
     }
-
-    // DOM readouts
-    if (readouts.v1) readouts.v1.textContent = fmtV(v1);
-    if (readouts.i) readouts.i.textContent = fmtA(i);
-    if (readouts.vf) readouts.vf.textContent = fmtV(vf);
-    if (readouts.vr) readouts.vr.textContent = fmtV(v1 - vf);
   }
 
   function path(pts: number[][]): void {
@@ -265,6 +259,12 @@ export function initHero(canvas: HTMLCanvasElement, readouts: Readouts): () => v
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
   }
+
+  // DOM readouts: written once — the operating point is constant.
+  if (readouts.v1) readouts.v1.textContent = fmtV(v1);
+  if (readouts.i) readouts.i.textContent = fmtA(i);
+  if (readouts.vf) readouts.vf.textContent = fmtV(vf);
+  if (readouts.vr) readouts.vr.textContent = fmtV(LED_DRIVER_OP.vr);
 
   readTheme();
   fit();
