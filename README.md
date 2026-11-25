@@ -193,9 +193,18 @@ const MyResistor = defineComponent({
 
 ## Visual simulator
 
-[circuitsvibe.com/app.html](https://circuitsvibe.com/app.html) is a browser editor on the same
-engine: a canvas with A* wire routing, probes, an oscilloscope, animated current flow, a
-multi-file code editor for custom components, and projects saved in `localStorage`.
+[circuitsvibe.com/app.html](https://circuitsvibe.com/app.html) runs the same engine in the
+browser. Opened with a share link (`app.html#c=1.…`, from `npx circuitsvibe share x.bench.ts`)
+it is the **viewer**: the schematic is laid out automatically (op-amp triangles, Arduino Uno
+and MCU boards, VHDL blocks with their ports grouped as buses), the verification ladder re-runs
+in a worker (same verdict, exit code and netlist hash as the CLI — MCU firmware is transpiled
+from the embedded `sources[]`), and the result is shown as assertion chips on the drawing plus
+panels: assertions, diagnostics (a `file:line` into a firmware or `.vhd` file jumps to the
+source), datasheet ratings (R40x, R41x, R42x), scope, Bode, DC sweep, logic analyzer, the
+microcontrollers' serial console, the embedded sources with syntax highlighting, and the
+netlist; current flow is animated along the transient. Without a link it is the editor: a
+canvas with A* wire routing, probes, an oscilloscope, a multi-file code editor for custom
+components, and projects saved in `localStorage`.
 
 ## Status and limitations (v0.1)
 
@@ -215,8 +224,7 @@ multi-file code editor for custom components, and projects saved in `localStorag
 | Noise, distortion, pole-zero analysis | ❌ |
 | Real-part catalog with datasheet ratings | ✅ one `Part()` for every simulated family (data in docs/PARTS.md): semiconductors (diodes, LEDs, Zeners, BJTs, MOSFETs) checked after op/dc/tran, mixed-signal transients included (R401–R404); op-amps/comparators checked at the op point (R420–R425); logic ICs / NE555 (row above); `Part('ArduinoUno', { firmware })` with per-pin / port / total current checks (R410–R413) |
 | SPICE netlist import/export | ❌ |
-| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` · web viewer opens links and re-simulates in the browser |
-| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` (firmware and VHDL files travel in `sources[]`) · web viewer support in progress |
+| Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` (firmware and VHDL files travel in `sources[]`) · web viewer opens links and re-simulates in the browser |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |
 | Linear solver | dense LU (sub-second at ~200 nodes, see `npm run perf`); no sparse LU yet |
 
