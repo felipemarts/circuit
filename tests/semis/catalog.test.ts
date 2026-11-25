@@ -16,7 +16,8 @@ describe('circuitsvibe catalog — semiconductors and real parts', () => {
     expect(list.find(p => p.id === '2N3904')).toMatchObject({ construct: "Part('2N3904')", device: 'NPN', modelEstimated: false });
     expect(list.find(p => p.id === '2N7000')).toMatchObject({ device: 'NMOS', modelEstimated: true });
     expect(list.find(p => p.id === 'LM358')).toMatchObject({ construct: "Part('LM358')", device: 'OpAmp' });
-    expect(list.find(p => p.id === 'ATmega328P')).toMatchObject({ construct: null });
+    expect(list.find(p => p.id === 'ATmega328P')).toMatchObject({ construct: "new Mcu({ profile: 'atmega328p', firmware })", device: 'Mcu' });
+    expect(list.find(p => p.id === 'ESP32-WROOM-32')).toMatchObject({ construct: "new Mcu({ profile: 'esp32', firmware })" });
     expect(renderPartList(list)).toMatch(/2N7000\s+mosfet\s+Part\('2N7000'\)\s+NMOS, model ESTIMATED/);
   });
 

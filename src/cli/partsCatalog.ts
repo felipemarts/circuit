@@ -6,7 +6,7 @@
  */
 import { PARTS, findPart } from '../parts';
 import type { Citation, PartEntry, Spec } from '../parts/types';
-import { partModelInfo, partUnsupportedReason } from '../components/Part';
+import { mcuProfileId, partModelInfo, partUnsupportedReason } from '../components/Part';
 import { BJT_PARAMS, DIODE_PARAMS, MOSFET_PARAMS, type ParamDef } from '../components/semi/params';
 import { formatEng } from '../elab/units';
 import { icPart } from '../mixed/part';
@@ -52,7 +52,7 @@ export interface PartSummary {
   description: string;
   /** How to instantiate it, or null when it cannot be simulated. */
   construct: string | null;
-  /** Simulated device type (Diode/LED/NPN/PNP/NMOS/PMOS, OpAmp/Comparator), 'IC' for a logic IC / NE555 (mixed-signal), null when data only. */
+  /** Simulated device type (Diode/LED/NPN/PNP/NMOS/PMOS, OpAmp/Comparator), 'IC' for a logic IC / NE555 (mixed-signal), 'Mcu' for a microcontroller, null when data only. */
   device: string | null;
   modelEstimated: boolean | null;
   reason?: string;
@@ -65,6 +65,8 @@ export function partSummaries(): PartSummary[] {
     // Op-amps / comparators: behavioural macro model fitted to the datasheet (src/opamps).
     const amp = opampPart(p.id) as { kind?: string } | undefined;
     if (amp) return { id: p.id, category: p.category, description: p.description, construct: `Part('${p.id}')`, device: amp.kind ?? 'OpAmp', modelEstimated: true };
+    // Microcontrollers run TypeScript firmware in the transient (src/mcu); constructed with new Mcu, not Part().
+    if (p.category === 'mcu') return { id: p.id, category: p.category, description: p.description, construct: `new Mcu({ profile: '${mcuProfileId(p.id)}', firmware })`, device: 'Mcu', modelEstimated: null };
     const reason = partUnsupportedReason(p);
     if (reason) return { id: p.id, category: p.category, description: p.description, construct: null, device: null, modelEstimated: null, reason };
     const info = partModelInfo(p);

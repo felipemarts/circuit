@@ -6,8 +6,8 @@ SPICE-style model cards. It contains no simulation code: `Part(id)` (src/compone
 or MOSFET entry into a configured device, and the ladder checks its `ratings` after
 op/dc/tran (R401–R404, docs/DIAGNOSTICS.md). Parameters a card carries but the simulator
 does not model (BJT Irb/Rbm/Xtf/Vtf/Itf/Xcjc, MOSFET Rg…) are listed by
-`circuitsvibe catalog <id>`. 2N2222A (no card), TIP120 (Darlington subcircuit) and the
-op-amp/comparator/timer/logic/MCU entries are data only. It has no Node dependencies, so it
+`circuitsvibe catalog <id>`. 2N2222A (no card) and TIP120 (Darlington subcircuit) are data
+only; the other families are simulated by their own modules (below). It has no Node dependencies, so it
 is safe to use in the browser.
 
 The logic ICs (74HC00/04/14/74/595, 74HCT04, CD4017, CD4011) and the NE555 are simulated
@@ -279,7 +279,9 @@ Known limits, which each card's note repeats:
     is not in `params`), while the datasheet is Vishay's.
 - **No model card**: 2N2222A (onsemi publishes none, and stock LTspice has only 2N2222).
   Op-amps and comparators have no SPICE card: `Part('LM358')` etc. build a behavioural
-  macro model from these values (docs/OPAMPS.md). Logic parts and timers are data only.
+  macro model from these values (docs/OPAMPS.md). Logic ICs and the NE555 are behavioural
+  models built from the datasheet levels and delays (src/mixed); MCUs are pin models driven by
+  firmware (src/mcu) — none of them carries a SPICE card.
 - **Scanned datasheets**: IRF9540N (PD-94790A), CD4017B and CD4011B have no text layer.
   Their table values were read from rendered pages. Figure reads from them are marked
   estimated; table values are not.

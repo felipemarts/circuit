@@ -38,6 +38,11 @@ export interface PartModelInfo {
   source?: string;
 }
 
+/** The `new Mcu({ profile })` id of an MCU catalog entry ('ESP32-WROOM-32' → 'esp32'). */
+export function mcuProfileId(id: string): string {
+  return id.toLowerCase().replace(/-.*$/, '');
+}
+
 /** Why a catalog entry cannot be simulated with Part() (undefined when it can). */
 export function partUnsupportedReason(entry: PartEntry): string | undefined {
   switch (entry.category) {
@@ -50,6 +55,8 @@ export function partUnsupportedReason(entry: PartEntry): string | undefined {
       return entry.model ? undefined : `${entry.id} has no published SPICE model in the catalog — use new ${entry.polarity}({ ... }) with your own parameters`;
     case 'mosfet':
       return entry.model ? undefined : `${entry.id} has no model card in the catalog`;
+    case 'mcu':
+      return `${entry.id} is a microcontroller: it runs firmware, so build it with new Mcu({ profile: '${mcuProfileId(entry.id)}', firmware: './app.fw.ts' })${entry.id === 'ATmega328P' ? ` or new ArduinoUno({ firmware })` : ''}`;
     default:
       return `${entry.id} (${entry.category}) is catalog data only — no device model is simulated yet`;
   }

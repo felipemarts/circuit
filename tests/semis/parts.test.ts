@@ -35,7 +35,7 @@ describe('Part() — device classes and identity', () => {
 
   it('unknown and non-simulatable parts throw with guidance', () => {
     expect(() => Part('2N9999')).toThrow(/unknown part.*Simulatable catalog parts: .*2N3904/);
-    expect(() => Part('ATmega328P')).toThrow(/catalog data only/);
+    expect(() => Part('ATmega328P')).toThrow(/microcontroller.*new Mcu\(\{ profile: 'atmega328p'/);
     expect(() => Part('2N2222A')).toThrow(/no published SPICE model/);
     expect(() => Part('TIP120')).toThrow(/Darlington/);
   });

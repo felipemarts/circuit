@@ -36,7 +36,7 @@ describe('Part() for op-amps and comparators', () => {
 
   it('unknown ids and data-only categories fail with a clear message', () => {
     expect(() => Part('NOPE123')).toThrow(/no such part/);
-    expect(() => Part('ATmega328P')).toThrow(/catalog data only/); // NE555 is simulated by the IC family now
+    expect(() => Part('ATmega328P')).toThrow(/microcontroller.*new Mcu\(\{ profile: 'atmega328p'/); // NE555 is simulated by the IC family now
     expect((Part('NE555') as { kind?: string }).kind).toBe('IC');
   });
 
