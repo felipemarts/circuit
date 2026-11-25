@@ -3,6 +3,10 @@ name: 📦 Publish to npm
 # Publishes when main carries a package.json version that is not on npm yet:
 # bump "version" (and CHANGELOG.md), merge to main, and this releases it.
 # The same checks as CI run first; nothing is published if any of them fails.
+#
+# Auth is npm trusted publishing (OIDC): no token is stored anywhere. It needs the
+# package's Trusted Publisher on npmjs.com set to felipemarts/circuit, workflow
+# publish.yml, and npm >= 11.5.1 on the runner (installed below).
 on:
   push:
     branches: [ main ]
@@ -19,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # push the v<version> tag
-      id-token: write   # npm provenance
+      id-token: write   # OIDC for npm trusted publishing (and provenance)
     steps:
       - uses: actions/checkout@v4
 
@@ -70,11 +74,11 @@ jobs:
         if: steps.check.outputs.publish == 'true'
         run: npm run smoke:pack
 
-      - name: Publish
+      - name: Publish (trusted publishing, provenance is automatic)
         if: steps.check.outputs.publish == 'true'
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm install -g npm@latest
+          npm publish --access public
 
       - name: Tag v${{ steps.check.outputs.version }}
         if: steps.check.outputs.publish == 'true'
