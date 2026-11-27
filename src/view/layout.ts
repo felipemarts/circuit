@@ -7,13 +7,17 @@
  * 2. Classify components: supplies (drawn once in a power column with a rail
  *    port), shunt chains (two-terminal parts whose far end reaches ground or
  *    a rail: drawn vertically, stacked on their anchor net), series parts
- *    (everything else: the left-to-right signal flow).
+ *    (everything else: the left-to-right signal flow), feedback parts (a
+ *    two-terminal part from an amplifier's output straight to one of its
+ *    inputs: drawn over / under the amplifier instead of looping back).
  * 3. Layer series parts by BFS from the stimulus (sources, clocks), order rows
  *    by barycenter, align each part's input pin with its upstream pin so
  *    wires run straight; chains hang above (to a rail) or below (to ground)
- *    their anchor, directly under top/bottom pins or in the inter-layer zone.
+ *    their anchor, directly under top/bottom pins or in the inter-layer zone,
+ *    side-zone stacks nested by pin row (no wire crosses a nearer stack) and
+ *    started level with each other (a fan of stacks reads as rows).
  * 4. Ground and rail pins get repeated port symbols (grouped into a bus for
- *    an IC's tied inputs); signal nets are routed orthogonally on a lattice
+ *    an IC's tied inputs, one column per overlapping bus); signal nets are routed orthogonally on a lattice
  *    (A*, see router.ts) as spanning trees with junction dots; routes that
  *    fail or that would run very long on a named net become net labels.
  *
@@ -177,6 +181,39 @@ function pinCount(netPins: Map<string, string[]>, net: string): number {
   return netPins.get(net)?.length ?? 0;
 }
 
+/** One ground / rail bus beside a part: its pin rows (sorted) and the way its symbol hangs. */
+interface BusRun {
+  key: string;
+  ys: number[];
+  dirY: 1 | -1;
+}
+
+/**
+ * Column of each bus on one side of a part (0 = nearest the pins). Buses whose
+ * runs (pins + drop to the symbol) overlap must not share a column — they
+ * would draw as one shorted line (an IC's inputs tied to the rail AND to
+ * ground). Nearest first goes the bus whose run cuts the fewest pin rows of
+ * the others; then greedy packing into the first column it does not touch.
+ */
+function busColumns(runs: BusRun[]): Map<string, number> {
+  const span = (r: BusRun): [number, number] => (r.dirY > 0 ? [r.ys[0], r.ys[r.ys.length - 1] + 3 * G] : [r.ys[0] - 3 * G, r.ys[r.ys.length - 1]]);
+  const cost = (inner: BusRun, outer: BusRun): number => {
+    const [lo, hi] = span(inner);
+    return outer.ys.filter(y => y >= lo && y <= hi).length;
+  };
+  const sorted = [...runs].sort((a, b) => cost(a, b) - cost(b, a) || (a.key < b.key ? -1 : 1));
+  const columns: [number, number][][] = [];
+  const out = new Map<string, number>();
+  for (const r of sorted) {
+    const [lo, hi] = span(r);
+    let col = columns.findIndex(spans => spans.every(([a, b]) => hi + G < a || lo - G > b));
+    if (col < 0) col = columns.push([]) - 1;
+    columns[col].push([lo, hi]);
+    out.set(r.key, col);
+  }
+  return out;
+}
+
 // ─── layout ─────────────────────────────────────────────────────────────────
 
 export function layoutCircuit(doc: CircuitDoc): Layout {
@@ -294,7 +331,46 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
   const bleeders = comps.filter(c => !supplies.has(c.id) && !inChain.has(c.id) && syms.get(c.id)!.kind === 'two' && Object.values(c.pins).every(n => isGnd(n) || isRail(n)));
   const bleederIds = new Set(bleeders.map(c => c.id));
 
-  const series = comps.filter(c => !supplies.has(c.id) && !inChain.has(c.id) && !bleederIds.has(c.id));
+  // Feedback parts: a two-terminal part wired straight from an amplifier's
+  // output to one of its own inputs. Laid out as a series part it lands one
+  // column right of the output and its wire loops all the way back; drawn
+  // instead over (input on top) or under (input at the bottom) the amplifier,
+  // spanning input → output, as in a textbook schematic.
+  interface Feedback {
+    amp: string;
+    inNet: string;
+    /** -1 above the amplifier, +1 below. */
+    side: 1 | -1;
+  }
+  const feedbackOf = new Map<string, Feedback>();
+  const feedbackOn = new Map<string, string[]>();
+  for (const c of comps) {
+    const sym = syms.get(c.id)!;
+    if (sym.kind !== 'two' || supplies.has(c.id) || inChain.has(c.id) || bleederIds.has(c.id)) continue;
+    const [na, nb] = sym.pins.map(p => c.pins[p.name]);
+    if (na === undefined || nb === undefined || na === nb || !isSignal(na) || !isSignal(nb)) continue;
+    for (const u of comps) {
+      const us = syms.get(u.id)!;
+      if (us.kind !== 'opamp' || supplies.has(u.id)) continue;
+      const pinOn = (net: string, role: PinGeom['role']) => us.pins.find(p => p.role === role && u.pins[p.name] === net);
+      const outA = pinOn(na, 'out');
+      const outB = pinOn(nb, 'out');
+      const inp = outA ? pinOn(nb, 'in') : outB ? pinOn(na, 'in') : undefined;
+      if (!inp) continue;
+      feedbackOf.set(c.id, { amp: u.id, inNet: u.pins[inp.name], side: inp.y > 0 ? 1 : -1 });
+      feedbackOn.set(u.id, [...(feedbackOn.get(u.id) ?? []), c.id]);
+      break;
+    }
+  }
+  /** Distance from the amplifier's centre to its first feedback part (clears the supply port and labels). */
+  const feedbackBase = (ampId: string, side: 1 | -1): number => {
+    const u = byId.get(ampId)!;
+    const ported = syms.get(ampId)!.pins.some(p => p.side === (side < 0 ? 't' : 'b') && u.pins[p.name] !== undefined && (isGnd(u.pins[p.name]) || isRail(u.pins[p.name])));
+    return ported ? 10 * G : side < 0 ? 7 * G : 6 * G;
+  };
+  const FEEDBACK_STEP = 6 * G;
+
+  const series = comps.filter(c => !supplies.has(c.id) && !inChain.has(c.id) && !bleederIds.has(c.id) && !feedbackOf.has(c.id));
 
   // Virtual anchors: signal nets that have chains but no series pin.
   const seriesIds = new Set(series.map(c => c.id));
@@ -514,7 +590,7 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
     hangs.set(anchor.comp, arr);
   }
   // Slot indices restart per pin; offset them per part so pins on the same side do not collide.
-  for (const arr of hangs.values()) {
+  for (const [compId, arr] of hangs) {
     const bySide = new Map<string, Hang[]>();
     for (const h of arr) {
       const k = h.zone;
@@ -522,8 +598,24 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
       l.push(h);
       bySide.set(k, l);
     }
-    for (const list of bySide.values()) {
+    for (const [zone, list] of bySide) {
       const pins = [...new Set(list.map(h => h.pin.name))].sort();
+      // Side zones: nest the stacks so no pin's wire to its (outer) stack runs
+      // across a nearer stack — pin p inside q costs a crossing when p's
+      // stack hangs over q's row.
+      if (zone !== 'inline' && pins.length > 1) {
+        const info = new Map(pins.map(pn => {
+          const mine = list.filter(h => h.pin.name === pn);
+          const r = rotationOf.get(compId) ?? 0;
+          return [pn, { y: rotatePoint(mine[0].pin.x, mine[0].pin.y, r).y, up: mine.some(h => h.dirY === -1), down: mine.some(h => h.dirY === 1) }];
+        }));
+        const cost = (p: string, q: string): number => {
+          const a = info.get(p)!;
+          const b = info.get(q)!;
+          return Number(a.up && b.y < a.y) + Number(a.down && b.y > a.y);
+        };
+        pins.sort((p, q) => cost(p, q) - cost(q, p) || info.get(p)!.y - info.get(q)!.y || p.localeCompare(q));
+      }
       let base = 0;
       for (const pn of pins) {
         const mine = list.filter(h => h.pin.name === pn);
@@ -532,6 +624,26 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
       }
     }
   }
+
+  /**
+   * Row (relative to the part's centre) where a hanging stack starts: its
+   * anchor pin's row, except that the side-zone stacks of one part hanging the
+   * same way all start level with the farthest of their pins, so a fan of
+   * parallel stacks (an MCU's LED + resistor per pin) lines up in rows instead
+   * of a staircase.
+   */
+  const hangRow = (id: string, h: Hang): number => {
+    const r = rotationOf.get(id) ?? 0;
+    const own = rotatePoint(h.pin.x, h.pin.y, r).y;
+    if (h.zone === 'inline') return own;
+    let row = own;
+    for (const o of hangs.get(id) ?? []) {
+      if (o.zone !== h.zone || o.dirY !== h.dirY) continue;
+      const y = rotatePoint(o.pin.x, o.pin.y, r).y;
+      row = h.dirY > 0 ? Math.max(row, y) : Math.min(row, y);
+    }
+    return row;
+  };
 
   // ── vertical extents of a flow part (own body + hanging chains) ──
   const extents = (id: string): { top: number; bottom: number; left: number; right: number; zoneL: number; zoneR: number } => {
@@ -551,16 +663,27 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
       const chars = Math.max(sym.label.length, (sym.value ?? '').length);
       right = Math.max(right, snap(bodyHW + 6 + chars * 6.4 + G - 1));
     }
-    // Ports directly on the body's pins.
+    // Ports directly on the body's pins (one bus per net on a side: 2G more per extra bus).
+    const sideRuns = { l: new Map<string, BusRun>(), r: new Map<string, BusRun>() };
     for (const p of sym.pins) {
       const net = c.pins[p.name];
       const side = rotateSide(p.side, r);
       if (isGnd(net) || isRail(net)) {
         if (side === 'b') bottom = Math.max(bottom, bodyHH + PORT_H);
         if (side === 't') top = Math.max(top, bodyHH + PORT_H);
-        if (side === 'l') left = Math.max(left, bodyHW + 2 * G);
-        if (side === 'r') right = Math.max(right, bodyHW + 2 * G);
+        if (side === 'l' || side === 'r') {
+          const run = sideRuns[side].get(net) ?? { key: net, ys: [], dirY: isGnd(net) || rails.get(net)!.polarity < 0 ? 1 : -1 };
+          run.ys.push(rotatePoint(p.x, p.y, r).y);
+          sideRuns[side].set(net, run);
+        }
       }
+    }
+    for (const side of ['l', 'r'] as const) {
+      if (sideRuns[side].size === 0) continue;
+      for (const run of sideRuns[side].values()) run.ys.sort((a, b) => a - b);
+      const cols = Math.max(...busColumns([...sideRuns[side].values()]).values()) + 1;
+      if (side === 'l') left = Math.max(left, bodyHW + 2 * G * cols);
+      else right = Math.max(right, bodyHW + 2 * G * cols);
     }
     // Inline stacks (under top/bottom pins) widen the body footprint; zone
     // stacks start beyond that footprint.
@@ -570,12 +693,21 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
     for (const h of list) {
       const rp = rotatePoint(h.pin.x, h.pin.y, r);
       const hgt = chainHeight(h.chain, h.zone);
-      if (h.dirY === -1) top = Math.max(top, -rp.y + hgt);
-      else bottom = Math.max(bottom, rp.y + hgt);
+      const row = hangRow(id, h);
+      if (h.dirY === -1) top = Math.max(top, -row + hgt);
+      else bottom = Math.max(bottom, row + hgt);
       if (h.zone === 'inline') {
         inlineR = Math.max(inlineR, rp.x + h.slot * CHAIN_W + 3 * G);
         inlineL = Math.max(inlineL, -(rp.x + h.slot * CHAIN_W) + 3 * G);
       }
+    }
+    // Feedback parts stacked over / under the body (labels included).
+    for (const side of [-1, 1] as const) {
+      const n = (feedbackOn.get(id) ?? []).filter(f => feedbackOf.get(f)!.side === side).length;
+      if (n === 0) continue;
+      const reach = feedbackBase(id, side) + (n - 1) * FEEDBACK_STEP + 3 * G;
+      if (side < 0) top = Math.max(top, reach);
+      else bottom = Math.max(bottom, reach);
     }
     const zoneL = Math.max(left, inlineL) + 2 * G;
     const zoneR = Math.max(right, inlineR) + 2 * G;
@@ -686,7 +818,7 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
         for (const h of hangs.get(c.id) ?? []) {
           const apin = pc.pins.find(p => p.name === h.pin.name)!;
           let sx: number;
-          const y0 = apin.y + h.dirY * chainGap(h.zone);
+          const y0 = pc.y + hangRow(c.id, h) + h.dirY * chainGap(h.zone);
           if (h.zone === 'inline') sx = apin.x + h.slot * CHAIN_W;
           else if (h.zone === 'r') sx = pc.x + e.zoneR + h.slot * CHAIN_W + 3 * G;
           else sx = pc.x - e.zoneL - h.slot * CHAIN_W - 3 * G;
@@ -704,6 +836,19 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
             placed.set(id, makePlaced(cc, sym, sx, snap(cy), rot, 'chain'));
             net = otherPinNet(cc, anchorIsFirst ? first : sym.pins[1].name) ?? net;
           });
+        }
+      }
+      // Feedback parts over / under their amplifier, input net on the left.
+      for (const c of members) {
+        const pc = placed.get(c.id)!;
+        const count = { [-1]: 0, [1]: 0 } as Record<number, number>;
+        for (const fid of feedbackOn.get(c.id) ?? []) {
+          const fb = feedbackOf.get(fid)!;
+          const fc = byId.get(fid)!;
+          const sym = syms.get(fid)!;
+          const y = pc.y + fb.side * (feedbackBase(c.id, fb.side) + count[fb.side]++ * FEEDBACK_STEP);
+          const rot: Rotation = fc.pins[sym.pins[0].name] === fb.inNet ? 0 : 180;
+          placed.set(fid, makePlaced(fc, sym, pc.x, snap(y), rot, 'series'));
         }
       }
       const bottoms = members.map(c => placed.get(c.id)!).map(p => yOf.get(p.id)! + ext.get(p.id)!.bottom);
@@ -838,8 +983,25 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
     l.push(pp);
     groups.set(k, l);
   }
+  for (const g of groups.values()) g.sort((a, b) => a.pin.y - b.pin.y || a.pin.x - b.pin.x);
+  // Several buses on one side of a part (an IC's inputs tied to the rail AND
+  // to ground) must not share a column — they would draw as one shorted line.
+  // Overlapping buses get their own columns, 3G, 5G, … out, nearest first for
+  // the bus whose run (pins + drop to its symbol) cuts the fewest rows of the others.
+  const busDist = new Map<string, number>();
+  {
+    const bySide = new Map<string, BusRun[]>();
+    for (const k of [...groups.keys()].sort()) {
+      const g = groups.get(k)!;
+      const pin = g[0].pin;
+      if (pin.dir !== 'l' && pin.dir !== 'r') continue;
+      const sk = `${g[0].p.id}|${pin.dir}`;
+      bySide.set(sk, [...(bySide.get(sk) ?? []), { key: k, ys: g.map(pp => pp.pin.y), dirY: g[0].dirY }]);
+    }
+    for (const runs of bySide.values()) for (const [k, col] of busColumns(runs)) busDist.set(k, (3 + 2 * col) * G);
+  }
   for (const k of [...groups.keys()].sort()) {
-    const g = groups.get(k)!.sort((a, b) => a.pin.y - b.pin.y || a.pin.x - b.pin.x);
+    const g = groups.get(k)!;
     const { kind, dirY } = g[0];
     const net = g[0].pin.net;
     const label = kind === 'rail' ? rails.get(net)!.label : undefined;
@@ -853,7 +1015,7 @@ export function layoutCircuit(doc: CircuitDoc): Layout {
       blockAround(first.x, symY + dy2 * G, 2 * G, G);
     } else {
       const out = first.dir === 'l' ? -1 : 1;
-      const busX = first.x + out * 3 * G;
+      const busX = first.x + out * (busDist.get(k) ?? 3 * G);
       const pts: Point[][] = g.map(pp => [{ x: pp.pin.x, y: pp.pin.y }, { x: busX, y: pp.pin.y }]);
       const yTop = g[0].pin.y;
       const yBot = g[g.length - 1].pin.y;
