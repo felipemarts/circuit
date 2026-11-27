@@ -1162,7 +1162,7 @@
       }
     },
     "pcbBoard": {
-      "description": "Rectangle { width, height, cornerRadius? }, a polygon { outline }, or { preset: \"uno-shield\" }; defaults: layers 2, thickness 1.6, tech \"tht\", rules { trace 0.25, clearance 0.2, via { drill 0.3, diameter 0.6 }, edgeClearance 0.5 }, holes [].",
+      "description": "Rectangle { width, height, cornerRadius? }, a polygon { outline }, or { preset: \"uno-shield\" }; defaults: layers 2, thickness 1.6, tech \"tht\", rules { trace 0.25, clearance 0.2, via { drill 0.3, diameter 0.6 }, edgeClearance 0.5 }, holes []; autorouted unless route: false, traces sized from the simulated current (rules.copper 1 oz, rules.tempRise 10 °C, rules.grid 0.25) or nets { <net>: { width } }.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1259,8 +1259,47 @@
                   "exclusiveMinimum": 0
                 }
               }
+            },
+            "copper": {
+              "type": "number",
+              "minimum": 0.25,
+              "maximum": 10,
+              "description": "copper weight, oz/ft² (default 1 = 35 µm); sizes the current a trace carries"
+            },
+            "tempRise": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "allowed trace temperature rise, °C (default 10), for the IPC-2221 current check"
+            },
+            "grid": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 1.27,
+              "description": "autorouter grid pitch, mm (default 0.25)"
             }
           }
+        },
+        "nets": {
+          "type": "object",
+          "description": "per-net trace widths by net name (tb.name): { vcc: { width: 0.8 } }, mm; default: sized from the simulated current",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "width"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "width": {
+                "type": "number",
+                "minimum": 0.1
+              }
+            }
+          }
+        },
+        "route": {
+          "const": false,
+          "description": "false: no autorouting (placement checks and the ratsnest only); absent: autoroute"
         }
       }
     },

@@ -9,7 +9,7 @@ import { decodeShareUrl } from '../doc/share';
 import { canonicalJson } from '../doc/canonical';
 import { isCircuitDocError } from '../doc/errors';
 import type { CircuitDoc } from '../doc/types';
-import type { Diagnostic, LogicLevel } from '../schema/types';
+import type { Diagnostic, LogicLevel, RunRecord } from '../schema/types';
 import { layoutCircuit, type Layout } from './layout';
 import { Schematic, type FrameState } from './schematic';
 import { runSimulation } from './run';
@@ -515,7 +515,7 @@ function presentResults(
   if (board) {
     const errs = record.diagnostics.filter(d => d.stage === 'pcb' && d.severity === 'error').length;
     const pPanel = addBefore('pcb', 'PCB', { n: errs ? `${errs} ✗` : board.parts.length, kind: errs ? 'fail' : 'pass' });
-    renderPcb(pPanel, board, record.diagnostics, panels);
+    renderPcb(pPanel, board, record, panels);
   }
 
   if (sources.length > 0) {
@@ -611,14 +611,24 @@ function alertLine(host: HTMLElement, message: string): void {
   host.appendChild(h(`<p class="err" role="alert">${esc(message)}</p>`));
 }
 
-function renderPcb(panel: HTMLElement, board: NonNullable<ReturnType<typeof boardOf>>, diagnostics: Diagnostic[], panels: Panels): void {
+function renderPcb(panel: HTMLElement, board: NonNullable<ReturnType<typeof boardOf>>, record: RunRecord, panels: Panels): void {
   const st = board.record.stats;
   const b = board.record.board;
+  const diagnostics = record.diagnostics;
   const pcbDiags = diagnostics.filter(d => d.stage === 'pcb');
+  const routing = record.stages.pcb?.pcb?.routing;
+  const rs = routing?.stats;
+  const routed = rs
+    ? `<b>${rs.routed}/${rs.connections}</b> ${esc(t('connections routed'))} (${Math.round(rs.completion * 100)} %) · ${rs.length} mm ${esc(t('of track'))} · <b>${rs.vias}</b> ${esc(t(rs.vias === 1 ? 'via' : 'vias'))}${routing!.currents === 'none' ? ` · ${esc(t('widths not sized from currents'))}` : ''}`
+    : `<b>${st.nets}</b> ${esc(t('nets to route'))}, ${st.airwires} ${esc(t('airwires'))} (${st.airwireLength} mm)`;
+  const widths = routing?.nets.filter(r => r.widthFrom !== 'rule' || (r.current ?? 0) >= 1e-3) ?? [];
   const extra = [st.unplaced ? `<b>${st.unplaced}</b> ${esc(t('unplaced (ghost = suggested spot)'))}` : '', st.offBoard ? `<b>${st.offBoard}</b> ${esc(t('off-board'))}` : ''].filter(Boolean).join(' · ');
-  panel.innerHTML = `<p class="lead"><b>${esc(`${b.width} × ${b.height} mm`)}</b> · ${b.layers} ${esc(t(b.layers > 1 ? 'layers' : 'layer'))} · ${esc(b.tech.toUpperCase())} · <b>${st.placed}</b> ${esc(t('placed'))}${extra ? ` · ${extra}` : ''} · <b>${st.nets}</b> ${esc(t('nets to route'))}, ${st.airwires} ${esc(t('airwires'))} (${st.airwireLength} mm)</p>
-    <div class="pcb-wrap">${boardSvg(board, diagnostics)}</div>
-    <p class="pcb-legend">${[['th', 'through-hole pad'], ['top', 'top copper'], ['bottom', 'bottom copper'], ['rat', 'airwire (to route)'], ['court', 'courtyard']].map(([k, label]) => `<span class="it"><span class="k ${k}"></span>${esc(t(label))}</span>`).join('')}</p>
+  panel.innerHTML = `<p class="lead"><b>${esc(`${b.width} × ${b.height} mm`)}</b> · ${b.layers} ${esc(t(b.layers > 1 ? 'layers' : 'layer'))} · ${esc(b.tech.toUpperCase())} · <b>${st.placed}</b> ${esc(t('placed'))}${extra ? ` · ${extra}` : ''} · ${routed}</p>
+    <div class="pcb-wrap">${boardSvg(board, diagnostics, routing)}</div>
+    <p class="pcb-legend">${[['th', 'through-hole pad'], ['top', 'top copper'], ['bottom', 'bottom copper'], ...(routing ? [['via', 'via']] : []), [routing ? 'rat open' : 'rat', routing ? 'unrouted connection' : 'airwire (to route)'], ['court', 'courtyard']].map(([k, label]) => `<span class="it"><span class="k ${k}"></span>${esc(t(label))}</span>`).join('')}</p>
+    ${widths.length ? `<div class="netlist"><table><thead><tr><th>${esc(t('net'))}</th><th>${esc(t('current'))}</th><th>${esc(t('trace'))}</th><th>${esc(t('needs'))}</th><th>${esc(t('length'))}</th></tr></thead><tbody>${widths
+      .map(r => `<tr${r.complete ? '' : ' class="bad"'}><td class="id">${esc(r.net)}</td><td>${r.current !== undefined ? esc(eng(r.current, 'A')) : '—'}</td><td>${r.width} mm <span class="muted">${esc(t(r.widthFrom === 'current' ? 'from the current' : r.widthFrom === 'net' ? 'set by the bench' : 'minimum rule'))}</span></td><td>${r.requiredWidth !== undefined ? `${r.requiredWidth < 0.01 ? '< 0.01' : r.requiredWidth.toFixed(2)} mm` : '—'}</td><td>${r.length} mm${r.vias.length ? ` · ${r.vias.length} ${esc(t(r.vias.length === 1 ? 'via' : 'vias'))}` : ''}</td></tr>`)
+      .join('')}</tbody></table></div>` : ''}
     ${pcbDiags.length ? `<p class="lead pcb-issues">${pcbDiags.map(d => `<code>${esc(d.code)}</code> ${esc(d.message)}`).join('<br>')}</p>` : ''}
     <div class="netlist"><table><thead><tr><th>id</th><th>${esc(t('footprint'))}</th><th>x, y (mm)</th><th>rot</th><th>${esc(t('side'))}</th></tr></thead><tbody>${board.record.placed
       .map(p => `<tr><td class="id">${esc(p.id)}</td><td>${esc(p.footprint)}</td><td>${p.x}, ${p.y}</td><td>${p.rot}°</td><td>${esc(p.side)}</td></tr>`)

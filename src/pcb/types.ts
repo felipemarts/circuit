@@ -80,6 +80,18 @@ export interface PcbRules {
   via: { drill: number; diameter: number };
   /** Minimum copper-to-board-edge distance. */
   edgeClearance: number;
+  /** Copper weight in oz/ft² (default 1 = 35 µm): sets the current a trace width carries. */
+  copper?: number;
+  /** Allowed trace temperature rise in °C for the current-capacity check (default 10). */
+  tempRise?: number;
+  /** Router grid pitch (default 0.25 mm). */
+  grid?: number;
+}
+
+/** Per-net routing options (`tb.board({ nets: { vcc: { width: 0.5 } } })`). */
+export interface NetRule {
+  /** Trace width of this net (mm), instead of the one sized from its simulated current. */
+  width: number;
 }
 
 export interface PcbHole {
@@ -105,6 +117,10 @@ export interface BoardSpec {
   tech: PcbTech;
   rules: PcbRules;
   holes: PcbHole[];
+  /** Per-net trace widths, by net name (named with tb.name). */
+  nets?: Record<string, NetRule>;
+  /** false: no autorouting (placement checks and ratsnest only). */
+  route?: false;
 }
 
 /** Placement of one component. */
@@ -155,6 +171,64 @@ export interface PcbPlacedRecord {
   side: 'top' | 'bottom';
 }
 
+/** A routed trace: a polyline of one width on one copper layer. */
+export interface PcbTrack {
+  layer: 'top' | 'bottom';
+  width: number;
+  points: [number, number][];
+}
+
+export interface PcbVia {
+  x: number;
+  y: number;
+  drill: number;
+  diameter: number;
+}
+
+/** The copper of one net. */
+export interface PcbNetRoute {
+  net: string;
+  /** Trace width used (mm). */
+  width: number;
+  /** Where the width comes from: the simulated current (IPC-2221), the minimum rule, or tb.board({ nets }). */
+  widthFrom: 'current' | 'rule' | 'net';
+  /** Largest current the net carries between its pads (A): half the sum of its pin currents, op or transient RMS. */
+  current?: number;
+  /** Narrowest trace for that current (mm), IPC-2221. */
+  requiredWidth?: number;
+  tracks: PcbTrack[];
+  vias: PcbVia[];
+  /** Total track length (mm). */
+  length: number;
+  /** Every pad group of the net is connected. */
+  complete: boolean;
+}
+
+export interface PcbRouting {
+  /** Router grid pitch (mm). */
+  grid: number;
+  /** Which simulation sized the traces: the operating point, plus the transient RMS when the bench has one, or none (--stage pcb). */
+  currents: 'op' | 'op+tran' | 'none';
+  nets: PcbNetRoute[];
+  /** Connections the router could not make (airwires left). */
+  unrouted: PcbAirwire[];
+  stats: {
+    /** Nets with two or more pad groups. */
+    nets: number;
+    /** Pad-group connections to make (the ratsnest size). */
+    connections: number;
+    routed: number;
+    unrouted: number;
+    /** routed / connections, 0–1. */
+    completion: number;
+    /** Total track length (mm). */
+    length: number;
+    vias: number;
+    /** Router passes (rip-up and retry rounds) it took. */
+    passes: number;
+  };
+}
+
 export interface PcbRecord {
   board: { width: number; height: number; layers: 1 | 2; thickness: number; tech: PcbTech; area: number };
   placed: PcbPlacedRecord[];
@@ -162,6 +236,8 @@ export interface PcbRecord {
   /** Components with a footprint but no position, with a free spot that fits. */
   unplaced: { id: string; footprint: string; suggested?: { x: number; y: number; rot: number } }[];
   ratsnest: PcbAirwire[];
+  /** The autorouter's copper (absent when the placement has errors or tb.board({ route: false })). */
+  routing?: PcbRouting;
   stats: {
     placed: number;
     offBoard: number;

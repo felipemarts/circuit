@@ -1,9 +1,10 @@
-# PCB: board, footprints and placement
+# PCB: board, placement, routing
 
 A bench can declare the printed circuit board it is built on. The **pcb stage**, the last rung
 of the ladder (lint → op → dc → ac → tran → **pcb**), resolves a footprint and a pin → pad map
-for every component, checks the placement (P801–P807) and reports the **ratsnest**: the
-connections the router will turn into copper.
+for every component, checks the placement (P801–P807), sizes every trace from the
+**simulated current** (IPC-2221), **autoroutes** the board on one or two layers and checks the
+copper against the design rules (P810–P813).
 
 ```ts
 import { bench, VoltageSource, Resistor, LED } from 'circuitsvibe';
@@ -27,12 +28,12 @@ export default bench('led-driver-board', (tb) => {
 
 ```
   ✓ pcb   pass
-        board 30×20 mm, 2 layers, tht · 3 placed · 3 nets to route, 3 airwires (30.98 mm)
+        ratings (datasheet absolute max, simulated): 3 checked on 3 parts, 0 exceeded · tightest passing: gnd Imax at 1%
+        board 30×20 mm, 2 layers, tht · 3 placed · routed 3/3 connections (100 %), 33.01 mm of track, 0 vias
 ```
 
-Status: footprints, placement checks and the ratsnest are done. **Routing**, design-rule
-checks (P81x), current-aware trace widths, Gerber / Excellon / BOM / pick-and-place output and
-the 3D view are the next phases.
+Status: footprints, placement, autorouting, design-rule checks and current-sized traces are
+done. Gerber / Excellon / BOM / pick-and-place output and the 3D view are the next phases.
 
 ## Coordinates and units
 
@@ -58,10 +59,15 @@ the 3D view are the next phases.
 | `thickness` | 1.6 | board thickness |
 | `tech` | `'tht'` | default footprint technology of **generic** parts: `'tht'` or `'smd'` |
 | `holes` | `[]` | non-plated mounting holes `[{ x, y, d }]` |
-| `rules.trace` | 0.25 | default trace width (used by the router) |
+| `rules.trace` | 0.25 | minimum trace width; nets whose current needs more get wider traces |
 | `rules.clearance` | 0.2 | copper-to-copper clearance; also the keep-out around mounting holes |
 | `rules.via` | `{ drill: 0.3, diameter: 0.6 }` | via geometry |
-| `rules.edgeClearance` | 0.5 | minimum copper-to-edge distance (P801) |
+| `rules.edgeClearance` | 0.5 | minimum copper-to-edge distance (P801, P811) |
+| `rules.copper` | 1 | copper weight in oz/ft² (1 oz = 35 µm), for the current capacity |
+| `rules.tempRise` | 10 | allowed trace temperature rise in °C, for the current capacity |
+| `rules.grid` | 0.25 | router grid pitch (0.05–1.27 mm) |
+| `nets` | — | per-net widths by net name: `{ vcc: { width: 0.8 } }` (rated by P812) |
+| `route` | true | `false`: placement checks and the ratsnest only, no copper |
 
 Unknown options throw, so a typo fails at elaboration (exit 3) instead of being ignored.
 
@@ -164,6 +170,11 @@ document (`pcb.footprints`), so share links keep them.
 | P805 | not placed: the fix is a mechanical `tb.place` patch at a free spot (1.27 mm grid, 0°/90°) near the pads it connects to |
 | P806 | (warning) an off-board part reaches the board with no connector on its nets |
 | P807 | invalid `pads` map (unknown pin or pad, two nets on one pad) |
+| P808 | `nets` names a net the circuit does not have |
+| P810 | the router found no path for a connection (airwires left in `routing.unrouted`) |
+| P811 | design-rule check: copper of two nets closer than `clearance`, copper near a hole, a track/via near the edge |
+| P812 | (rating, exit 1) a trace carries more current than its width allows |
+| P813 | (warning) routed without a simulation: widths not sized from currents |
 
 Courtyards are the keep-out rectangles of a part: pads and body plus the 0.25 mm IPC-7351
 nominal margin. Parts on opposite sides may overlap unless one of them is through-hole (its
@@ -177,6 +188,30 @@ the three GND pins of the Uno headers) are one node. The record lists every airw
 (`{ net, from: 'R1.2', to: 'D1.A', length }`) and the total length, a quick figure of merit
 for a placement: lower is easier to route.
 
+## Routing
+
+Once the placement passes, the stage routes the board (unless `route: false`):
+
+- **Grid router**: A* on a `rules.grid` grid (0.25 mm), moves in 45° steps, a penalty for
+  every bend and a via cost (2.5 mm of track) to change layers on a 2-layer board — top
+  prefers horizontal runs, bottom vertical ones. A net grows as a tree from its copper to the
+  nearest unconnected pad group until every group is joined; through-hole pads connect both
+  layers by themselves. Nets go shortest-first; failed nets are tried first in the next pass
+  (up to four passes), and the best pass wins. Deterministic: same placement, same copper.
+- **Exact clearance**: every grid move is checked on the real shapes (pads as rectangles,
+  circles or ovals; tracks as capsules of their width; vias; holes; the board edge), so the
+  copper keeps `clearance` from other nets, `clearance` from holes and `edgeClearance` from
+  the edge. A separate design-rule check measures the final copper again (P811).
+- **Trace width from the simulation**: a net's current is half the sum of its pins' current
+  magnitudes (no copper segment of the net carries more), at the operating point and as the
+  RMS over each transient run, whichever is larger. Its width is `rules.trace`, widened in
+  0.05 mm steps when IPC-2221B (outer layer, `rules.copper`, `rules.tempRise`) needs more:
+  `I = 0.048 · ΔT^0.44 · A^0.725`, A in mil². 0.25 mm on 1 oz carries ≈ 0.87 A at 10 °C;
+  2.5 A needs ≈ 1.1 mm. Each net with ≥ 1 mA gets a **P812** row in `stages.pcb.ratings[]`
+  (like a datasheet rating: `value` = current, `allowed` = capacity × `tb.ratings({ derate })`);
+  it fails only when `nets` forces a narrower width.
+- `--stage pcb` routes without simulating: widths fall back to `rules.trace` / `nets` (P813).
+
 ## RunRecord
 
 ```jsonc
@@ -188,12 +223,26 @@ for a placement: lower is easier to route.
     "offBoard": [],
     "unplaced": [{ "id": "Q1", "footprint": "TO-92", "suggested": { "x": 24.13, "y": 6.35, "rot": 90 } }],
     "ratsnest": [{ "net": "led", "from": "D1.A", "to": "R1.2", "length": 4.97 }, …],
+    "routing": {
+      "grid": 0.25,
+      "currents": "op",                       // op | op+tran | none
+      "nets": [{
+        "net": "led", "width": 0.25, "widthFrom": "rule",   // rule | current | net
+        "current": 0.00868, "requiredWidth": 0.0004,
+        "tracks": [{ "layer": "top", "width": 0.25, "points": [[25, 9.27], [24.25, 9.75], [20.75, 9.75], [20.08, 10]] }],
+        "vias": [], "length": 5.11, "complete": true
+      }, …],
+      "unrouted": [],
+      "stats": { "nets": 3, "connections": 3, "routed": 3, "unrouted": 0, "completion": 1, "length": 33.01, "vias": 0, "passes": 1 }
+    },
     "stats": { "placed": 3, "offBoard": 0, "unplaced": 0, "pads": 6, "nets": 3, "airwires": 3, "airwireLength": 30.98 }
-  }
+  },
+  "ratings": [{ "code": "P812", "component": "led", "part": "PCB trace", "rating": "Imax", "value": 0.00868, "allowed": 0.8717, "utilization": 0.01, … }]
 }
 ```
 
-The layout is not part of the netlist hash: moving a part changes no simulation.
+The layout is not part of the netlist hash: moving a part changes no simulation. Routes are
+recomputed from the placement on every run, so circuit documents carry no copper.
 
 ## Arduino Uno shields
 
@@ -211,6 +260,7 @@ header strips only, so parts fit between them.
 ## Viewer
 
 A share link of a bench with a board opens a **PCB** tab: the outline, holes, courtyards
-(red on error), pads by layer, silkscreen, reference designators, the ratsnest, and the
-suggested spot of every unplaced part as a ghost. Drag to pan, wheel to zoom, double-click
-to reset.
+(red on error), pads by layer, silkscreen, reference designators, the routed tracks (top red,
+bottom blue) and vias, the connections left unrouted (red dashes), the suggested spot of every
+unplaced part as a ghost, and a table of each net's current, width and length. Drag to pan,
+wheel to zoom, double-click to reset.

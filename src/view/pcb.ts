@@ -1,11 +1,14 @@
 /**
  * PCB panel of the viewer: the board of a circuit document drawn as SVG
  * (outline, holes, courtyards, pads by layer, silkscreen, reference
- * designators, ratsnest, and the suggested spot of unplaced parts as ghosts),
- * computed with the same layoutBoard() the CLI's pcb stage runs.
+ * designators, the routed copper — tracks by layer and vias — the airwires
+ * still to route, and the suggested spot of unplaced parts as ghosts),
+ * computed with the same layoutBoard() the CLI's pcb stage runs; the copper
+ * comes from the run's RunRecord (stages.pcb.pcb.routing).
  */
 import type { CircuitDoc } from '../doc/types';
 import type { Diagnostic } from '../schema/types';
+import type { PcbAirwire, PcbRouting } from '../pcb/types';
 import { layoutBoard, type BoardLayout, type PlacedPad, type PlacedPart } from '../pcb/layout';
 import { bbox } from '../pcb/geometry';
 import { getFootprint } from '../pcb/footprints';
@@ -48,8 +51,20 @@ function partSvg(p: PlacedPart, opts: { ghost?: boolean; error?: boolean }): str
   return `<g class="part side-${p.side}${opts.ghost ? ' ghost' : ''}" data-id="${esc(p.id)}"><title>${esc(`${p.id} · ${p.footprint.name} · (${n(p.x)}, ${n(p.y)}) mm${p.rot ? ` · ${n(p.rot)}°` : ''}${p.side === 'bottom' ? ' · bottom' : ''}${opts.ghost ? ' · suggested spot (not placed)' : ''}`)}</title>${court}<g class="silk" transform="${place}">${silk}</g>${pads}${holes}${label}</g>`;
 }
 
-/** The board as an SVG string (y up: the content group is flipped). */
-export function boardSvg(layout: BoardLayout, diagnostics: Diagnostic[] = []): string {
+function tracksSvg(routing: PcbRouting, layer: 'top' | 'bottom'): string {
+  return routing.nets
+    .flatMap(r =>
+      r.tracks
+        .filter(tr => tr.layer === layer)
+        .map(tr => `<polyline class="trk ${layer}" data-net="${esc(r.net)}" stroke-width="${n(tr.width)}" points="${pts(tr.points)}"><title>${esc(`${r.net} · ${tr.width} mm · ${layer}${r.current !== undefined ? ` · ${fmtA(r.current)}` : ''}`)}</title></polyline>`),
+    )
+    .join('');
+}
+
+const fmtA = (a: number): string => (a >= 1 ? `${n(a)} A` : `${n(a * 1000)} mA`);
+
+/** The board as an SVG string (y up: the content group is flipped). With a routing, the copper and the airwires left. */
+export function boardSvg(layout: BoardLayout, diagnostics: Diagnostic[] = [], routing?: PcbRouting): string {
   const bad = new Set(diagnostics.filter(d => d.stage === 'pcb' && d.severity === 'error').flatMap(d => d.subject?.components ?? []));
   const b = bbox(layout.outline);
   const pad = 4;
@@ -58,11 +73,12 @@ export function boardSvg(layout: BoardLayout, diagnostics: Diagnostic[] = []): s
   const parts = layout.parts.map(p => partSvg(p, { error: bad.has(p.id) })).join('');
   const padAt = new Map<string, PlacedPad>();
   for (const p of layout.parts) for (const pad of p.pads) if (!padAt.has(pad.ref)) padAt.set(pad.ref, pad);
-  const rats = layout.ratsnest
+  const airwires: PcbAirwire[] = routing ? routing.unrouted : layout.ratsnest;
+  const rats = airwires
     .map(a => {
       const f = padAt.get(a.from);
       const t = padAt.get(a.to);
-      return f && t ? `<line class="rat" x1="${n(f.x)}" y1="${n(f.y)}" x2="${n(t.x)}" y2="${n(t.y)}"><title>${esc(`${a.net}: ${a.from} → ${a.to} (${a.length} mm)`)}</title></line>` : '';
+      return f && t ? `<line class="rat${routing ? ' open' : ''}" x1="${n(f.x)}" y1="${n(f.y)}" x2="${n(t.x)}" y2="${n(t.y)}"><title>${esc(`${a.net}: ${a.from} → ${a.to} (${a.length} mm)`)}</title></line>` : '';
     })
     .join('');
   // Ghosts at the suggested free spot of every unplaced part.
@@ -91,10 +107,15 @@ export function boardSvg(layout: BoardLayout, diagnostics: Diagnostic[] = []): s
       return partSvg(ghost, { ghost: true });
     })
     .join('');
+  const vias = (routing?.nets ?? [])
+    .flatMap(r => r.vias.map(v => `<g class="via" data-net="${esc(r.net)}"><title>${esc(`${r.net} · via ⌀${v.diameter}/${v.drill} mm`)}</title><circle class="cu" cx="${n(v.x)}" cy="${n(v.y)}" r="${n(v.diameter / 2)}"/><circle class="drill" cx="${n(v.x)}" cy="${n(v.y)}" r="${n(v.drill / 2)}"/></g>`))
+    .join('');
+  const bottom = routing ? tracksSvg(routing, 'bottom') : '';
+  const top = routing ? tracksSvg(routing, 'top') : '';
   return `<svg class="pcb-svg" viewBox="${vb}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PCB">
 <g transform="scale(1 -1)">
 <polygon class="board" points="${pts(layout.outline)}"/>
-${parts}${ghosts}${holes}${rats}
+${bottom}${parts}${top}${vias}${ghosts}${holes}${rats}
 </g></svg>`;
 }
 

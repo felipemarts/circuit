@@ -1,7 +1,7 @@
 /**
- * Registry entries of the board layout stage (src/pcb): P801–P807. Merged
- * into DIAGNOSTIC_DOCS (src/verify/registry.ts). P81x is reserved for routing
- * and design-rule checks.
+ * Registry entries of the board stage (src/pcb): P801–P808 placement and
+ * board options, P810–P813 routing, design rules and trace current. Merged
+ * into DIAGNOSTIC_DOCS (src/verify/registry.ts).
  */
 import type { DiagnosticDoc } from '../verify/registry';
 
@@ -97,5 +97,69 @@ on the same pad (one pad is one electrical node — it would short them).
 Pads that share a name are joined inside the part (a tactile switch's legs),
 so mapping one pin to both is fine; two nets on one pad is not.
 Fix: map every pin to a pad of the chosen footprint (the message lists them).`,
+  },
+  {
+    code: 'P808',
+    slug: 'unknown-net',
+    title: 'tb.board({ nets }) names a net the circuit does not have',
+    explanation: `Per-net trace widths are keyed by net name — tb.board({ nets: { vcc: { width:
+0.8 } } }) — and the name is not a net of the circuit. Only named nets can be
+addressed: auto-generated names (n1, n2…) change when the circuit changes.
+Fix: name the net with tb.name('vcc', <a pin on it>), or correct the key.`,
+  },
+  {
+    code: 'P810',
+    slug: 'unrouted',
+    title: 'the autorouter could not make a connection',
+    explanation: `After placement the pcb stage routes every net on a grid (rules.grid, default
+0.25 mm): A* with 45° moves, a bend penalty and vias between the two layers,
+each move checked on the real copper shapes so the trace (its width) keeps
+rules.clearance from every other net, rules.edgeClearance from the edge and
+the clearance from drilled holes. Nets go shortest-first; failed nets are
+retried first in up to four passes. A connection that still finds no path is
+reported here with the airwires left (stages.pcb.pcb.routing.unrouted).
+Usual causes: a pad boxed in by other nets' pads (rotate or move the part so
+the pads that connect face each other), a single-layer board with crossing
+nets (layers: 2), a wide trace (a big simulated current or a nets override)
+that fits no gap, or simply a board too small for the parts.`,
+  },
+  {
+    code: 'P811',
+    slug: 'clearance',
+    title: 'copper breaks a design rule (clearance, hole or edge)',
+    explanation: `The design-rule check measures the final copper — tracks, vias and pads as
+real shapes — independently of the router: two nets closer than
+rules.clearance on the same layer (they can short when the board is etched),
+copper closer than the clearance to a non-plated hole, or a track/via closer
+than rules.edgeClearance to the board edge (the fab's routing tool cuts it).
+Pad-to-pad spacing inside one footprint is the footprint's own and is not
+checked here. The router keeps these rules by construction, so a P811 is
+unexpected: move the parts around the reported spot apart and report the bench.`,
+  },
+  {
+    code: 'P812',
+    slug: 'trace-current',
+    title: 'a trace is too narrow for the current it carries (rating, exit 1)',
+    explanation: `Each net's current is taken from the simulation — half the sum of its pins'
+current magnitudes (no copper segment of the net carries more), at the
+operating point and as the RMS of each transient run, the larger of the two —
+and compared with what the trace width carries per IPC-2221B §6.2:
+  I = 0.048 · ΔT^0.44 · A^0.725   (A in mil², outer layer)
+with ΔT = rules.tempRise (default 10 °C) and the copper of rules.copper
+(default 1 oz = 35 µm). The stage sizes every trace itself (the minimum rule
+rules.trace, widened in 0.05 mm steps when the current needs it), so this
+fails only when tb.board({ nets: { <net>: { width } } }) forces a narrower
+trace. Like a datasheet rating it is a verified simulated stress: exit 1, in
+stages.pcb.ratings (tb.ratings({ derate }) applies). Fix: widen the override
+or drop it.`,
+  },
+  {
+    code: 'P813',
+    slug: 'widths-not-current-checked',
+    title: 'trace widths were not sized from the circuit currents (warning)',
+    explanation: `The run routed the board without simulating it (--stage pcb, or a bench with
+no analog operating point), so every trace has rules.trace or its nets
+override and nothing was rated against the current. Verify with the
+simulation stages (the default) before making the board.`,
   },
 ];

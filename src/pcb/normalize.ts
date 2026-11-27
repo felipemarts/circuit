@@ -62,10 +62,21 @@ export interface BoardInput {
     clearance?: LengthLike;
     edgeClearance?: LengthLike;
     via?: { drill?: LengthLike; diameter?: LengthLike };
+    /** Copper weight, oz/ft² (default 1 = 35 µm). */
+    copper?: number;
+    /** Allowed trace temperature rise for the current check, °C (default 10). */
+    tempRise?: number;
+    /** Router grid pitch (default 0.25 mm). */
+    grid?: LengthLike;
   };
+  /** Per-net trace widths: { vcc: { width: '0.8mm' } } — net names from tb.name. */
+  nets?: Record<string, { width: LengthLike }>;
+  /** false: no autorouting (placement checks and the ratsnest only). Default true. */
+  route?: boolean;
 }
 
-const BOARD_KEYS = ['width', 'height', 'cornerRadius', 'outline', 'preset', 'layers', 'thickness', 'tech', 'holes', 'rules'];
+const BOARD_KEYS = ['width', 'height', 'cornerRadius', 'outline', 'preset', 'layers', 'thickness', 'tech', 'holes', 'rules', 'nets', 'route'];
+const NET_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 export function normalizeBoard(input: BoardInput): BoardSpec {
   if (!isObj(input)) throw new Error(`tb.board(spec): expected an object like { width: 50, height: 30 } (mm)`);
@@ -105,8 +116,8 @@ export function normalizeBoard(input: BoardInput): BoardSpec {
   spec.tech = tech;
 
   const r = input.rules ?? {};
-  if (!isObj(r)) throw new Error(`tb.board rules: expected an object { trace, clearance, edgeClearance, via }`);
-  onlyKeys(r, ['trace', 'clearance', 'edgeClearance', 'via'], 'tb.board rules');
+  if (!isObj(r)) throw new Error(`tb.board rules: expected an object { trace, clearance, edgeClearance, via, copper, tempRise, grid }`);
+  onlyKeys(r, ['trace', 'clearance', 'edgeClearance', 'via', 'copper', 'tempRise', 'grid'], 'tb.board rules');
   const via = r.via ?? {};
   if (!isObj(via)) throw new Error(`tb.board rules.via: expected { drill, diameter }`);
   onlyKeys(via, ['drill', 'diameter'], 'tb.board rules.via');
@@ -121,6 +132,35 @@ export function normalizeBoard(input: BoardInput): BoardSpec {
   };
   if (spec.rules.edgeClearance < 0) throw new Error(`tb.board rules.edgeClearance must be ≥ 0`);
   if (!(spec.rules.via.diameter > spec.rules.via.drill)) throw new Error(`tb.board rules.via: diameter (${spec.rules.via.diameter} mm) must be larger than drill (${spec.rules.via.drill} mm)`);
+  if (r.copper !== undefined) {
+    if (typeof r.copper !== 'number' || !(r.copper >= 0.25 && r.copper <= 10)) throw new Error(`tb.board rules.copper: copper weight in oz/ft² between 0.25 and 10 (1 oz = 35 µm), got ${JSON.stringify(r.copper)}`);
+    if (r.copper !== 1) spec.rules.copper = r.copper;
+  }
+  if (r.tempRise !== undefined) {
+    if (typeof r.tempRise !== 'number' || !(r.tempRise >= 1 && r.tempRise <= 100)) throw new Error(`tb.board rules.tempRise: allowed trace temperature rise in °C between 1 and 100, got ${JSON.stringify(r.tempRise)}`);
+    if (r.tempRise !== 10) spec.rules.tempRise = r.tempRise;
+  }
+  if (r.grid !== undefined) {
+    const g = positive(r.grid, 'tb.board rules.grid');
+    if (g < 0.05 || g > 1.27) throw new Error(`tb.board rules.grid: router grid pitch between 0.05 and 1.27 mm, got ${g}`);
+    if (g !== 0.25) spec.rules.grid = g;
+  }
+
+  let nets: BoardSpec['nets'];
+  if (input.nets !== undefined) {
+    if (!isObj(input.nets)) throw new Error(`tb.board nets: expected { <net name>: { width } }, e.g. { vcc: { width: 0.8 } }`);
+    nets = {};
+    for (const name of Object.keys(input.nets).sort()) {
+      const rule = (input.nets as Record<string, unknown>)[name];
+      if (!NET_RE.test(name)) throw new Error(`tb.board nets: '${name}' is not a net name (name the net with tb.name first)`);
+      if (!isObj(rule)) throw new Error(`tb.board nets.${name}: expected { width }`);
+      onlyKeys(rule, ['width'], `tb.board nets.${name}`);
+      const width = positive(rule.width, `tb.board nets.${name}.width`);
+      if (width < 0.1) throw new Error(`tb.board nets.${name}.width: ${width} mm is below what boards are etched with (0.1 mm minimum)`);
+      nets[name] = { width };
+    }
+  }
+  if (input.route !== undefined && typeof input.route !== 'boolean') throw new Error(`tb.board route: true (autoroute, the default) or false (placement only), got ${JSON.stringify(input.route)}`);
 
   const holes = input.holes ?? [];
   if (!Array.isArray(holes)) throw new Error(`tb.board holes: expected an array [{ x, y, d }]`);
@@ -139,6 +179,8 @@ export function normalizeBoard(input: BoardInput): BoardSpec {
     tech: spec.tech,
     rules: spec.rules,
     holes: spec.holes,
+    ...(nets && Object.keys(nets).length > 0 ? { nets } : {}),
+    ...(input.route === false ? { route: false } : {}),
   } as BoardSpec;
   return out;
 }

@@ -414,7 +414,9 @@ counters that roll over.
 ### Printed circuit board (pcb stage)
 
 Declare the board and place the parts; the **pcb** stage (after tran) gives every component a
-footprint and a pin → pad map, checks the placement and reports the ratsnest. Lengths in **mm**
+footprint and a pin → pad map, checks the placement, sizes every trace from the **simulated
+current** (IPC-2221) and **autoroutes** the board (1–2 layers, vias), then checks the copper
+against the design rules. Lengths in **mm**
 (or `'0.1in'`, `'100mil'`), origin at the board's lower-left corner, **y up**, `rot` degrees
 counter-clockwise; `x, y` is the centre of the footprint's pads.
 
@@ -437,8 +439,15 @@ tb.place('CLK', { offBoard: true });                // bench instrument, not on 
   parts), P804 (pin without pad), P807 (bad pad map) are exit **2**; P806 (off-board part with
   no connector) is a warning.
 - `stages.pcb.pcb`: `placed[]`, `unplaced[]` (with `suggested`), `ratsnest[]` (MST airwires per
-  net) and `stats.airwireLength` — lower is easier to route. `--stage pcb` re-checks the
-  layout alone (lint + pcb), no simulation. Not yet: routing, DRC, Gerber/BOM, 3D.
+  net), and `routing`: per net `tracks[]` (`{ layer, width, points }`), `vias[]`, `current`,
+  `width` / `widthFrom` (`rule` | `current` | `net`), `complete`; `unrouted[]` airwires;
+  `stats.completion`. **P810** (exit 2) = a connection the router could not make: move or
+  rotate the parts it names, use `layers: 2`, or enlarge the board. **P811** = design-rule
+  violation. **P812** (exit 1, in `stages.pcb.ratings[]`) = a trace too narrow for its
+  simulated current — only when you force a width with `tb.board({ nets: { vcc: { width } } })`.
+- `tb.board({ rules: { trace, clearance, copper /* oz */, tempRise /* °C */, grid }, route:
+  false })`. `--stage pcb` re-checks and routes the layout alone (no simulation: widths are
+  not sized from currents, P813 warning). Not yet: Gerber/drill/BOM output, 3D view.
 
 ### Sources
 
@@ -600,6 +609,11 @@ npx circuitsvibe agents                      # print this playbook
 | P803 / P804 / P807 | no footprint / connected pin without a pad / invalid `pads` map | give `footprint` + `pads`, or `{ offBoard: true }` |
 | P805 | on-board part not placed | apply the mechanical `tb.place` patch (a free spot) |
 | P806 (warning) | off-board part reaches the board with no connector | place the source (2-pin header) or add a header |
+| P808 | `tb.board({ nets })` names a net the circuit does not have | name the net with `tb.name` |
+| P810 | the autorouter found no path for a connection (airwires left in `routing.unrouted`) | move / rotate the parts it names, `layers: 2`, enlarge the board |
+| P811 | design-rule check: copper of two nets / near a hole / near the edge closer than the rules | move the parts near the reported spot apart |
+| P812 | a trace carries more current than its width allows (IPC-2221; rating, exit 1) | widen the `nets` override or drop it |
+| P813 (warning) | routed without a simulation (`--stage pcb`): widths not sized from currents | verify with the simulation stages |
 
 When plain Newton fails at DC, the solver retries with gmin stepping and then source
 stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.

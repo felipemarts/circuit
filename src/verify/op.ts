@@ -33,6 +33,7 @@ export interface StageOutcome {
 }
 
 import { COMPONENT_PROBE_RE, asQuantityDevice } from '../elab/quantity';
+import { pinCurrents } from './currents';
 
 /** Resolve a probe expression against a solved DC operating point. */
 export function resolveOpProbe(elab: Elaboration, dc: DCResult, probe: string): number {
@@ -150,6 +151,8 @@ export function runOp(elab: Elaboration, opts: { hints: boolean }): StageOutcome
   } catch (err) {
     return { stage: { verdict: 'error' }, diagnostics: [...(elab.mixed ? elab.mixed.controller.run.diagnostics : []), solverDiagnostic(elab, err, 'op')] };
   }
+  // Boards size their traces from the pin currents (src/pcb): take them before any hint re-solve.
+  if (elab.pcb) elab.pcbCurrents = { ...elab.pcbCurrents, op: pinCurrents(elab) };
   // Mixed-signal: static-state diagnostics of the operating point (D508–D514, D50x).
   const mixedDiags = elab.mixed ? [...elab.mixed.controller.run.diagnostics] : [];
 

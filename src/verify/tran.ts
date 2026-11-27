@@ -12,6 +12,7 @@ import { evaluateLogicCheck } from '../mixed/measure';
 import { evaluateTranRatings, ratingProbes } from './ratings';
 
 import { COMPONENT_PROBE_RE, asQuantityDevice } from '../elab/quantity';
+import { currentProbeSpecs } from './currents';
 
 /** Probe expression → engine probe spec (component quantity or named net). */
 export function probeSpecFor(elab: Elaboration, expr: string): ProbeSpec {
@@ -81,6 +82,8 @@ export function* runTranSteps(elab: Elaboration): Steps<StageOutcome> {
   // Datasheet ratings of Part() devices: their quantities ride along in every analog run.
   const ratingRuns: { label: string; waveforms: Map<string, Waveform> }[] = [];
   const extraProbes = ratingProbes(elab, 'tran');
+  // Boards: every pin current rides along too, for the trace widths (RMS per run).
+  const pinSpecs = elab.pcb ? currentProbeSpecs(elab) : [];
 
   for (const key of [...groups.keys()].sort()) {
     const { config, assertions: all } = groups.get(key)!;
@@ -90,6 +93,8 @@ export function* runTranSteps(elab: Elaboration): Steps<StageOutcome> {
     const probeExprs = [...new Set(assertions.map(a => a.probe))].sort();
     const simulated = [...new Set([...probeExprs, ...extraProbes])].sort();
     const specs = simulated.map(expr => probeSpecFor(elab, expr));
+    const pinLabels = pinSpecs.map((p, k) => `pcb-pin:${k}:${p.ref}`);
+    if (!mixed?.digitalOnly) specs.push(...pinSpecs.map((p, k) => ({ ...p.spec, label: pinLabels[k] })));
 
     let waveforms: Map<string, Waveform> = new Map();
     mixed?.controller.setTimeScale(config.tstop);
@@ -126,6 +131,17 @@ export function* runTranSteps(elab: Elaboration): Steps<StageOutcome> {
         specs,
       );
       waveforms = new Map(result.probes.map(p => [p.label, { t: result.timePoints, y: p.values } as Waveform]));
+      if (pinSpecs.length > 0) {
+        const rms = { ...elab.pcbCurrents?.tran };
+        pinSpecs.forEach((p, k) => {
+          const wf = waveforms.get(pinLabels[k]);
+          if (!wf) return;
+          const v = rmsOf(wf);
+          if (!(p.ref in rms) || v > rms[p.ref]) rms[p.ref] = v;
+          waveforms.delete(pinLabels[k]);
+        });
+        elab.pcbCurrents = { ...elab.pcbCurrents, tran: rms };
+      }
       const t = result.telemetry!;
       runs.push({
         config: { ...config },
@@ -287,4 +303,14 @@ function excerptAround(wf: Waveform, time: number): [number, number][] {
     excerpt.push([Number(wf.t[i].toPrecision(6)), Number(wf.y[i].toPrecision(6))]);
   }
   return excerpt;
+}
+
+/** Root mean square over the whole window (trapezoidal in time: the samples are non-uniform). */
+function rmsOf(wf: Waveform): number {
+  const { t, y } = wf;
+  if (t.length < 2) return Math.abs(y[0] ?? 0);
+  let acc = 0;
+  for (let i = 1; i < t.length; i++) acc += ((y[i - 1] * y[i - 1] + y[i] * y[i]) / 2) * (t[i] - t[i - 1]);
+  const span = t[t.length - 1] - t[0];
+  return span > 0 ? Math.sqrt(acc / span) : Math.abs(y[y.length - 1]);
 }

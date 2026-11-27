@@ -92,7 +92,12 @@ function renderDiagnostic(d: Diagnostic): string[] {
 function renderPcb(p: PcbRecord): string {
   const b = p.board;
   const parts = [`${p.stats.placed} placed`, ...(p.stats.unplaced ? [`${p.stats.unplaced} unplaced`] : []), ...(p.stats.offBoard ? [`${p.stats.offBoard} off-board`] : [])];
-  return `        board ${b.width}×${b.height} mm, ${b.layers} layer${b.layers > 1 ? 's' : ''}, ${b.tech} · ${parts.join(', ')} · ${p.stats.nets} nets to route, ${p.stats.airwires} airwires (${p.stats.airwireLength} mm)`;
+  const head = `        board ${b.width}×${b.height} mm, ${b.layers} layer${b.layers > 1 ? 's' : ''}, ${b.tech} · ${parts.join(', ')}`;
+  const r = p.routing;
+  if (!r) return `${head} · ${p.stats.nets} nets to route, ${p.stats.airwires} airwires (${p.stats.airwireLength} mm)`;
+  const s = r.stats;
+  const wide = r.nets.filter(n => n.widthFrom !== 'rule').map(n => `${n.net} ${n.width} mm`);
+  return `${head} · routed ${s.routed}/${s.connections} connections (${Math.round(s.completion * 100)} %), ${s.length} mm of track, ${s.vias} via${s.vias === 1 ? '' : 's'}${wide.length ? ` · wide: ${wide.join(', ')}` : ''}${r.currents === 'none' ? ' · widths not sized from currents' : ''}`;
 }
 
 const LOGIC_SIGNALS_SHOWN = 8;

@@ -279,7 +279,7 @@ export interface StageRecord {
  * (`modelEstimated` says when the part's model card is itself a fit).
  */
 export interface RatingResult {
-  /** R401 voltage · R402 continuous current · R403 pulsed/surge current · R404 power. */
+  /** R401 voltage · R402 continuous current · R403 pulsed/surge current · R404 power · P812 PCB trace current (component = the net, part = 'PCB trace'). */
   code: string;
   slug: string;
   verdict: 'pass' | 'fail';
@@ -297,9 +297,10 @@ export interface RatingResult {
    * How the stage value is reduced: 'value' (op), 'peak' (largest over the dc
    * sweep or the transient window), 'average' (time average over the
    * transient window — continuous-current ratings that have a pulsed
-   * companion, and Pd).
+   * companion, and Pd), 'rms' (pcb P812: the net current, the larger of the
+   * operating point and the transient RMS).
    */
-  measure: 'value' | 'peak' | 'average';
+  measure: 'value' | 'peak' | 'average' | 'rms';
   /** Datasheet absolute maximum (magnitude). */
   limit: number;
   /** tb.ratings({ derate }) factor, when not 1. */

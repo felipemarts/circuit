@@ -6,6 +6,18 @@ additive fields only.
 
 ## Unreleased
 
+### PCB phase 2: autorouting, design rules, current-sized traces
+- The pcb stage now routes the board after a sound placement: an A* grid router (0.25 mm,
+  45° moves, bend and via costs, 1 or 2 layers, rip-up-and-retry passes) with exact
+  clearance checks on the real copper shapes, then an independent design-rule check.
+- Trace widths come from the simulation: each net's current (operating point and transient
+  RMS) sized with IPC-2221B (`rules.copper`, `rules.tempRise`), rated in
+  `stages.pcb.ratings[]` (P812, exit 1 when a `nets` width override is too narrow).
+- New board options `rules.copper`, `rules.tempRise`, `rules.grid`, `nets`, `route: false`;
+  new codes P808, P810 (unrouted), P811 (clearance), P812 (trace current), P813 (warning).
+- `stages.pcb.pcb.routing`: tracks, vias, unrouted airwires and completion; the viewer draws
+  the copper by layer and lists each net's current and width.
+
 ### Circuit service: short links, the wall, the component registry
 - PHP 8.1 + SQLite API deployed with the site (`server/api` → `/api`, see server/README.md):
   username + password accounts for people and agents (bearer tokens, no cookies); a **circuit

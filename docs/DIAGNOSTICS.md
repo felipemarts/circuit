@@ -24,7 +24,7 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `M6xx` | MCU runtime | firmware execution on a simulated microcontroller (M601–M649) |
 | `V701`–`V749` | VHDL compile / elaboration (pre-simulation) | syntax, unsupported constructs, types, hierarchy (src/vhdl) |
 | `V750`–`V799` | VHDL runtime | errors raised by compiled VHDL processes while simulating (src/vhdl) |
-| `P801`–`P809` | board layout (pcb stage) | footprints, pin → pad maps and placement checks of a bench with `tb.board` (src/pcb) |
+| `P801`–`P819` | board (pcb stage) | footprints, pin → pad maps and placement checks (P80x); autorouting, design rules and trace current (P81x) of a bench with `tb.board` (src/pcb) |
 | `P810`–`P899` | board routing / DRC (reserved) | autorouter and design-rule checks |
 
 ## Active codes
@@ -166,12 +166,15 @@ Mixed-signal notes:
   therefore point at the IC.
 - Codes D515–D549 are reserved for the mixed-signal runtime, F139 for bench-level digital lint.
 
-## Board layout codes (pcb stage, P801–P807)
+## Board codes (pcb stage, P801–P813)
 
 The pcb stage runs when a bench declares a board (`tb.board`); it is the last rung of the
-ladder (`--stage pcb` runs it alone after lint). Errors are structural (exit 2): the board
-cannot be built as laid out. `stages.pcb.pcb` carries the placements, the unplaced parts with
-a suggested free spot, and the ratsnest. Lengths in mm; see docs/PCB.md.
+ladder (`--stage pcb` runs it alone after lint). It checks the placement, then — when the
+placement is sound and the board does not say `route: false` — sizes every trace from the
+simulated current, autoroutes the board and checks the copper. Errors are structural (exit 2):
+the board cannot be built as laid out. P812 is a rating (exit 1) in `stages.pcb.ratings[]`.
+`stages.pcb.pcb` carries the placements, the unplaced parts with a suggested free spot, the
+ratsnest and `routing` (tracks, vias, unrouted airwires). Lengths in mm; see docs/PCB.md.
 
 | Code | Slug | Severity | When it fires |
 |--------|------|-----------|----------------|
@@ -182,6 +185,11 @@ a suggested free spot, and the ratsnest. Lengths in mm; see docs/PCB.md.
 | `P805` | not-placed | error | an on-board part has no position — the fix is a **mechanical** `tb.place(...)` patch at a free spot near the pads it connects to |
 | `P806` | off-board-without-connector | warning | an `{ offBoard: true }` part shares nets with on-board parts and none of those nets reaches a connector (placed source, `HDR-*`, `TERM-*`, `UNO-SHIELD`) |
 | `P807` | bad-pad-map | error | `tb.place({ pads })` names an unknown pin or pad, or the map puts two nets on one pad |
+| `P808` | unknown-net | error | `tb.board({ nets })` sets a width for a net the circuit does not have (name it with `tb.name`) |
+| `P810` | unrouted | error | the autorouter found no path for a connection — the airwires left are in `routing.unrouted` |
+| `P811` | clearance | error | the design-rule check measured copper of two nets closer than `rules.clearance`, copper too close to a hole, or a track/via closer than `rules.edgeClearance` to the edge |
+| `P812` | trace-current | fail (rating) | a trace carries more than its width allows per IPC-2221 (only with a `nets` width override: the stage sizes traces itself) — exit 1 |
+| `P813` | widths-not-current-checked | warning | the board was routed without a simulation (`--stage pcb`): widths are `rules.trace` / `nets`, nothing was rated |
 
 ## Datasheet ratings (R401–R404)
 
