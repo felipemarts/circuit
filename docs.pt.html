@@ -47,6 +47,7 @@
       <a href="app.pt.html">Visualizador</a>
       <a href="docs.pt.html" class="active">Docs</a>
       <a href="index.pt.html#examples">Exemplos</a>
+      <a href="wall.pt.html">Mural</a>
       <a href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener">GitHub</a>
       <div class="nav-row">
         <a href="docs.html" class="lang-switch" data-setlang="en" hreflang="en" title="English version">EN</a>
@@ -86,15 +87,16 @@
         <li><a href="#logic"><span class="n">08</span>CIs lógicos, 555 &amp; primitivas</a></li>
         <li><a href="#vhdl"><span class="n">09</span>Blocos VHDL</a></li>
         <li><a href="#mcu"><span class="n">10</span>Microcontroladores</a></li>
-        <li><a href="#assertions"><span class="n">11</span>Referência de asserções</a></li>
+        <li><a href="#pcb"><span class="n">11</span>PCB: placa &amp; roteamento</a></li>
+        <li><a href="#assertions"><span class="n">12</span>Referência de asserções</a></li>
         <li class="group">Ferramentas</li>
-        <li><a href="#share"><span class="n">12</span>Share links &amp; documento de circuito</a></li>
-        <li><a href="#cli"><span class="n">13</span>Referência da CLI</a></li>
-        <li><a href="#diagnostics"><span class="n">14</span>Diagnósticos</a></li>
+        <li><a href="#share"><span class="n">13</span>Share links &amp; documento de circuito</a></li>
+        <li><a href="#cli"><span class="n">14</span>Referência da CLI</a></li>
+        <li><a href="#diagnostics"><span class="n">15</span>Diagnósticos</a></li>
         <li class="group">Referência</li>
-        <li><a href="#catalog"><span class="n">15</span>Catálogo de peças reais</a></li>
-        <li><a href="#limitations"><span class="n">16</span>Limitações</a></li>
-        <li><a href="#agents"><span class="n">17</span>Para agentes de IA</a></li>
+        <li><a href="#catalog"><span class="n">16</span>Catálogo de peças reais</a></li>
+        <li><a href="#limitations"><span class="n">17</span>Limitações</a></li>
+        <li><a href="#agents"><span class="n">18</span>Para agentes de IA</a></li>
         <li class="empty" hidden>Nenhuma seção corresponde.</li>
       </ul>
       <div class="docs-side-foot">
@@ -130,7 +132,7 @@ $ npx circuitsvibe share my-circuit.bench.ts   # a link that opens the circuit i
       <ul class="list">
         <li><code>init [nome]</code> escreve <code>&lt;nome&gt;.bench.ts</code> (um driver de LED que passa como está) e um playbook <code>AGENTS.md</code> para o seu agente de código (um <code>AGENTS.md</code> existente nunca é tocado).</li>
         <li><code>verify</code> roda apenas os estágios sobre os quais o seu bench faz asserções; o lint sempre roda primeiro. O exit code é o veredito: <code>0</code> passou · <code>1</code> especificação não atendida · <code>2</code> circuito inválido · <code>3</code> erro de ferramenta.</li>
-        <li><code>share</code> imprime uma URL com o circuito inteiro no fragmento (<code>…/app.html#c=1.…</code>): sem upload, sem servidor. Abri-la mostra o esquemático e roda a simulação de novo no navegador.</li>
+        <li><code>share</code> imprime um link para o circuito: um link curto para o cache de circuitos quando você está logado (<code>…/app.html?c=&lt;id&gt;</code>, privado por 24 h, ou <code>--public</code> no mural); senão, o circuito inteiro no fragmento da URL (<code>…/app.html#c=1.…</code>, nada é enviado). Abri-lo mostra o esquemático e roda a simulação de novo no navegador.</li>
         <li>O alias curto <code>cvibe</code> aceita todos os comandos: <code>npx cvibe verify …</code>. Arquivos de bench não precisam de nada instalado — a própria CLI os transpila; <code>npm i -D circuitsvibe</code> só adiciona os tipos para o editor.</li>
       </ul>
 
@@ -522,7 +524,7 @@ const x1 = tb.add('X1', new MyResistor({ R: '2.2k' }));</code></pre>
         <div class="api"><div class="sig"><b>stamp</b>(ctx) · <b>ac</b>(ctx)</div><p><code>ctx.stampResistance(p1, p2, R)</code>, <code>stampConductance(p1, p2, g)</code>, <code>stampCapacitance(p1, p2, C)</code>, <code>stampCurrentSource(pPlus, pMinus, i)</code>, <code>stampVoltageSource(pPlus, pMinus, branch, v)</code>; leia <code>ctx.params</code>, <code>ctx.state</code>, <code>ctx.time</code>, <code>ctx.dt</code> e a última solução com <code>ctx.voltage(pin)</code>. O contexto AC acrescenta <code>stampAdmittance(p1, p2, re, im)</code> e <code>stampTransconductance(outP, outN, inP, inN, gm)</code>.</p></div>
         <div class="api"><div class="sig"><b>setup</b>(state) · <b>onStep</b>(ctx, dt) · <b>nonlinear</b></div><p><code>setup</code> inicializa <code>state</code> uma vez; <code>onStep</code> roda antes de <code>stamp</code> em cada passo do transitório. Defina <code>nonlinear: true</code> quando o stamp depende de tensões de nó, para que o Newton-Raphson itere.</p></div>
       </div>
-      <div class="callout warn"><strong>Peças customizadas são código.</strong> Elas não têm escalar varrível (<code>tb.param</code> / <code>--set</code> não se aplicam), e um bench que contenha uma não pode ser exportado nem compartilhado (<span class="bd bd-t">T013</span>): o documento de circuito carrega apenas tipos nativos.</div>
+      <div class="callout warn"><strong>Peças customizadas são código.</strong> Elas não têm escalar varrível (<code>tb.param</code> / <code>--set</code> não se aplicam). Para compartilhar um circuito que usa uma, ponha a definição no próprio módulo e exporte-a (<code>parts/ntc.part.ts</code>: <code>export default defineComponent({…})</code>); <code>share</code> e <code>export</code> passam a levar o código desse módulo. Uma definição escrita dentro do arquivo da bancada é <span class="bd bd-t">T013</span>. Quem roda um circuito com código customizado precisa de <code>--allow-code</code> (<span class="bd bd-t">T019</span>); o visualizador o roda isolado no worker de simulação. Veja <a href="#registry">o registro</a>.</div>
     </section>
 
     <!-- ============================================================ -->
@@ -1481,6 +1483,61 @@ export default bench('uno-button-interrupt', (tb) =&gt; {
     </section>
 
     <!-- ============================================================ -->
+    <!-- ============================================================ -->
+    <section id="pcb">
+      <h2>PCB: placa, posicionamento &amp; roteamento<a class="anchor" href="#pcb">#</a></h2>
+      <p>Uma bancada pode declarar a placa de circuito impresso em que é montada. O estágio <strong>pcb</strong>, o último degrau da escada (lint → op → dc → ac → tran → <strong>pcb</strong>), dá a cada componente um footprint e um mapa pino → pad, checa o posicionamento, dimensiona cada trilha pela <strong>corrente simulada</strong> (IPC-2221), <strong>roteia automaticamente</strong> a placa em uma ou duas camadas e checa o cobre contra as regras de projeto. Medidas em mm (ou <code>'0.1in'</code>, <code>'100mil'</code>), origem no canto inferior esquerdo, y para cima, <code>rot</code> em graus anti-horário; <code>x, y</code> é o centro dos pads do footprint.</p>
+      <div class="code has-head" data-copy>
+        <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span>bench/pcb/led-driver-board.bench.ts</span><span class="lang">TypeScript</span></div>
+        <pre><code data-lang="ts">import { bench, VoltageSource, Resistor, LED } from 'circuitsvibe';
+
+export default bench('led-driver-board', (tb) =&gt; {
+  const v1 = tb.add('V1', new VoltageSource(5));
+  const r1 = tb.add('R1', new Resistor('330'));
+  const d1 = tb.add('D1', new LED());
+  v1.pin('+').connect(r1.pin('1'));
+  r1.pin('2').connect(d1.pin('anode'));
+  d1.pin('cathode').connect(tb.gnd);
+  v1.pin('-').connect(tb.gnd);
+  tb.expect.op('D1.i').toBeWithin('5m', '15m');
+
+  tb.board({ width: 30, height: 20, holes: [{ x: 3, y: 3, d: 3.2 }, { x: 27, y: 17, d: 3.2 }] });
+  tb.place('V1', { x: 5, y: 12, rot: 90 });   // a source is a 2-pin header (pad 1 = +)
+  tb.place('R1', { x: 15, y: 10 });           // AXIAL-0.4 (board tech 'tht')
+  tb.place('D1', { x: 25, y: 8, rot: 90 });   // LED-5MM
+});</code></pre>
+      </div>
+      <div class="code has-head" data-copy>
+        <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span>npx circuitsvibe verify bench/pcb/led-driver-board.bench.ts</span><span class="lang">sh</span></div>
+        <pre><code data-lang="sh">  ✓ pcb   pass
+        ratings (datasheet absolute max, simulated): 3 checked on 3 parts, 0 exceeded · tightest passing: gnd Imax at 1%
+        board 30×20 mm, 2 layers, tht · 3 placed · routed 3/3 connections (100 %), 33.01 mm of track, 0 vias</code></pre>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Opção</th><th>Padrão</th><th>Significado</th></tr></thead>
+          <tbody>
+            <tr><td><code>width</code>, <code>height</code> · <code>outline</code> · <code>preset</code></td><td>—</td><td>um retângulo (com <code>cornerRadius</code>), um polígono, ou <code>'uno-shield'</code></td></tr>
+            <tr><td><code>layers</code> · <code>tech</code></td><td>2 · <code>'tht'</code></td><td>camadas de cobre (1 ou 2) · tecnologia de footprint das peças genéricas</td></tr>
+            <tr><td><code>holes</code></td><td>[]</td><td>furos de fixação <code>[{ x, y, d }]</code></td></tr>
+            <tr><td><code>rules.trace</code> · <code>rules.clearance</code> · <code>rules.edgeClearance</code></td><td>0,25 · 0,2 · 0,5</td><td>largura mínima de trilha · isolação entre cobres · distância do cobre à borda (mm)</td></tr>
+            <tr><td><code>rules.via</code> · <code>rules.grid</code></td><td>{ drill 0,3, diameter 0,6 } · 0,25</td><td>geometria da via · passo da grade do roteador</td></tr>
+            <tr><td><code>rules.copper</code> · <code>rules.tempRise</code></td><td>1 oz · 10 °C</td><td>para a capacidade de corrente das trilhas (IPC-2221)</td></tr>
+            <tr><td><code>nets</code> · <code>route</code></td><td>— · true</td><td>larguras por net <code>{ vcc: { width: 0.8 } }</code> · <code>false</code> = só posicionamento</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="list">
+        <li><strong>Footprints</strong>: peças do catálogo mantêm o encapsulamento e a numeração do datasheet (<code>Part('2N3904')</code> → TO-92); peças genéricas seguem <code>tb.board({ tech: 'tht' | 'smd' })</code>; CIs viram DIP-n ou SOIC-n; uma fonte é um conector de 2 pinos; <code>new ArduinoUno()</code> são os conectores do UNO-SHIELD (<code>tb.board({ preset: 'uno-shield' })</code>). <code>npx circuitsvibe catalog footprints</code> lista a biblioteca; <code>tb.place(id, { footprint, pads })</code> escolhe outro ou remapeia pinos.</li>
+        <li><strong>Posicionamento</strong>: toda peça é posicionada ou <code>{ offBoard: true }</code>. Peça sem posição é <span class="bd bd-t">P805</span>, com um patch <em>mecânico</em> de <code>tb.place</code> num lugar livre; sobreposição, peça fora do contorno ou sobre furo de fixação são P801/P802.</li>
+        <li><strong>Roteamento</strong>: um roteador A* em grade (0,25 mm, movimentos de 45°, custo de curva e de via) em uma ou duas camadas, net por net, com passadas de rip-up and retry. Cada movimento é checado nas formas reais do cobre, então o cobre mantém <code>rules.clearance</code> de outras nets e furos e <code>rules.edgeClearance</code> da borda; um DRC independente mede de novo (P811). Conexão sem caminho é <span class="bd bd-t">P810</span>, com a ligação que sobrou.</li>
+        <li><strong>Largura das trilhas pela simulação</strong>: a corrente de uma net é metade da soma das correntes dos seus pinos, no ponto de operação e como RMS do transitório. A largura é <code>rules.trace</code> (0,25 mm), alargada quando a IPC-2221 pede mais para <code>rules.copper</code> (1 oz) e <code>rules.tempRise</code> (10 °C): 2,8 A dá 1,3 mm. Cada net é avaliada como uma peça de datasheet em <code>stages.pcb.ratings[]</code> (<span class="bd bd-r">P812</span>, exit 1 quando <code>tb.board({ nets: { vcc: { width } } })</code> força uma trilha mais fina).</li>
+        <li><strong>RunRecord</strong>: <code>stages.pcb.pcb</code> tem <code>placed[]</code>, <code>unplaced[]</code>, o <code>ratsnest[]</code> e <code>routing</code> — por net <code>tracks[]</code> (<code>{ layer, width, points }</code>), <code>vias[]</code>, <code>current</code>, <code>width</code>, <code>complete</code> — mais <code>unrouted[]</code> e <code>stats.completion</code>. <code>--stage pcb</code> recheca e roteia só o layout, sem simular (larguras sem checagem de corrente: <span class="bd bd-t">P813</span>).</li>
+        <li><strong>Visualizador</strong>: o link de uma bancada com placa abre uma aba <strong>PCB</strong> com o contorno, os pads, as trilhas por camada, as vias, as conexões que faltaram e uma tabela com a corrente e a largura de cada net.</li>
+      </ul>
+      <p>Em seguida: saída Gerber, furação Excellon, BOM e pick-and-place, e uma visualização 3D da placa. Referência completa: <a href="https://github.com/felipemarts/circuit/blob/main/docs/PCB.md" target="_blank" rel="noopener">docs/PCB.md</a>.</p>
+    </section>
+
     <section id="assertions">
       <h2>Referência de asserções<a class="anchor" href="#assertions">#</a></h2>
       <p>Toda asserção mede uma <a href="#probes">sonda</a> e registra uma entrada (<code>a1</code>, <code>a2</code>, … em ordem de declaração) com a localização da chamada no fonte. Os matchers devolvem a expectativa, então eles se encadeiam. <strong>Matchers escalares</strong> — usados por op, dc e ac: <code>.toBeWithin(min, max)</code> · <code>.toBeCloseTo(value, absTol)</code> · <code>.toBeAbove(v)</code> · <code>.toBeBelow(v)</code>.</p>
@@ -1516,8 +1573,25 @@ $ npx circuitsvibe verify led-driver.circuit.json --json   # same RunRecord and 
 $ npx circuitsvibe share led-driver.bench.ts               # https://circuitsvibe.com/app.html#c=1.dZDNTs…
 $ npx circuitsvibe share led-driver.bench.ts --json        # { "url", "bytes", "warnings" }
 $ npx circuitsvibe verify led-driver.bench.ts --json --share   # RunRecord + "share": { "url", … }
-$ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…" -o back.circuit.json   # link → document</code></pre>
+$ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…" -o back.circuit.json   # link → document
+$ npx circuitsvibe register --user my-agent --kind agent   # once; password from --password, CIRCUITSVIBE_PASSWORD or stdin
+$ npx circuitsvibe share led-driver.bench.ts               # https://circuitsvibe.com/app.html?c=7GjfXLYBFW (private, 24 h)
+$ npx circuitsvibe share led-driver.bench.ts --public --title "LED driver" --tags led   # on the wall
+$ npx circuitsvibe share led-driver.bench.ts --link        # no account: https://circuitsvibe.com/app.html#c=1.dZDNTs…
+$ npx circuitsvibe circuits led --sort stars               # search the wall
+$ npx circuitsvibe component search thermistor             # the component registry, most used first
+$ npx circuitsvibe component add alice/ntc                 # → components/ntc.part.ts, pinned by SHA-256
+$ npx circuitsvibe component publish parts/ntc.part.ts --description "NTC thermistor"
+$ npx circuitsvibe verify "https://circuitsvibe.com/app.html?c=7GjfXLYBFW" --allow-code   # a link that carries custom code</code></pre>
       </div>
+
+      <h3 id="registry">Links curtos, o mural e o registro<a class="anchor" href="#registry">#</a></h3>
+      <p>O site roda um pequeno serviço (PHP + SQLite, <a href="https://github.com/felipemarts/circuit/blob/main/server/README.md" target="_blank" rel="noopener">server/README.md</a>) para circuitos grandes demais para uma URL e para compartilhar componentes. A conta é usuário e senha, para pessoas e agentes; a CLI guarda um token em <code>~/.circuitsvibe/credentials.json</code> (ou lê <code>CIRCUITSVIBE_TOKEN</code>).</p>
+      <ul class="list">
+        <li><strong>Cache de circuitos</strong>: logado, o <code>share</code> envia o documento do circuito e imprime <code>…/app.html?c=&lt;id&gt;</code> — de qualquer tamanho, com componentes customizados. Links <strong>privados</strong> (o padrão) funcionam para quem os tiver e expiram em <strong>24 h</strong>; <code>--public</code> põe o circuito no <a href="wall.pt.html">mural</a>, onde pessoas e agentes buscam e dão estrelas. <code>--link</code> mantém o link autocontido <code>#c=</code>.</li>
+        <li><strong>Registro de componentes</strong>: <code>component publish</code> guarda um módulo <code>defineComponent</code> como <code>&lt;usuário&gt;/&lt;nome&gt;</code>, com versões imutáveis identificadas pelo SHA-256 do código. <code>component add</code> o grava ao lado da sua bancada com um cabeçalho de procedência que a CLI confere. O <a href="wall.pt.html#components">ranking</a> conta os usuários distintos que compartilharam um circuito com o componente.</li>
+        <li><strong>Rodar código de outra pessoa</strong>: <code>verify &lt;link&gt;</code> de um circuito com componentes customizados é <span class="bd bd-t">T019</span> até você ler o código (<code>npx circuitsvibe open &lt;link&gt;</code>) e passar <code>--allow-code</code>. O visualizador roda esse código só dentro do worker de simulação, que não alcança a página nem o seu login.</li>
+      </ul>
 
       <h3 id="viewer">O visualizador<a class="anchor" href="#viewer">#</a></h3>
       <p>Abrir um share link em circuitsvibe.com desenha o esquemático automaticamente, <strong>roda o mesmo motor de novo no navegador</strong> — mesmo veredito, exit code e hash de netlist que a execução da CLI — e mostra as asserções, os diagnósticos, os limites, as formas de onda do osciloscópio, os gráficos de Bode e de varredura DC, o analisador lógico e a saída serial, com uma animação de corrente ao vivo. Todo botão "Abrir no visualizador" desta página é um link desses. O documento vive no <strong>fragmento</strong>, que os navegadores nunca enviam a um servidor: não há backend e nada é armazenado em lugar nenhum.</p>
@@ -1553,6 +1627,8 @@ $ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…" -o back.circ
             <tr><td><code>overrides</code></td><td>não</td><td>os valores de <code>--set</code> aplicados quando o documento foi feito (os params já os contêm)</td></tr>
             <tr><td><code>ratings</code></td><td>não</td><td>configurações de <code>tb.ratings(...)</code> quando não são as padrão: <code>{ enabled?, derate?, pd?, ignore? }</code></td></tr>
             <tr><td><code>sources[]</code></td><td>não</td><td>arquivos de texto embutidos <code>{ path, language, text }</code> — firmware de MCU e seus imports relativos, arquivos VHDL — para que um documento ou link reproduza a execução sem sistema de arquivos</td></tr>
+            <tr><td><code>definitions[]</code></td><td>não</td><td>componentes customizados usados por <code>components[].type</code>: <code>{ type, pins, source, export?, registry? }</code> — <code>source</code> é o módulo em <code>sources[]</code> que exporta o <code>defineComponent</code>; <code>registry</code> a referência publicada e o SHA-256</td></tr>
+            <tr><td><code>pcb</code></td><td>não</td><td><code>{ board, placements, footprints? }</code>: a placa, o posicionamento de cada componente e footprints customizados (veja <a href="#pcb">PCB</a>); as rotas são recalculadas a cada execução</td></tr>
             <tr><td><code>meta</code> · <code>layout</code></td><td>não</td><td><code>{ title?, description?, author? }</code> (definidos com <code>--title</code> etc., mantidos nos share links) · dicas de posicionamento do visualizador que nunca afetam a simulação</td></tr>
           </tbody>
         </table>
@@ -1561,7 +1637,7 @@ $ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…" -o back.circ
         <li>Todas as grandezas são números SI (ohm, F, H, V, A, s, Hz; dB e graus nas checagens AC) — sem strings de unidade. As chaves são ordenadas na forma canônica; os leitores não devem depender da ordem das chaves.</li>
         <li><strong>Ida e volta</strong>: para todo bench, o RunRecord do bench e o do seu documento são byte a byte idênticos (<code>npm run benches</code> garante isso, incluindo benches de MCU e VHDL). Por um share link só as localizações <code>at</code> são descartadas.</li>
         <li>Share link = <code>&lt;baseUrl&gt;#c=1.&lt;base64url(deflate-raw(utf8(JSON canônico)))&gt;</code>. O <code>1.</code> versiona a codificação (outras versões: <span class="bd bd-t">T017</span>); um link acima de 8 KiB funciona mas avisa (<span class="bd bd-t">T018</span>: apps de chat truncam), acima de 2 MiB falha (<span class="bd bd-t">T015</span>); um link malformado é <span class="bd bd-t">T016</span>. Benches típicos dão links de 340–560 caracteres.</li>
-        <li>Peças <code>defineComponent</code> são código e não podem ser compartilhadas (<span class="bd bd-t">T013</span>); o mesmo vale para um MCU com funções inline <code>{ setup, loop }</code>. Especificação e JSON Schema: <a href="https://github.com/felipemarts/circuit/blob/main/docs/CIRCUIT-FORMAT.md" target="_blank" rel="noopener">docs/CIRCUIT-FORMAT.md</a>, <code>schema/circuit.schema.json</code> (também exportado como <code>circuitsvibe/circuit.schema.json</code>).</li>
+        <li>Peças <code>defineComponent</code> viajam como o código do módulo que as exporta (<code>definitions[]</code> + <code>sources[]</code>); uma definição dentro do arquivo da bancada, ou um MCU com funções inline <code>{ setup, loop }</code>, não pode ser compartilhada (<span class="bd bd-t">T013</span>). Especificação e JSON Schema: <a href="https://github.com/felipemarts/circuit/blob/main/docs/CIRCUIT-FORMAT.md" target="_blank" rel="noopener">docs/CIRCUIT-FORMAT.md</a>, <code>schema/circuit.schema.json</code> (também exportado como <code>circuitsvibe/circuit.schema.json</code>).</li>
       </ul>
 
       <h3 id="python">A partir de outra linguagem<a class="anchor" href="#python">#</a></h3>
@@ -1750,6 +1826,27 @@ runLadder(benchFromDoc(back));                     // same RunRecord (locations 
           </tbody>
         </table>
       </div>
+      <h3 id="diag-p">PCB <span class="bd bd-t">Pxxx</span><a class="anchor" href="#diag-p">#</a></h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Código</th><th>Slug</th><th>Severidade</th><th>Quando dispara</th></tr></thead>
+          <tbody>
+            <tr><td><span class="bd bd-t">P801</span></td><td><code>outside-board</code></td><td class="sev-err">error</td><td>um courtyard sai do contorno, um pad fica mais perto da borda que <code>rules.edgeClearance</code>, ou um furo da placa está fora</td></tr>
+            <tr><td><span class="bd bd-t">P802</span></td><td><code>courtyard-overlap</code></td><td class="sev-err">error</td><td>courtyards se sobrepõem num lado, um pad furado fica sob uma peça do outro lado, ou uma peça está sobre um furo de fixação</td></tr>
+            <tr><td><span class="bd bd-t">P803</span></td><td><code>no-footprint</code></td><td class="sev-err">error</td><td>o componente não tem footprint físico (primitiva lógica, bloco VHDL, peça customizada) ou cita um desconhecido</td></tr>
+            <tr><td><span class="bd bd-t">P804</span></td><td><code>pin-without-pad</code></td><td class="sev-err">error</td><td>um pino conectado não tem pad no mapa pino → pad do footprint</td></tr>
+            <tr><td><span class="bd bd-t">P805</span></td><td><code>not-placed</code></td><td class="sev-err">error</td><td>uma peça da placa não tem posição — a correção é um patch mecânico de <code>tb.place</code> num lugar livre</td></tr>
+            <tr><td><span class="bd bd-t">P806</span></td><td><code>off-board-without-connector</code></td><td class="sev-warn">warning</td><td>uma peça fora da placa chega a ela sem conector nas suas nets</td></tr>
+            <tr><td><span class="bd bd-t">P807</span></td><td><code>bad-pad-map</code></td><td class="sev-err">error</td><td><code>tb.place({ pads })</code> cita pino ou pad desconhecido, ou põe duas nets num pad</td></tr>
+            <tr><td><span class="bd bd-t">P808</span></td><td><code>unknown-net</code></td><td class="sev-err">error</td><td><code>tb.board({ nets })</code> cita uma net que o circuito não tem</td></tr>
+            <tr><td><span class="bd bd-t">P810</span></td><td><code>unrouted</code></td><td class="sev-err">error</td><td>o autorroteador não achou caminho para uma conexão (ligações restantes em <code>routing.unrouted</code>)</td></tr>
+            <tr><td><span class="bd bd-t">P811</span></td><td><code>clearance</code></td><td class="sev-err">error</td><td>o DRC mediu cobre de duas nets, cobre e furo, ou cobre e borda mais perto que as regras</td></tr>
+            <tr><td><span class="bd bd-r">P812</span></td><td><code>trace-current</code></td><td class="sev-fail">fail</td><td>uma trilha conduz mais corrente do que a largura permite (IPC-2221; em <code>stages.pcb.ratings</code>, exit 1)</td></tr>
+            <tr><td><span class="bd bd-t">P813</span></td><td><code>widths-not-current-checked</code></td><td class="sev-warn">warning</td><td>a placa foi roteada sem simulação (<code>--stage pcb</code>)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
       <h3 id="diag-r">Limites de datasheet <span class="bd bd-r">Rxxx</span><a class="anchor" href="#diag-r">#</a></h3>
       <p>um <code>Part()</code> fora dos limites do seu datasheet — <code>stages.&lt;stage&gt;.ratings[]</code>, exit 1 (R411 é um aviso).</p>
       <div class="tbl-wrap tbl-diag">
@@ -1804,12 +1901,14 @@ runLadder(benchFromDoc(back));                     // same RunRecord (locations 
             <tr><td><span class="bd bd-t">T010</span></td><td><code>invalid-circuit-document</code></td><td class="sev-err">error</td><td>um documento de circuito (<code>.circuit.json</code> ou payload de share link) não é JSON, omite/erra o tipo de um campo, tem um campo desconhecido ou uma referência pendente — <code>evidence.path</code> é o JSON pointer (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T011</span></td><td><code>unsupported-circuit-schema</code></td><td class="sev-err">error</td><td>o <code>schema</code> do documento é uma versão de <code>circuitsvibe-circuit</code> que esta release não lê (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T012</span></td><td><code>unknown-component-type</code></td><td class="sev-err">error</td><td>um tipo de componente do documento não é nativo e nenhuma definição foi fornecida (exit 3)</td></tr>
-            <tr><td><span class="bd bd-t">T013</span></td><td><code>custom-component-not-serializable</code></td><td class="sev-err">error</td><td><code>export</code> / <code>share</code> / <code>verify --share</code> num bench com peças <code>defineComponent</code> (nomeia-as; não há registro na CLI) — exit 3, ou <code>share.error</code> sob <code>verify --share</code></td></tr>
+            <tr><td><span class="bd bd-t">T013</span></td><td><code>custom-component-not-serializable</code></td><td class="sev-err">error</td><td><code>export</code> / <code>share</code> / <code>verify --share</code> num bench cuja peça <code>defineComponent</code> não é exportada pelo próprio módulo (nomeia-a) — exit 3, ou <code>share.error</code> sob <code>verify --share</code></td></tr>
             <tr><td><span class="bd bd-t">T014</span></td><td><code>invalid-component</code></td><td class="sev-err">error</td><td>os params de um componente do documento não constroem seu tipo, um param seria ignorado, ou seus pinos não são exatamente os pinos canônicos do tipo (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T015</span></td><td><code>share-payload-too-large</code></td><td class="sev-err">error</td><td>share link acima de 2 MiB (limite de URL do Chromium), ou um payload que infla acima de 16 MiB ao decodificar (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T016</span></td><td><code>malformed-share-link</code></td><td class="sev-err">error</td><td>sem payload <code>#c=</code>, não é <code>&lt;versão&gt;.&lt;base64url&gt;</code>, base64url inválido, não é deflate-raw, não é JSON UTF-8 (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T017</span></td><td><code>unsupported-share-encoding</code></td><td class="sev-err">error</td><td>versão de codificação do payload do share diferente de <code>1</code> (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T018</span></td><td><code>long-share-link</code></td><td class="sev-warn">warning</td><td>share link com mais de 8 KiB — válido, mas alguns apps de chat truncam links longos (<code>warnings[]</code> de <code>share --json</code>)</td></tr>
+            <tr><td><span class="bd bd-t">T019</span></td><td><code>custom-code-not-allowed</code></td><td class="sev-err">error</td><td>um documento ou link traz código de componente customizado e faltou <code>--allow-code</code> (exit 3): leia o código (<code>open</code>) e rode de novo com a opção</td></tr>
+            <tr><td><span class="bd bd-t">T020</span></td><td><code>circuit-service-error</code></td><td class="sev-err">error</td><td>o serviço de circuitos / componentes recusou o pedido ou está fora do ar (status e código na mensagem; exit 3)</td></tr>
           </tbody>
         </table>
       </div>
@@ -1962,7 +2061,7 @@ runLadder(benchFromDoc(back));                     // same RunRecord (locations 
             <tr><td>CIs lógicos</td><td>o tpd é fixado na alimentação em t = 0 (Rout e limiares a acompanham); um CI fica desligado após um brown-out; níveis lógicos nunca mudam dentro da análise AC; sem corrente de alimentação do núcleo (Icc), ground bounce ou capacitância de entrada; 74HC74 com ~PRE e ~CLR ambos em baixo dá X</td></tr>
             <tr><td>Microcontroladores</td><td>tempo de instrução (tempo zero entre awaits), preempção de ISR, interrupções por nível e por mudança de pino, tempo de UART e entrada serial a partir do bench, tempo de conversão do ADC, modos de sleep / watchdog, corrente de alimentação do núcleo, energização atrasada e reinício após brown-out, <code>pulseIn</code> / <code>shiftOut</code> / Wire (I2C) / SPI / EEPROM / Wi-Fi, <code>analogWriteFrequency</code> / canais LEDC; <code>--set</code> e <code>tb.param</code> não podem ter um MCU como alvo; o modelo da placa Uno não tem regulador, ponte USB nem LED on-board</td></tr>
             <tr><td>VHDL</td><td><code>wait for</code> / <code>wait on</code>, laços <code>while</code>, funções e procedimentos, pacotes, records, arrays e memórias, <code>real</code> / <code>bit</code> / <code>character</code>, <code>textio</code>, <code>std_logic_arith</code>; inteiros não dão a volta (V751)</td></tr>
-            <tr><td>Documentos e compartilhamento</td><td>peças <code>defineComponent</code> e firmware de MCU inline não podem ser exportados nem compartilhados (T013); benches não carregam layout do visualizador</td></tr>
+            <tr><td>Documentos e compartilhamento</td><td>um <code>defineComponent</code> escrito dentro do arquivo da bancada e firmware de MCU inline não podem ser exportados nem compartilhados (T013); benches não carregam layout do visualizador; links curtos privados expiram em 24 h</td></tr>
           </tbody>
         </table>
       </div>

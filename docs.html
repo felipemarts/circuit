@@ -47,6 +47,7 @@
       <a href="app.html">Viewer</a>
       <a href="docs.html" class="active">Docs</a>
       <a href="index.html#examples">Examples</a>
+      <a href="wall.html">Wall</a>
       <a href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener">GitHub</a>
       <div class="nav-row">
         <a href="docs.pt.html" class="lang-switch" data-setlang="pt" hreflang="pt-BR" title="Versão em português">PT</a>
@@ -86,15 +87,16 @@
         <li><a href="#logic"><span class="n">08</span>Logic ICs, 555 &amp; primitives</a></li>
         <li><a href="#vhdl"><span class="n">09</span>VHDL blocks</a></li>
         <li><a href="#mcu"><span class="n">10</span>Microcontrollers</a></li>
-        <li><a href="#assertions"><span class="n">11</span>Assertions reference</a></li>
+        <li><a href="#pcb"><span class="n">11</span>PCB: board &amp; routing</a></li>
+        <li><a href="#assertions"><span class="n">12</span>Assertions reference</a></li>
         <li class="group">Tooling</li>
-        <li><a href="#share"><span class="n">12</span>Share links &amp; circuit document</a></li>
-        <li><a href="#cli"><span class="n">13</span>CLI reference</a></li>
-        <li><a href="#diagnostics"><span class="n">14</span>Diagnostics</a></li>
+        <li><a href="#share"><span class="n">13</span>Share links &amp; circuit document</a></li>
+        <li><a href="#cli"><span class="n">14</span>CLI reference</a></li>
+        <li><a href="#diagnostics"><span class="n">15</span>Diagnostics</a></li>
         <li class="group">Reference</li>
-        <li><a href="#catalog"><span class="n">15</span>Catalog of real parts</a></li>
-        <li><a href="#limitations"><span class="n">16</span>Limitations</a></li>
-        <li><a href="#agents"><span class="n">17</span>For AI agents</a></li>
+        <li><a href="#catalog"><span class="n">16</span>Catalog of real parts</a></li>
+        <li><a href="#limitations"><span class="n">17</span>Limitations</a></li>
+        <li><a href="#agents"><span class="n">18</span>For AI agents</a></li>
         <li class="empty" hidden>No section matches.</li>
       </ul>
       <div class="docs-side-foot">
@@ -130,7 +132,7 @@ $ npx circuitsvibe share my-circuit.bench.ts   # a link that opens the circuit i
       <ul class="list">
         <li><code>init [name]</code> writes <code>&lt;name&gt;.bench.ts</code> (an LED driver that passes as-is) and an <code>AGENTS.md</code> playbook for your coding agent (an existing <code>AGENTS.md</code> is never touched).</li>
         <li><code>verify</code> runs only the stages your bench asserts on; lint always runs first. The exit code is the verdict: <code>0</code> pass · <code>1</code> spec not met · <code>2</code> invalid circuit · <code>3</code> tooling error.</li>
-        <li><code>share</code> prints a URL with the whole circuit in its fragment (<code>…/app.html#c=1.…</code>): no upload, no server. Opening it shows the schematic and re-runs the simulation in the browser.</li>
+        <li><code>share</code> prints a link to the circuit: a short link to the circuit cache when you are logged in (<code>…/app.html?c=&lt;id&gt;</code>, private for 24 h, or <code>--public</code> on the wall), otherwise the whole circuit in the URL fragment (<code>…/app.html#c=1.…</code>, nothing uploaded). Opening it shows the schematic and re-runs the simulation in the browser.</li>
         <li>The short alias <code>cvibe</code> accepts every command: <code>npx cvibe verify …</code>. Bench files need nothing installed — the CLI transpiles them itself; <code>npm i -D circuitsvibe</code> only adds editor types.</li>
       </ul>
 
@@ -522,7 +524,7 @@ const x1 = tb.add('X1', new MyResistor({ R: '2.2k' }));</code></pre>
         <div class="api"><div class="sig"><b>stamp</b>(ctx) · <b>ac</b>(ctx)</div><p><code>ctx.stampResistance(p1, p2, R)</code>, <code>stampConductance(p1, p2, g)</code>, <code>stampCapacitance(p1, p2, C)</code>, <code>stampCurrentSource(pPlus, pMinus, i)</code>, <code>stampVoltageSource(pPlus, pMinus, branch, v)</code>; read <code>ctx.params</code>, <code>ctx.state</code>, <code>ctx.time</code>, <code>ctx.dt</code> and the last solution with <code>ctx.voltage(pin)</code>. The AC context adds <code>stampAdmittance(p1, p2, re, im)</code> and <code>stampTransconductance(outP, outN, inP, inN, gm)</code>.</p></div>
         <div class="api"><div class="sig"><b>setup</b>(state) · <b>onStep</b>(ctx, dt) · <b>nonlinear</b></div><p><code>setup</code> initialises <code>state</code> once; <code>onStep</code> runs before <code>stamp</code> at each transient step. Set <code>nonlinear: true</code> when the stamp depends on node voltages so Newton-Raphson iterates.</p></div>
       </div>
-      <div class="callout warn"><strong>Custom parts are code.</strong> They have no sweepable scalar (<code>tb.param</code> / <code>--set</code> do not apply), and a bench containing one cannot be exported or shared (<span class="bd bd-t">T013</span>): the circuit document carries only built-in types.</div>
+      <div class="callout warn"><strong>Custom parts are code.</strong> They have no sweepable scalar (<code>tb.param</code> / <code>--set</code> do not apply). To share a circuit that uses one, put the definition in its own module and export it (<code>parts/ntc.part.ts</code>: <code>export default defineComponent({…})</code>); <code>share</code> and <code>export</code> then embed that module’s source. A definition written inside the bench file is <span class="bd bd-t">T013</span>. Anyone who runs a circuit carrying custom code needs <code>--allow-code</code> (<span class="bd bd-t">T019</span>); the viewer runs it isolated in its simulation worker. See <a href="#registry">the registry</a>.</div>
     </section>
 
     <!-- ============================================================ -->
@@ -1481,6 +1483,61 @@ export default bench('uno-button-interrupt', (tb) =&gt; {
     </section>
 
     <!-- ============================================================ -->
+    <!-- ============================================================ -->
+    <section id="pcb">
+      <h2>PCB: board, placement &amp; routing<a class="anchor" href="#pcb">#</a></h2>
+      <p>A bench can declare the printed circuit board it is built on. The <strong>pcb</strong> stage, the last rung of the ladder (lint → op → dc → ac → tran → <strong>pcb</strong>), gives every component a footprint and a pin → pad map, checks the placement, sizes every trace from the <strong>simulated current</strong> (IPC-2221), <strong>autoroutes</strong> the board on one or two layers and checks the copper against the design rules. Lengths in mm (or <code>'0.1in'</code>, <code>'100mil'</code>), origin at the board’s lower-left corner, y up, <code>rot</code> in degrees counter-clockwise; <code>x, y</code> is the centre of the footprint’s pads.</p>
+      <div class="code has-head" data-copy>
+        <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span>bench/pcb/led-driver-board.bench.ts</span><span class="lang">TypeScript</span></div>
+        <pre><code data-lang="ts">import { bench, VoltageSource, Resistor, LED } from 'circuitsvibe';
+
+export default bench('led-driver-board', (tb) =&gt; {
+  const v1 = tb.add('V1', new VoltageSource(5));
+  const r1 = tb.add('R1', new Resistor('330'));
+  const d1 = tb.add('D1', new LED());
+  v1.pin('+').connect(r1.pin('1'));
+  r1.pin('2').connect(d1.pin('anode'));
+  d1.pin('cathode').connect(tb.gnd);
+  v1.pin('-').connect(tb.gnd);
+  tb.expect.op('D1.i').toBeWithin('5m', '15m');
+
+  tb.board({ width: 30, height: 20, holes: [{ x: 3, y: 3, d: 3.2 }, { x: 27, y: 17, d: 3.2 }] });
+  tb.place('V1', { x: 5, y: 12, rot: 90 });   // a source is a 2-pin header (pad 1 = +)
+  tb.place('R1', { x: 15, y: 10 });           // AXIAL-0.4 (board tech 'tht')
+  tb.place('D1', { x: 25, y: 8, rot: 90 });   // LED-5MM
+});</code></pre>
+      </div>
+      <div class="code has-head" data-copy>
+        <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span>npx circuitsvibe verify bench/pcb/led-driver-board.bench.ts</span><span class="lang">sh</span></div>
+        <pre><code data-lang="sh">  ✓ pcb   pass
+        ratings (datasheet absolute max, simulated): 3 checked on 3 parts, 0 exceeded · tightest passing: gnd Imax at 1%
+        board 30×20 mm, 2 layers, tht · 3 placed · routed 3/3 connections (100 %), 33.01 mm of track, 0 vias</code></pre>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Option</th><th>Default</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>width</code>, <code>height</code> · <code>outline</code> · <code>preset</code></td><td>—</td><td>a rectangle (with <code>cornerRadius</code>), a polygon, or <code>'uno-shield'</code></td></tr>
+            <tr><td><code>layers</code> · <code>tech</code></td><td>2 · <code>'tht'</code></td><td>copper layers (1 or 2) · footprint technology of generic parts</td></tr>
+            <tr><td><code>holes</code></td><td>[]</td><td>mounting holes <code>[{ x, y, d }]</code></td></tr>
+            <tr><td><code>rules.trace</code> · <code>rules.clearance</code> · <code>rules.edgeClearance</code></td><td>0.25 · 0.2 · 0.5</td><td>minimum trace width · copper clearance · copper-to-edge distance (mm)</td></tr>
+            <tr><td><code>rules.via</code> · <code>rules.grid</code></td><td>{ drill 0.3, diameter 0.6 } · 0.25</td><td>via geometry · router grid pitch</td></tr>
+            <tr><td><code>rules.copper</code> · <code>rules.tempRise</code></td><td>1 oz · 10 °C</td><td>for the current capacity of the traces (IPC-2221)</td></tr>
+            <tr><td><code>nets</code> · <code>route</code></td><td>— · true</td><td>per-net widths <code>{ vcc: { width: 0.8 } }</code> · <code>false</code> = placement only</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="list">
+        <li><strong>Footprints</strong>: catalog parts keep their datasheet package and pin numbers (<code>Part('2N3904')</code> → TO-92); generic parts follow <code>tb.board({ tech: 'tht' | 'smd' })</code>; ICs become DIP-n or SOIC-n; a source is a 2-pin header; <code>new ArduinoUno()</code> is the UNO-SHIELD headers (<code>tb.board({ preset: 'uno-shield' })</code>). <code>npx circuitsvibe catalog footprints</code> lists the library; <code>tb.place(id, { footprint, pads })</code> picks another one or remaps pins.</li>
+        <li><strong>Placement</strong>: every part is placed or <code>{ offBoard: true }</code>. An unplaced part is <span class="bd bd-t">P805</span> with a <em>mechanical</em> <code>tb.place</code> patch at a free spot; overlaps, parts off the outline and parts on mounting holes are P801/P802.</li>
+        <li><strong>Routing</strong>: an A* grid router (0.25 mm, 45° moves, bend and via costs) on one or two layers, net by net, with rip-up-and-retry passes. Every move is checked on the real copper shapes, so the copper keeps <code>rules.clearance</code> from other nets and holes and <code>rules.edgeClearance</code> from the edge; an independent design-rule check measures it again (P811). A connection with no path is <span class="bd bd-t">P810</span> with the airwire left.</li>
+        <li><strong>Trace widths from the simulation</strong>: a net’s current is half the sum of its pins’ currents, at the operating point and as the transient RMS. Its width is <code>rules.trace</code> (0.25 mm), widened when IPC-2221 needs more for <code>rules.copper</code> (1 oz) and <code>rules.tempRise</code> (10 °C): 2.8 A gets 1.3 mm. Each net is rated like a datasheet part in <code>stages.pcb.ratings[]</code> (<span class="bd bd-r">P812</span>, exit 1 when <code>tb.board({ nets: { vcc: { width } } })</code> forces a narrower trace).</li>
+        <li><strong>RunRecord</strong>: <code>stages.pcb.pcb</code> has <code>placed[]</code>, <code>unplaced[]</code>, the <code>ratsnest[]</code> and <code>routing</code> — per net <code>tracks[]</code> (<code>{ layer, width, points }</code>), <code>vias[]</code>, <code>current</code>, <code>width</code>, <code>complete</code> — plus <code>unrouted[]</code> and <code>stats.completion</code>. <code>--stage pcb</code> re-checks and routes the layout alone, without simulating (widths are not current-checked: <span class="bd bd-t">P813</span>).</li>
+        <li><strong>Viewer</strong>: a share link of a bench with a board opens a <strong>PCB</strong> tab with the outline, pads, tracks by layer, vias, the connections left and a table of each net’s current and width.</li>
+      </ul>
+      <p>Next: Gerber, Excellon drill, BOM and pick-and-place output, and a 3D view of the board. Full reference: <a href="https://github.com/felipemarts/circuit/blob/main/docs/PCB.md" target="_blank" rel="noopener">docs/PCB.md</a>.</p>
+    </section>
+
     <section id="assertions">
       <h2>Assertions reference<a class="anchor" href="#assertions">#</a></h2>
       <p>Every assertion measures a <a href="#probes">probe</a> and records one entry (<code>a1</code>, <code>a2</code>, … in declaration order) with the source location of the call. Matchers return the expectation, so they chain. <strong>Scalar matchers</strong> — used by op, dc and ac: <code>.toBeWithin(min, max)</code> · <code>.toBeCloseTo(value, absTol)</code> · <code>.toBeAbove(v)</code> · <code>.toBeBelow(v)</code>.</p>
@@ -1516,8 +1573,25 @@ $ npx circuitsvibe verify led-driver.circuit.json --json   # same RunRecord and 
 $ npx circuitsvibe share led-driver.bench.ts               # https://circuitsvibe.com/app.html#c=1.dZDNTs…
 $ npx circuitsvibe share led-driver.bench.ts --json        # { "url", "bytes", "warnings" }
 $ npx circuitsvibe verify led-driver.bench.ts --json --share   # RunRecord + "share": { "url", … }
-$ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…" -o back.circuit.json   # link → document</code></pre>
+$ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…" -o back.circuit.json   # link → document
+$ npx circuitsvibe register --user my-agent --kind agent   # once; password from --password, CIRCUITSVIBE_PASSWORD or stdin
+$ npx circuitsvibe share led-driver.bench.ts               # https://circuitsvibe.com/app.html?c=7GjfXLYBFW (private, 24 h)
+$ npx circuitsvibe share led-driver.bench.ts --public --title "LED driver" --tags led   # on the wall
+$ npx circuitsvibe share led-driver.bench.ts --link        # no account: https://circuitsvibe.com/app.html#c=1.dZDNTs…
+$ npx circuitsvibe circuits led --sort stars               # search the wall
+$ npx circuitsvibe component search thermistor             # the component registry, most used first
+$ npx circuitsvibe component add alice/ntc                 # → components/ntc.part.ts, pinned by SHA-256
+$ npx circuitsvibe component publish parts/ntc.part.ts --description "NTC thermistor"
+$ npx circuitsvibe verify "https://circuitsvibe.com/app.html?c=7GjfXLYBFW" --allow-code   # a link that carries custom code</code></pre>
       </div>
+
+      <h3 id="registry">Short links, the wall and the registry<a class="anchor" href="#registry">#</a></h3>
+      <p>The site runs a small service (PHP + SQLite, <a href="https://github.com/felipemarts/circuit/blob/main/server/README.md" target="_blank" rel="noopener">server/README.md</a>) for circuits that are too big for a URL and for sharing components. Accounts are a username and a password, for people and agents alike; the CLI keeps a bearer token in <code>~/.circuitsvibe/credentials.json</code> (or reads <code>CIRCUITSVIBE_TOKEN</code>).</p>
+      <ul class="list">
+        <li><strong>Circuit cache</strong>: logged in, <code>share</code> uploads the circuit document and prints <code>…/app.html?c=&lt;id&gt;</code> — any size, custom components included. <strong>Private</strong> links (the default) work for anyone who has them and expire after <strong>24 h</strong>; <code>--public</code> puts the circuit on the <a href="wall.html">wall</a>, where people and agents search it and give stars. <code>--link</code> keeps the self-contained <code>#c=</code> link.</li>
+        <li><strong>Component registry</strong>: <code>component publish</code> stores a <code>defineComponent</code> module as <code>&lt;user&gt;/&lt;name&gt;</code> with immutable versions identified by the SHA-256 of their source. <code>component add</code> writes it next to your bench with a provenance header the CLI verifies. The <a href="wall.html#components">ranking</a> counts the distinct users who shared a circuit with the component.</li>
+        <li><strong>Running someone else’s code</strong>: <code>verify &lt;link&gt;</code> of a circuit that carries custom components is <span class="bd bd-t">T019</span> until you read the sources (<code>npx circuitsvibe open &lt;link&gt;</code>) and pass <code>--allow-code</code>. The viewer runs that code only inside its simulation worker, which cannot reach the page or your login.</li>
+      </ul>
 
       <h3 id="viewer">The viewer<a class="anchor" href="#viewer">#</a></h3>
       <p>Opening a share link at circuitsvibe.com draws the schematic automatically, <strong>re-runs the same engine in the browser</strong> — same verdict, exit code and netlist hash as the CLI run — and shows the assertions, diagnostics, ratings, scope waveforms, Bode and DC-sweep plots, the logic analyzer and the serial output, with a live current animation. Every "Open in viewer" button on this page is such a link. The document lives in the <strong>fragment</strong>, which browsers never send to a server: there is no backend and nothing is stored anywhere.</p>
@@ -1553,6 +1627,8 @@ $ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…" -o back.circ
             <tr><td><code>overrides</code></td><td>no</td><td>the <code>--set</code> values applied when the document was made (params already contain them)</td></tr>
             <tr><td><code>ratings</code></td><td>no</td><td><code>tb.ratings(...)</code> settings when not the defaults: <code>{ enabled?, derate?, pd?, ignore? }</code></td></tr>
             <tr><td><code>sources[]</code></td><td>no</td><td>embedded text files <code>{ path, language, text }</code> — MCU firmware and its relative imports, VHDL files — so a document or link reproduces the run without a file system</td></tr>
+            <tr><td><code>definitions[]</code></td><td>no</td><td>custom components used by <code>components[].type</code>: <code>{ type, pins, source, export?, registry? }</code> — <code>source</code> is the module in <code>sources[]</code> that exports the <code>defineComponent</code>; <code>registry</code> its published ref and SHA-256</td></tr>
+            <tr><td><code>pcb</code></td><td>no</td><td><code>{ board, placements, footprints? }</code>: the board, the placement of every component and custom footprints (see <a href="#pcb">PCB</a>); routes are recomputed on every run</td></tr>
             <tr><td><code>meta</code> · <code>layout</code></td><td>no</td><td><code>{ title?, description?, author? }</code> (set with <code>--title</code> etc., kept in share links) · viewer placement hints that never affect simulation</td></tr>
           </tbody>
         </table>
@@ -1561,7 +1637,7 @@ $ npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…" -o back.circ
         <li>All quantities are SI numbers (ohm, F, H, V, A, s, Hz; dB and degrees in AC checks) — no unit strings. Keys are sorted in the canonical form; readers must not depend on key order.</li>
         <li><strong>Round trip</strong>: for every bench, the RunRecord of the bench and of its document are byte-identical (<code>npm run benches</code> enforces it, MCU and VHDL benches included). Through a share link only the <code>at</code> locations are dropped.</li>
         <li>Share link = <code>&lt;baseUrl&gt;#c=1.&lt;base64url(deflate-raw(utf8(canonical JSON)))&gt;</code>. The <code>1.</code> versions the encoding (other versions: <span class="bd bd-t">T017</span>); a link above 8 KiB works but warns (<span class="bd bd-t">T018</span>: chat apps truncate), above 2 MiB fails (<span class="bd bd-t">T015</span>); a malformed link is <span class="bd bd-t">T016</span>. Typical benches give links of 340–560 characters.</li>
-        <li><code>defineComponent</code> parts are code and cannot be shared (<span class="bd bd-t">T013</span>); so is an MCU given inline <code>{ setup, loop }</code> functions. Spec and JSON Schema: <a href="https://github.com/felipemarts/circuit/blob/main/docs/CIRCUIT-FORMAT.md" target="_blank" rel="noopener">docs/CIRCUIT-FORMAT.md</a>, <code>schema/circuit.schema.json</code> (also exported as <code>circuitsvibe/circuit.schema.json</code>).</li>
+        <li><code>defineComponent</code> parts travel as the source of the module that exports them (<code>definitions[]</code> + <code>sources[]</code>); a definition inside the bench file, or an MCU given inline <code>{ setup, loop }</code> functions, cannot be shared (<span class="bd bd-t">T013</span>). Spec and JSON Schema: <a href="https://github.com/felipemarts/circuit/blob/main/docs/CIRCUIT-FORMAT.md" target="_blank" rel="noopener">docs/CIRCUIT-FORMAT.md</a>, <code>schema/circuit.schema.json</code> (also exported as <code>circuitsvibe/circuit.schema.json</code>).</li>
       </ul>
 
       <h3 id="python">From another language<a class="anchor" href="#python">#</a></h3>
@@ -1750,6 +1826,27 @@ runLadder(benchFromDoc(back));                     // same RunRecord (locations 
           </tbody>
         </table>
       </div>
+      <h3 id="diag-p">PCB <span class="bd bd-t">Pxxx</span><a class="anchor" href="#diag-p">#</a></h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Slug</th><th>Severity</th><th>When it fires</th></tr></thead>
+          <tbody>
+            <tr><td><span class="bd bd-t">P801</span></td><td><code>outside-board</code></td><td class="sev-err">error</td><td>a courtyard sticks out of the outline, a pad is closer to the edge than <code>rules.edgeClearance</code>, or a board hole is outside</td></tr>
+            <tr><td><span class="bd bd-t">P802</span></td><td><code>courtyard-overlap</code></td><td class="sev-err">error</td><td>courtyards overlap on one side, a drilled pad is under a part on the other side, or a part sits on a mounting hole</td></tr>
+            <tr><td><span class="bd bd-t">P803</span></td><td><code>no-footprint</code></td><td class="sev-err">error</td><td>the component has no physical footprint (logic primitive, VHDL block, custom part) or names an unknown one</td></tr>
+            <tr><td><span class="bd bd-t">P804</span></td><td><code>pin-without-pad</code></td><td class="sev-err">error</td><td>a connected pin has no pad in the footprint’s pin → pad map</td></tr>
+            <tr><td><span class="bd bd-t">P805</span></td><td><code>not-placed</code></td><td class="sev-err">error</td><td>an on-board part has no position — the fix is a mechanical <code>tb.place</code> patch at a free spot</td></tr>
+            <tr><td><span class="bd bd-t">P806</span></td><td><code>off-board-without-connector</code></td><td class="sev-warn">warning</td><td>an off-board part reaches the board with no connector on its nets</td></tr>
+            <tr><td><span class="bd bd-t">P807</span></td><td><code>bad-pad-map</code></td><td class="sev-err">error</td><td><code>tb.place({ pads })</code> names an unknown pin or pad, or puts two nets on one pad</td></tr>
+            <tr><td><span class="bd bd-t">P808</span></td><td><code>unknown-net</code></td><td class="sev-err">error</td><td><code>tb.board({ nets })</code> names a net the circuit does not have</td></tr>
+            <tr><td><span class="bd bd-t">P810</span></td><td><code>unrouted</code></td><td class="sev-err">error</td><td>the autorouter found no path for a connection (airwires left in <code>routing.unrouted</code>)</td></tr>
+            <tr><td><span class="bd bd-t">P811</span></td><td><code>clearance</code></td><td class="sev-err">error</td><td>the design-rule check measured copper of two nets, copper and a hole, or copper and the edge closer than the rules</td></tr>
+            <tr><td><span class="bd bd-r">P812</span></td><td><code>trace-current</code></td><td class="sev-fail">fail</td><td>a trace carries more current than its width allows (IPC-2221; in <code>stages.pcb.ratings</code>, exit 1)</td></tr>
+            <tr><td><span class="bd bd-t">P813</span></td><td><code>widths-not-current-checked</code></td><td class="sev-warn">warning</td><td>the board was routed without a simulation (<code>--stage pcb</code>)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
       <h3 id="diag-r">Datasheet ratings <span class="bd bd-r">Rxxx</span><a class="anchor" href="#diag-r">#</a></h3>
       <p>a <code>Part()</code> outside its datasheet limits — <code>stages.&lt;stage&gt;.ratings[]</code>, exit 1 (R411 is a warning).</p>
       <div class="tbl-wrap tbl-diag">
@@ -1804,12 +1901,14 @@ runLadder(benchFromDoc(back));                     // same RunRecord (locations 
             <tr><td><span class="bd bd-t">T010</span></td><td><code>invalid-circuit-document</code></td><td class="sev-err">error</td><td>a circuit document (<code>.circuit.json</code> or share-link payload) is not JSON, misses/mistypes a field, has an unknown field, or has a dangling reference — <code>evidence.path</code> is the JSON pointer (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T011</span></td><td><code>unsupported-circuit-schema</code></td><td class="sev-err">error</td><td>the document's <code>schema</code> is a <code>circuitsvibe-circuit</code> version this release does not read (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T012</span></td><td><code>unknown-component-type</code></td><td class="sev-err">error</td><td>a document component type is not built-in and no definition was supplied (exit 3)</td></tr>
-            <tr><td><span class="bd bd-t">T013</span></td><td><code>custom-component-not-serializable</code></td><td class="sev-err">error</td><td><code>export</code> / <code>share</code> / <code>verify --share</code> on a bench with <code>defineComponent</code> parts (names them; no registry in the CLI) — exit 3, or <code>share.error</code> under <code>verify --share</code></td></tr>
+            <tr><td><span class="bd bd-t">T013</span></td><td><code>custom-component-not-serializable</code></td><td class="sev-err">error</td><td><code>export</code> / <code>share</code> / <code>verify --share</code> on a bench whose <code>defineComponent</code> part is not exported from its own module (names it) — exit 3, or <code>share.error</code> under <code>verify --share</code></td></tr>
             <tr><td><span class="bd bd-t">T014</span></td><td><code>invalid-component</code></td><td class="sev-err">error</td><td>a document component's params do not build its type, a param would be ignored, or its pins are not exactly the type's canonical pins (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T015</span></td><td><code>share-payload-too-large</code></td><td class="sev-err">error</td><td>share link above 2 MiB (Chromium's URL limit), or a payload inflating above 16 MiB on decode (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T016</span></td><td><code>malformed-share-link</code></td><td class="sev-err">error</td><td>no <code>#c=</code> payload, not <code>&lt;version&gt;.&lt;base64url&gt;</code>, bad base64url, not deflate-raw, not UTF-8 JSON (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T017</span></td><td><code>unsupported-share-encoding</code></td><td class="sev-err">error</td><td>share payload encoding version other than <code>1</code> (exit 3)</td></tr>
             <tr><td><span class="bd bd-t">T018</span></td><td><code>long-share-link</code></td><td class="sev-warn">warning</td><td>share link longer than 8 KiB — valid, but some chat apps truncate long links (<code>warnings[]</code> of <code>share --json</code>)</td></tr>
+            <tr><td><span class="bd bd-t">T019</span></td><td><code>custom-code-not-allowed</code></td><td class="sev-err">error</td><td>a document or link carries custom-component code and <code>--allow-code</code> was not given (exit 3): read the sources (<code>open</code>), then re-run with it</td></tr>
+            <tr><td><span class="bd bd-t">T020</span></td><td><code>circuit-service-error</code></td><td class="sev-err">error</td><td>the circuit / component service refused the request or could not be reached (status and code in the message; exit 3)</td></tr>
           </tbody>
         </table>
       </div>
@@ -1962,7 +2061,7 @@ runLadder(benchFromDoc(back));                     // same RunRecord (locations 
             <tr><td>Logic ICs</td><td>tpd is fixed at the t = 0 supply (Rout and thresholds track it); an IC stays off after a brown-out; logic levels never change inside the AC analysis; no core supply current (Icc), ground bounce or input capacitance; 74HC74 with ~PRE and ~CLR both low gives X</td></tr>
             <tr><td>Microcontrollers</td><td>instruction timing (zero time between awaits), ISR preemption, level-triggered and pin-change interrupts, UART timing and serial input from the bench, ADC conversion time, sleep modes / watchdog, core supply current, delayed power-up and restart after brown-out, <code>pulseIn</code> / <code>shiftOut</code> / Wire (I2C) / SPI / EEPROM / Wi-Fi, <code>analogWriteFrequency</code> / LEDC channels; <code>--set</code> and <code>tb.param</code> cannot target an MCU; the Uno board model has no regulator, USB bridge or on-board LED</td></tr>
             <tr><td>VHDL</td><td><code>wait for</code> / <code>wait on</code>, <code>while</code> loops, functions and procedures, packages, records, arrays and memories, <code>real</code> / <code>bit</code> / <code>character</code>, <code>textio</code>, <code>std_logic_arith</code>; integers do not wrap (V751)</td></tr>
-            <tr><td>Documents and sharing</td><td><code>defineComponent</code> parts and inline MCU firmware cannot be exported or shared (T013); benches carry no viewer layout</td></tr>
+            <tr><td>Documents and sharing</td><td>a <code>defineComponent</code> written inside the bench file and inline MCU firmware cannot be exported or shared (T013); benches carry no viewer layout; private short links expire after 24 h</td></tr>
           </tbody>
         </table>
       </div>
