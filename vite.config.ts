@@ -14,6 +14,8 @@ export default defineConfig({
         landingPt: resolve(__dirname, 'index.pt.html'),
         appPt: resolve(__dirname, 'app.pt.html'),
         docsPt: resolve(__dirname, 'docs.pt.html'),
+        wall: resolve(__dirname, 'wall.html'),
+        wallPt: resolve(__dirname, 'wall.pt.html'),
       },
     },
   },

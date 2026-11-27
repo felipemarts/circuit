@@ -5,6 +5,7 @@ import { runTranSteps } from './tran';
 import { drainAsync, drainSync, type Steps } from '../analysis/steps';
 import { runDc } from './dc';
 import { runAc } from './ac';
+import { runPcb } from './pcb';
 import type { StageOutcome } from './op';
 import { ENGINE, RUN_SCHEMA } from '../schema/version';
 import { STAGE_ORDER, type Diagnostic, type RunRecord, type StageName } from '../schema/types';
@@ -21,7 +22,7 @@ export interface LadderOptions {
 const EMPTY_NETLIST = { hash: '', components: [], nets: {} };
 
 /**
- * The verification ladder: lint → op → dc → ac → tran, fail-fast per stage.
+ * The verification ladder: lint → op → dc → ac → tran → pcb, fail-fast per stage.
  *
  * Exit-code contract (RunRecord.exitCode):
  *   0 = requested stages all pass
@@ -142,9 +143,12 @@ function* ladderSteps(desc: BenchDescriptor, opts: LadderOptions): Steps<RunReco
     ['dc', sync(runDc)],
     ['ac', sync(runAc)],
     ['tran', runTranSteps],
+    ['pcb', sync(runPcb)],
   ];
+  // ── L4: pcb — runs when the bench declares a board (tb.board).
+  const wanted = (stage: StageName): boolean => (stage === 'pcb' ? elab.pcb !== undefined : elab.assertions.some(a => a.stage === stage));
   for (const [stage, run] of later) {
-    if (!requested.includes(stage) || !elab.assertions.some(a => a.stage === stage)) continue;
+    if (!requested.includes(stage) || !wanted(stage)) continue;
     if (gate) {
       record.stages[stage] = { verdict: 'skipped', reason: gate };
       continue;

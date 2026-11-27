@@ -1,4 +1,5 @@
 import type { AssertionSpec, ParamSpec, ParamValue } from '../schema/types';
+import type { PcbSpec } from '../pcb/types';
 
 /**
  * The circuit document `circuitsvibe-circuit/1` — the language-neutral,
@@ -41,10 +42,22 @@ export interface CircuitDoc {
    * only the non-default keys are written. Absent = defaults.
    */
   ratings?: CircuitRatings;
-  /** Embedded text files (future: VHDL, firmware). Carried verbatim; ascending `path`. */
+  /** Embedded text files (VHDL, firmware, custom-component modules). Carried verbatim; ascending `path`. */
   sources?: CircuitSource[];
+  /**
+   * Custom components (`defineComponent` parts) used by `components[].type`,
+   * ascending `type`. Their code is a module in `sources`; simulating the
+   * document evaluates it (the CLI only with --allow-code). See docs/CIRCUIT-FORMAT.md.
+   */
+  definitions?: CircuitDefinition[];
   /** Optional, viewer-only placement hints. Never affects simulation. */
   layout?: CircuitLayout;
+  /**
+   * The printed circuit board (`tb.board` / `tb.place`): board outline and
+   * rules, placement per component id, custom footprints. Lengths in mm.
+   * Never affects simulation; drives the pcb stage. See docs/PCB.md.
+   */
+  pcb?: PcbSpec;
 }
 
 /** `tb.ratings({...})` as data (R401–R404 checks of Part() semiconductors). */
@@ -85,6 +98,19 @@ export interface CircuitComponent {
   modelCard?: string;
   /** Origin location (`file:line` of the tb.add call). Informational; dropped from share links. */
   at?: string;
+}
+
+export interface CircuitDefinition {
+  /** Component type: the ComponentDef `name`, used by `components[].type`. */
+  type: string;
+  /** The definition's pin names, in order (checked against the code when it runs). */
+  pins: string[];
+  /** Path of the module in `sources` that exports the definition. */
+  source: string;
+  /** Export name (default: the default export). */
+  export?: string;
+  /** Registry provenance: the published `<user>/<name>@<version>` and the SHA-256 of its source. */
+  registry?: { ref: string; hash: string };
 }
 
 export interface CircuitSource {

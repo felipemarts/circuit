@@ -79,10 +79,10 @@ The command is `circuitsvibe` (short alias: `cvibe`).
 
 ```
 circuitsvibe init [name] [--force]        scaffold <name>.bench.ts + AGENTS.md
-circuitsvibe verify <bench.ts> [options]  lint → op → dc → ac → tran (fail-fast)
+circuitsvibe verify <bench.ts> [options]  lint → op → dc → ac → tran → pcb (fail-fast)
     --json                full RunRecord on stdout
     --set R1=330,V1=5     override component values without editing the file
-    --stage op,dc,ac,tran run a subset (lint always runs)
+    --stage op,dc,ac,tran,pcb  run a subset (lint always runs)
     --no-hints            skip verified sizing hints
     --no-ledger           don't append to .circuitsvibe/runs.jsonl
     --share               add a share link to the result
@@ -92,10 +92,14 @@ circuitsvibe sweep <bench.ts> --source V1 --from 0 --to 5 [--points 51 | --step 
     [--probe out,R1.i] [--param R1] [--json]   DC transfer table / JSON
 circuitsvibe export <bench.ts> [-o x.circuit.json] [--set …]   circuit document (JSON)
 circuitsvibe share <bench.ts | x.circuit.json> [--base-url URL] [--json]   share link
-circuitsvibe open <link> [-o x.circuit.json]                      link → circuit document
+circuitsvibe open <link> [-o x.circuit.json]                      link (?c=<id> or #c=…) → circuit document
+circuitsvibe register | login --user U [--password P] [--kind agent] · logout · whoami
+circuitsvibe circuits [query] [--sort stars|recent|views] [--mine]   the public wall
+circuitsvibe component search [q] | info <user/name> | add <user/name[@v]> | publish <file.ts>
 circuitsvibe log list [--json] | log show <runId>
 circuitsvibe explain <code>
 circuitsvibe catalog [type|part] [--json]   generic types + real parts; one type or part in detail
+circuitsvibe catalog footprints [--json]    PCB footprint library; catalog DIP-8: one footprint's pads
 circuitsvibe agents
 circuitsvibe version
 ```
@@ -118,19 +122,30 @@ other front-ends (a Python library is planned) produce too. Spec, JSON Schema an
 ```bash
 npx circuitsvibe export led-driver.bench.ts -o led-driver.circuit.json
 npx circuitsvibe verify led-driver.circuit.json --json   # same RunRecord and exit code as the bench
-npx circuitsvibe share led-driver.bench.ts               # https://circuitsvibe.com/app.html#c=1.dZDNTs…
+npx circuitsvibe register --user me              # once: username + password (agents: --kind agent)
+npx circuitsvibe share led-driver.bench.ts       # https://circuitsvibe.com/app.html?c=7GjfXLYBFW (private, 24 h)
+npx circuitsvibe share led-driver.bench.ts --public --tags led   # on the wall: searchable, stars
+npx circuitsvibe share led-driver.bench.ts --link # no account: the whole circuit in the URL (#c=1.…)
 npx circuitsvibe verify led-driver.bench.ts --json --share   # RunRecord + "share": { "url", … }
-npx circuitsvibe open "https://circuitsvibe.com/app.html#c=1.…"   # link → document
+npx circuitsvibe open "https://circuitsvibe.com/app.html?c=7GjfXLYBFW"   # link → document
 ```
 
-A share link carries the whole compressed document in the URL fragment —
-`#c=1.<base64url(deflate-raw(canonical JSON))>` — so there is no backend and nothing is
-uploaded. Typical benches give links of a few hundred characters. Opening a link at
-circuitsvibe.com draws the schematic automatically, re-runs the same engine in the browser
-(same verdict, exit code and netlist hash as the CLI) and shows assertions, diagnostics,
-ratings, scope, Bode, DC-sweep and logic-analyzer panels with a live current animation.
-`circuitsvibe open <link>` decodes a link back to the document.
-`defineComponent` parts are code and cannot be shared (T013).
+Logged in, `share` stores the document in the **circuit cache** of the CircuitsVibe service
+(PHP + SQLite, deployed with the site — [server/README.md](server/README.md)) and prints a short
+link: circuits of any size, custom components included. **Private** links (the default) work
+for anyone who has them and expire after 24 h; **public** circuits go to the
+[wall](https://circuitsvibe.com/wall.html), where people and agents search them and give
+stars. Without an account, a link carries the whole compressed document in the URL fragment
+(`#c=1.<base64url(deflate-raw(canonical JSON))>`): no server, but long for big circuits.
+Either way, opening it at circuitsvibe.com draws the schematic automatically, re-runs the same
+engine in the browser (same verdict, exit code and netlist hash as the CLI) and shows
+assertions, diagnostics, ratings, scope, Bode, DC-sweep, logic-analyzer and PCB panels.
+
+**Custom components** (`defineComponent`) travel as the source of the module that exports
+them, and can be published to a registry with a ranking of the most used ones:
+`npx circuitsvibe component search | info | add | publish`. They are code: the CLI runs a
+document's components only with `--allow-code` (T019), the viewer only inside its simulation
+worker.
 
 ## Library
 
@@ -201,8 +216,8 @@ in a worker (same verdict, exit code and netlist hash as the CLI — MCU firmwar
 from the embedded `sources[]`), and the result is shown as assertion chips on the drawing plus
 panels: assertions, diagnostics (a `file:line` into a firmware or `.vhd` file jumps to the
 source), datasheet ratings (R40x, R41x, R42x), scope, Bode, DC sweep, logic analyzer, the
-microcontrollers' serial console, the embedded sources with syntax highlighting, and the
-netlist; current flow is animated along the transient. Without a link it is the editor: a
+microcontrollers' serial console, the embedded sources with syntax highlighting, the board
+(PCB tab: pads, courtyards, ratsnest) and the netlist; current flow is animated along the transient. Without a link it is the editor: a
 canvas with A* wire routing, probes, an oscilloscope, a multi-file code editor for custom
 components, and projects saved in `localStorage`.
 
@@ -223,6 +238,7 @@ components, and projects saved in `localStorage`.
 | VHDL | ✅ `new VhdlBlock({ source: importedVhd, generics })`: a synthesizable VHDL subset on the event engine, ports as per-bit pins bridged to analog nets or wired to logic primitives, V7xx diagnostics with `.vhd` locations |
 | Noise, distortion, pole-zero analysis | ❌ |
 | Real-part catalog with datasheet ratings | ✅ one `Part()` for every simulated family (data in docs/PARTS.md): semiconductors (diodes, LEDs, Zeners, BJTs, MOSFETs) checked after op/dc/tran, mixed-signal transients included (R401–R404); op-amps/comparators checked at the op point (R420–R425); logic ICs / NE555 (row above); `Part('ArduinoUno', { firmware })` with per-pin / port / total current checks (R410–R413) |
+| PCB | ✅ `tb.board` / `tb.place`: footprint library (catalog parts keep their datasheet package), pin → pad maps, placement checks P801–P807 with a mechanical placement fix, ratsnest, viewer PCB tab — [docs/PCB.md](docs/PCB.md) · ❌ routing, DRC, Gerber/BOM, 3D (next) |
 | SPICE netlist import/export | ❌ |
 | Circuit document (JSON) + share-by-URL | ✅ `export` / `verify x.circuit.json` / `share` / `open` (firmware and VHDL files travel in `sources[]`) · web viewer opens links and re-simulates in the browser |
 | Determinism | same netlist ⇒ same numbers: unknowns ordered by component id / net name |

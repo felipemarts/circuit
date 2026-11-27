@@ -32,11 +32,15 @@ single-file build: `node circuitsvibe-standalone.mjs <command>`. Node ≥ 20. No
 6. Once `--set` values pass, **write them back into the bench** so the file is the truth.
 7. **Share the result with the user**: after exit 0, run
    `npx circuitsvibe share <name>.bench.ts` (or add `--share` to the passing `verify --json` and
-   read `share.url`) and give the user that link. The whole circuit is in the URL fragment
-   (`…/app.html#c=1.…`) — no upload, no server. Opening it at circuitsvibe.com shows the
-   schematic, re-runs the same engine in the browser (same verdict, exit code and netlist hash
-   as your CLI run) and shows assertions, ratings, waveforms, Bode/DC plots and logic traces.
-   Benches with `defineComponent` parts cannot be shared (T013).
+   read `share.url`) and give the user that link. Logged in (`npx circuitsvibe register --user
+   <name> --kind agent` once, or `CIRCUITSVIBE_TOKEN`), it is a **short link**
+   (`…/app.html?c=<id>`) to the circuit cache: any size, custom components included,
+   **private** — anyone with the link can open it for **24 h** — or `--public` to put it on
+   the wall (circuitsvibe.com/wall.html: searchable, stars). Not logged in, the whole circuit
+   travels in the URL fragment (`…/app.html#c=1.…`), which gets long for big circuits.
+   Opening either at circuitsvibe.com shows the schematic, re-runs the same engine in the
+   browser (same verdict, exit code and netlist hash as your CLI run) and shows assertions,
+   ratings, waveforms, Bode/DC plots and logic traces.
 
 Never invent numbers for sizing: declare the free parameter with `tb.param(...)` and let
 the platform sweep it. A hint marked `verified` was simulated; anything else was not.
@@ -131,6 +135,28 @@ rating, and Pd). With `tb.param`, the verified hint also keeps ratings in range.
 Ratings run after mixed-signal transients too: a 74HC04 driving a `Part('2N3904')` reports
 `stages.tran.logic[]` and `stages.tran.ratings[]` together; an IC output over its own limit
 is D511, not R40x.
+
+### Custom components: sharing and the registry
+
+A `defineComponent` part is **code**. To share a circuit that uses one, put the definition in
+its own module and export it — `parts/ntc.part.ts`: `export default defineComponent({...})` —
+then import it in the bench; `share` / `export` embed that module's source in the document
+(`definitions[]` + `sources[]`). A definition written inside the bench file is T013.
+
+```bash
+npx circuitsvibe component search thermistor            # ranking: most used first (distinct users)
+npx circuitsvibe component info alice/ntc               # pins, versions, and the SOURCE — read it
+npx circuitsvibe component add alice/ntc                # → components/ntc.part.ts (pinned by SHA-256)
+npx circuitsvibe component publish parts/ntc.part.ts --description "NTC thermistor" --tags sensor
+```
+
+- `component add` writes a file you can read and diff; import it like your own module
+  (`import Ntc from './components/ntc.part'`). Circuits that use it record its registry ref and
+  count towards its ranking; editing the file turns it into a local fork (no provenance).
+- **Running someone else's code needs `--allow-code`**: `verify <link or .circuit.json>` of a
+  document that carries custom components is **T019** (exit 3) until you review the sources
+  (`npx circuitsvibe open <link>`) and re-run with `--allow-code`. Your own bench files never
+  need it. The web viewer runs such code isolated in its simulation worker.
 
 Custom parts: `defineComponent({ name, pins, params, stamp, ac? })` (see the README). Use
 `ctx.stampCapacitance(a, b, C)` for internal capacitors (integrated like built-ins) and
@@ -385,6 +411,35 @@ VHDL cheat sheet (synthesizable subset; anything else is a clear V703/V708):
 Integers do not wrap (leaving a range is V751, the assignment is skipped) — use `unsigned` for
 counters that roll over.
 
+### Printed circuit board (pcb stage)
+
+Declare the board and place the parts; the **pcb** stage (after tran) gives every component a
+footprint and a pin → pad map, checks the placement and reports the ratsnest. Lengths in **mm**
+(or `'0.1in'`, `'100mil'`), origin at the board's lower-left corner, **y up**, `rot` degrees
+counter-clockwise; `x, y` is the centre of the footprint's pads.
+
+```ts
+tb.board({ width: 50, height: 30, tech: 'tht', holes: [{ x: 3, y: 3, d: 3.2 }] }); // or { preset: 'uno-shield' }
+tb.place('V1', { x: 5, y: 15, rot: 90 });           // a source = 2-pin header (pad 1 = +)
+tb.place('R1', { x: 20, y: 15 });                   // generic R → AXIAL-0.4 ('tht') / 0805 ('smd')
+tb.place('Q1', { x: 30, y: 10, footprint: 'SOT-23' });
+tb.place('U1', { x: 40, y: 15, side: 'bottom' });   // Part('74HC04') → DIP-14 / SOIC-14
+tb.place('CLK', { offBoard: true });                // bench instrument, not on the board
+```
+
+- Catalog parts keep their datasheet package and pin numbers (Part('2N3904') → TO-92 E/B/C);
+  ICs / op-amps / timers follow `tech` (DIP-n ↔ SOIC-n). `npx circuitsvibe catalog footprints`
+  lists the library; `catalog DIP-8` shows its pads; `pads: { pin: 'pad' }` remaps pins; a
+  custom footprint is `{ name, pads: [{ name, x, y, w, h, drill? }] }`.
+- Every component is placed or `{ offBoard: true }`. Unplaced = **P805**, and its fix is a
+  `mechanical` patch with a free spot: apply it, then adjust. Errors P801 (outside / edge),
+  P802 (overlap / mounting hole), P803 (no footprint: logic primitives, VHDL blocks, custom
+  parts), P804 (pin without pad), P807 (bad pad map) are exit **2**; P806 (off-board part with
+  no connector) is a warning.
+- `stages.pcb.pcb`: `placed[]`, `unplaced[]` (with `suggested`), `ratsnest[]` (MST airwires per
+  net) and `stats.airwireLength` — lower is easier to route. `--stage pcb` re-checks the
+  layout alone (lint + pcb), no simulation. Not yet: routing, DRC, Gerber/BOM, 3D.
+
 ### Sources
 
 Give a value, or an options object with at most ONE waveform. All values accept units.
@@ -461,21 +516,28 @@ allowed and ignored: `'10uF'`, `'5V'`.
 ```bash
 npx circuitsvibe init [name] [--force]       # scaffold <name>.bench.ts (+ AGENTS.md if absent)
 npx circuitsvibe verify <bench.ts> --json    # full RunRecord on stdout
-    --stage op,dc,ac,tran                    # subset of stages (lint always runs)
+    --stage op,dc,ac,tran,pcb                # subset of stages (lint always runs)
     --set R1=280,V1=5                        # override values without editing the file
     --no-hints  --no-ledger
     --vcd out.vcd                            # logic-analyzer capture of the transient (VCD)
 npx circuitsvibe sweep <bench.ts> --source V1 --from 0 --to 5 --points 51 --probe out,R1.i [--json]
     # DC transfer table (or --param R1 to sweep a component value, --step instead of --points)
 npx circuitsvibe log list --json             # run history (.circuitsvibe/runs.jsonl)
-npx circuitsvibe share <bench.ts> [--json]   # share link (circuit in the URL); --json: { url, bytes, warnings }
+npx circuitsvibe register --user <name> --kind agent   # once (password: --password, CIRCUITSVIBE_PASSWORD or stdin); also login / logout / whoami
+npx circuitsvibe share <bench.ts> [--json]   # logged in: short link ?c=<id> (private 24 h); --public → the wall
+    --public --title T --description D --tags a,b   # list it on the wall
+    --link                                   # force the self-contained #c=1.… link
+npx circuitsvibe circuits [query] [--sort stars|recent|views] [--mine] [--json]   # the public wall / your circuits
+npx circuitsvibe component search|info|add|publish …   # custom-component registry (see above)
 npx circuitsvibe verify <bench.ts> --json --share   # RunRecord + "share": { "url", … }
-npx circuitsvibe open "<link>"                # a link the user sent you → circuit document (JSON)
+npx circuitsvibe open "<link>"                # a link the user sent you (?c=<id> or #c=…) → circuit document (JSON)
+npx circuitsvibe verify "<link>" --json       # verify a link directly (--allow-code if it carries custom components)
 npx circuitsvibe export <bench.ts> -o x.circuit.json   # language-neutral circuit document
 npx circuitsvibe verify x.circuit.json --json # a document verifies exactly like its bench
 npx circuitsvibe log show <runId>
 npx circuitsvibe explain F101                # physics + fixes for a code
 npx circuitsvibe catalog [type|part] [--json] # components, logic ICs (pins, levels per VCC), real parts (catalog 2N3904: pins, model, ratings), MCUs (catalog ArduinoUno), VhdlBlock, grammar
+npx circuitsvibe catalog footprints           # PCB footprint library (catalog DIP-8: pads of one footprint)
 npx circuitsvibe agents                      # print this playbook
 ```
 
@@ -530,8 +592,14 @@ npx circuitsvibe agents                      # print this playbook
 | T003 / T004 | AC assertions without an `ac` stimulus / with several stimuli and no `ref` | add `ac: 1` to the input source / pass `{ ref }` |
 | T005 / T008 | `.model` param unknown / known but not modeled (warnings) | fix the spelling; expect differences |
 | T006 / T007 | `.model` unsupported type or LEVEL / malformed (exit 3) | use a supported card or a `Part()` |
-| T010–T014 | invalid circuit document (structure, schema version, unknown type, custom part, bad component) | re-export with `circuitsvibe export`; T013: custom parts cannot be shared |
-| T015–T018 | share link too large / malformed / unknown encoding / long (warning) | send the `.circuit.json` instead; re-copy the full link |
+| T010–T014 | invalid circuit document (structure, schema version, unknown type, custom part, bad component) | re-export with `circuitsvibe export`; T013: move the defineComponent into its own exported module file |
+| T015–T018 | share link too large / malformed / unknown encoding / long (warning) | log in and share again (short link), or send the `.circuit.json`; re-copy the full link |
+| T019 | the document/link carries custom-component code and `--allow-code` was not given | read the sources (`open <link>`), then re-run with `--allow-code` |
+| T020 | the circuit / component service refused or was unreachable (status + code in the message) | log in (`login`), check the link (private links expire in 24 h), retry later on 429 |
+| P801 / P802 | part outside the board or too close to the edge / parts overlap or sit on a mounting hole | move or rotate the part, enlarge the board |
+| P803 / P804 / P807 | no footprint / connected pin without a pad / invalid `pads` map | give `footprint` + `pads`, or `{ offBoard: true }` |
+| P805 | on-board part not placed | apply the mechanical `tb.place` patch (a free spot) |
+| P806 (warning) | off-board part reaches the board with no connector | place the source (2-pin header) or add a header |
 
 When plain Newton fails at DC, the solver retries with gmin stepping and then source
 stepping; when an aid rescues the solve, `stages.op.solver.aids` says which one.

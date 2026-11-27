@@ -363,3 +363,45 @@ a { color: inherit; text-decoration: none; }
 :root[data-theme="light"] .src .tok-k { color: #7c3aed; } :root[data-theme="light"] .src .tok-s { color: #15803d; } :root[data-theme="light"] .src .tok-n { color: #b45309; } :root[data-theme="light"] .src .tok-f { color: #0e7490; } :root[data-theme="light"] .src .tok-t { color: #1d4ed8; }
 .diag .at-link { font-family: var(--mono); font-size: 11px; color: var(--accent); text-decoration: underline dotted; text-underline-offset: 3px; }
 .diag .at-link:hover { color: var(--text); }
+
+/* ── PCB panel ── */
+.pcb-wrap { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); overflow: hidden; }
+.pcb-svg { display: block; width: 100%; height: auto; max-height: 560px; touch-action: none; cursor: grab; --pcb-board: #0f3b2c; --pcb-edge: #fbbf24; --pcb-silk: #f1f5f9; --pcb-th: #d4a017; --pcb-top: #e5484d; --pcb-bottom: #3b82f6; --pcb-rat: #fde68a; --pcb-court: rgba(241, 245, 249, 0.35); }
+:root[data-theme="light"] .pcb-svg { --pcb-board: #1f6f4a; --pcb-silk: #ffffff; --pcb-rat: #fef08a; }
+.pcb-svg:active { cursor: grabbing; }
+.pcb-svg .board { fill: var(--pcb-board); stroke: var(--pcb-edge); stroke-width: 0.25; }
+.pcb-svg .hole { fill: var(--bg-2); stroke: var(--pcb-silk); stroke-width: 0.1; }
+.pcb-svg .court { fill: none; stroke: var(--pcb-court); stroke-width: 0.06; stroke-dasharray: 0.4 0.3; }
+.pcb-svg .court.bad { stroke: var(--red); stroke-width: 0.22; stroke-dasharray: none; fill: color-mix(in srgb, var(--red) 18%, transparent); }
+.pcb-svg .silk polyline, .pcb-svg .silk circle { fill: none; stroke: var(--pcb-silk); stroke-width: 0.15; }
+.pcb-svg .pad.th .cu { fill: var(--pcb-th); }
+.pcb-svg .pad.top .cu { fill: var(--pcb-top); }
+.pcb-svg .pad.bottom .cu { fill: var(--pcb-bottom); }
+.pcb-svg .pad .drill { fill: var(--bg-2); }
+.pcb-svg .part.side-bottom .silk { opacity: 0.55; }
+.pcb-svg .rat { stroke: var(--pcb-rat); stroke-width: 0.12; stroke-dasharray: 0.5 0.35; pointer-events: stroke; }
+.pcb-svg .ref { fill: var(--pcb-silk); font: 600 1.2px var(--mono); text-anchor: middle; pointer-events: none; }
+.pcb-svg .ghost { opacity: 0.45; }
+.pcb-svg .ghost .court { stroke: var(--accent); stroke-width: 0.15; stroke-dasharray: 0.6 0.4; }
+.pcb-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; color: var(--muted); font-size: 11.5px; margin: 8px 0 10px; }
+.pcb-legend .it { white-space: nowrap; }
+.pcb-legend .k { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.pcb-legend .k.th { background: #d4a017; } .pcb-legend .k.top { background: #e5484d; } .pcb-legend .k.bottom { background: #3b82f6; }
+.pcb-legend .k.rat { height: 0; border-top: 2px dashed #eab308; border-radius: 0; }
+.pcb-legend .k.court { height: 6px; border: 1px dashed var(--muted); background: none; }
+.pcb-issues { cursor: pointer; }
+.netlist tr.dim td { color: var(--dim); }
+
+/* ── cloud bar (stored circuits: author, visibility, stars) ── */
+.cloud-bar { padding: 10px 14px; font-size: 13px; }
+.cloud-bar .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.cloud-bar .sp { flex: 1; }
+.cloud-bar a { color: var(--accent); text-decoration: none; }
+.cloud-bar .muted { color: var(--muted); }
+.cloud-bar .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; border: 1px solid var(--border-2); color: var(--muted); }
+.cloud-bar .pill.pub { color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); }
+.cloud-bar .pill.priv { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
+.cloud-bar .btn.star.on { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 50%, transparent); }
+.cloud-bar .code-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.cloud-bar .code-note code { color: var(--text); }
+.cloud-bar .err { margin: 8px 0 0; color: var(--red); font-size: 12px; }

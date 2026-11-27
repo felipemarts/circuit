@@ -24,6 +24,8 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `M6xx` | MCU runtime | firmware execution on a simulated microcontroller (M601–M649) |
 | `V701`–`V749` | VHDL compile / elaboration (pre-simulation) | syntax, unsupported constructs, types, hierarchy (src/vhdl) |
 | `V750`–`V799` | VHDL runtime | errors raised by compiled VHDL processes while simulating (src/vhdl) |
+| `P801`–`P809` | board layout (pcb stage) | footprints, pin → pad maps and placement checks of a bench with `tb.board` (src/pcb) |
+| `P810`–`P899` | board routing / DRC (reserved) | autorouter and design-rule checks |
 
 ## Active codes
 
@@ -98,6 +100,8 @@ Codes are **permanent**: parsers and agents can depend on them; they are never r
 | `T016` | malformed-share-link | error | no `#c=` payload, not `<version>.<base64url>`, bad base64url, not deflate-raw, not UTF-8 JSON (exit 3) |
 | `T017` | unsupported-share-encoding | error | share payload encoding version other than `1` (exit 3) |
 | `T018` | long-share-link | warning | share link longer than 8 KiB — valid, but some chat apps truncate long links (`warnings[]` of `share --json`) |
+| `T019` | custom-code-not-allowed | error | the document (or link) carries custom-component code (`definitions[]`) and `--allow-code` was not given — lists every definition, its source and registry ref/hash; exit 3 |
+| `T020` | circuit-service-error | error | the circuit / component service refused the request or was unreachable (login, short-link upload, `?c=` link, registry) — carries the HTTP status and the service error code; exit 3 |
 | `V701` | vhdl-syntax-error | error | VHDL text does not follow the grammar — exact line:col, what was expected and found; first error per design unit |
 | `V702` | vhdl-lexical-error | error | invalid character, unterminated string, number glued to its unit (`10ns`), bad based literal or identifier |
 | `V703` | vhdl-unsupported | error | valid VHDL outside the supported subset (`wait for`, file I/O, records, functions, packages, while loops, …) — names the construct and lists what is supported |
@@ -161,6 +165,23 @@ Mixed-signal notes:
   internal net). Setup/hold violations (D502/D503) of a real flip-flop (74HC74: tsu 20 ns)
   therefore point at the IC.
 - Codes D515–D549 are reserved for the mixed-signal runtime, F139 for bench-level digital lint.
+
+## Board layout codes (pcb stage, P801–P807)
+
+The pcb stage runs when a bench declares a board (`tb.board`); it is the last rung of the
+ladder (`--stage pcb` runs it alone after lint). Errors are structural (exit 2): the board
+cannot be built as laid out. `stages.pcb.pcb` carries the placements, the unplaced parts with
+a suggested free spot, and the ratsnest. Lengths in mm; see docs/PCB.md.
+
+| Code | Slug | Severity | When it fires |
+|--------|------|-----------|----------------|
+| `P801` | outside-board | error | a courtyard is not inside the outline, a pad is closer to the edge than `rules.edgeClearance`, or a board hole is outside the outline |
+| `P802` | courtyard-overlap | error | two courtyards on one side overlap, a drilled pad is under a part on the other side, or a part is on a mounting hole (radius + clearance) — carries the depth |
+| `P803` | no-footprint | error | the component has no physical footprint (logic primitive, VHDL block, custom part, package without a library footprint) or names an unknown one |
+| `P804` | pin-without-pad | error | a connected pin (its net has other pins) has no pad in the footprint's pin → pad map |
+| `P805` | not-placed | error | an on-board part has no position — the fix is a **mechanical** `tb.place(...)` patch at a free spot near the pads it connects to |
+| `P806` | off-board-without-connector | warning | an `{ offBoard: true }` part shares nets with on-board parts and none of those nets reaches a connector (placed source, `HDR-*`, `TERM-*`, `UNO-SHIELD`) |
+| `P807` | bad-pad-map | error | `tb.place({ pads })` names an unknown pin or pad, or the map puts two nets on one pad |
 
 ## Datasheet ratings (R401–R404)
 

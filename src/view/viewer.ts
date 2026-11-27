@@ -49,6 +49,24 @@ import { eng, secs, valueLabel } from './format';
 import { voltageGradientCSS, setVoltageZeroColor } from '../ui/voltageColor';
 import { t, isPT } from './i18n';
 import { esc } from './symbols';
+import { boardOf, boardSvg, attachPanZoom } from './pcb';
+import { accountWidget, api, ApiError, ensureSession, relTime, session } from '../site/account';
+import { validateCircuitDoc } from '../doc/validate';
+
+/** A circuit as the service returns it (app.html?c=<id>). */
+interface CloudCircuit {
+  id: string;
+  url: string;
+  visibility: 'private' | 'public';
+  title: string;
+  author: { username: string; kind: 'human' | 'agent' };
+  stars: number;
+  views: number;
+  expiresAt: string | null;
+  starred?: boolean;
+  mine?: boolean;
+  doc?: CircuitDoc;
+}
 
 const BRAND_SVG = `<svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#0b1120"/><path d="M9 36h10l5-17 8 30 8-30 5 17h9" fill="none" stroke="url(#cvg)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="55" cy="36" r="4.5" fill="#fbbf24"/></svg>`;
 const ICON = {
@@ -100,11 +118,14 @@ function topbar(): HTMLElement {
     <button class="btn" id="btn-json" title="${esc(t('Download .circuit.json'))}">${ICON.down}<span class="label">.circuit.json</span></button>
     <button class="btn" id="btn-svg" title="${esc(t('Download SVG'))}">${ICON.down}<span class="label">SVG</span></button>
     <a class="btn outline" id="btn-editor" href="${isPT ? 'app.pt.html' : 'app.html'}" title="${esc(t('Open in the editor'))}">${ICON.edit}<span class="label">${esc(t('Open in the editor'))}</span></a>
+    <a class="btn" href="${isPT ? 'wall.pt.html' : 'wall.html'}" title="${esc(t('Circuit wall'))}">★<span class="label">${esc(t('Wall'))}</span></a>
+    <span id="vw-account"></span>
     <a class="btn icon" href="https://github.com/felipemarts/circuit" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub">${ICON.github}</a>
-    <a class="btn lang-switch" href="${otherLang}${location.hash}" data-setlang="${isPT ? 'en' : 'pt'}" hreflang="${isPT ? 'en' : 'pt-BR'}">${isPT ? 'EN' : 'PT'}</a>
+    <a class="btn lang-switch" href="${otherLang}${location.search}${location.hash}" data-setlang="${isPT ? 'en' : 'pt'}" hreflang="${isPT ? 'en' : 'pt-BR'}">${isPT ? 'EN' : 'PT'}</a>
     <button class="btn icon theme-toggle" id="btn-theme" title="Theme" aria-label="Toggle theme">${ICON.moon}${ICON.sun}</button>
   </header>`);
   $(el, '#btn-theme').addEventListener('click', () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
+  $(el, '#vw-account').replaceWith(accountWidget());
   $(el, '.lang-switch').addEventListener('click', e => {
     try {
       localStorage.setItem('cv-lang', (e.currentTarget as HTMLElement).dataset.setlang!);
@@ -189,12 +210,25 @@ export async function mountViewer(root: HTMLElement, hash: string): Promise<void
   const top = topbar();
   root.appendChild(top);
 
-  // 1. decode
+  // 1. decode: a short link (?c=<id>, from the service) or the whole circuit in the fragment (#c=1.…)
   let doc: CircuitDoc;
+  let cloud: CloudCircuit | undefined;
+  const circuitId = new URLSearchParams(location.search).get('c');
   try {
-    doc = await decodeShareUrl(hash);
+    if (circuitId) {
+      try {
+        cloud = await api<CloudCircuit>('GET', `/circuits/${encodeURIComponent(circuitId)}`);
+      } catch (err) {
+        const expired = err instanceof ApiError && err.status === 404;
+        throw Object.assign(new Error(expired ? t('This circuit does not exist or its private link expired (private links last 24 h). Ask the author for a new link.') : `${t('The circuit service could not be reached')}: ${err instanceof Error ? err.message : String(err)}`), { code: 'T020' });
+      }
+      const checked = validateCircuitDoc(cloud.doc);
+      if (!checked.ok) throw Object.assign(new Error(checked.diagnostics[0].message), { diagnostics: checked.diagnostics, name: 'CircuitDocError' });
+      doc = checked.doc;
+    } else doc = await decodeShareUrl(hash);
   } catch (err) {
-    const diags: Diagnostic[] = isCircuitDocError(err) ? err.diagnostics : [{ code: 'T016', slug: 'malformed-share-link', severity: 'error', stage: 'lint', message: err instanceof Error ? err.message : String(err), fixes: [] }];
+    const code = (err as { code?: string }).code === 'T020' ? 'T020' : 'T016';
+    const diags: Diagnostic[] = isCircuitDocError(err) ? err.diagnostics : [{ code, slug: code === 'T020' ? 'circuit-service-error' : 'malformed-share-link', severity: 'error', stage: 'lint', message: err instanceof Error ? err.message : String(err), fixes: [] }];
     root.appendChild(errorCard(diags, hash));
     document.title = `CircuitsVibe — ${t('This link could not be opened')}`;
     for (const id of ['#btn-json', '#btn-svg']) $(top, id).hidden = true;
@@ -221,6 +255,7 @@ export async function mountViewer(root: HTMLElement, hash: string): Promise<void
     <div class="verdict-meta"><span><b>${doc.components.length}</b> ${esc(t('components'))}</span><span><b>${Object.keys(layout.netOfPin).length}</b> pins · <b>${new Set(Object.values(layout.netOfPin)).size}</b> ${esc(t('nets'))}</span>${doc.meta?.author ? `<span>${esc(doc.meta.author)}</span>` : ''}</div>
   </section>`);
   left.appendChild(verdictCard);
+  left.appendChild(cloudBar(doc, cloud));
 
   const schemCard = h(`<section class="card schem-card">
     <div class="schem-tools">
@@ -476,6 +511,13 @@ function presentResults(
     renderSerial(sPanel, serial, anim, schematic);
   }
 
+  const board = boardOf(doc);
+  if (board) {
+    const errs = record.diagnostics.filter(d => d.stage === 'pcb' && d.severity === 'error').length;
+    const pPanel = addBefore('pcb', 'PCB', { n: errs ? `${errs} ✗` : board.parts.length, kind: errs ? 'fail' : 'pass' });
+    renderPcb(pPanel, board, record.diagnostics, panels);
+  }
+
   if (sources.length > 0) {
     const marks = sources.reduce((acc, f) => acc + f.marks.length, 0);
     const srcPanel = addBefore('sources', t('Sources'), { n: marks || sources.length, kind: marks ? (sources.some(f => f.marks.some(m => m.severity === 'error')) ? 'fail' : 'warn') : undefined });
@@ -493,6 +535,97 @@ function presentResults(
   else panels.show('assertions');
 
   anim.start();
+}
+
+/**
+ * Author, visibility, expiry, views and stars of a stored circuit, with the
+ * owner's actions; for a #c= link, "save a short link" / "publish". Plus a
+ * notice when the circuit runs custom-component code.
+ */
+function cloudBar(doc: CircuitDoc, cloud: CloudCircuit | undefined): HTMLElement {
+  const bar = h(`<section class="card cloud-bar"></section>`);
+  const render = () => {
+    const me = session();
+    const code = doc.definitions?.length
+      ? `<p class="code-note">⚠ ${esc(t('This circuit runs custom component code'))}: ${doc.definitions.map(d => `<code>${esc(d.type)}</code>${d.registry ? ` (<a href="${isPT ? 'wall.pt.html' : 'wall.html'}#component=${encodeURIComponent(d.registry.ref.replace(/@\d+$/, ''))}">${esc(d.registry.ref)}</a>)` : ''}`).join(', ')} — ${esc(t('it runs isolated in the simulation worker, without access to this page or your login.'))}</p>`
+      : '';
+    if (cloud) {
+      const vis = cloud.visibility === 'public'
+        ? `<span class="pill pub">${esc(t('public'))}</span>`
+        : `<span class="pill priv" title="${esc(cloud.expiresAt ?? '')}">${esc(t('private'))} · ${esc(t('expires'))} ${esc(relTime(cloud.expiresAt!))}</span>`;
+      const owner = cloud.mine
+        ? cloud.visibility === 'private'
+          ? `<button class="btn" data-act="publish">★ ${esc(t('Publish to the wall'))}</button>`
+          : `<button class="btn" data-act="unpublish">${esc(t('Make private'))}</button>`
+        : '';
+      bar.innerHTML = `<div class="row">
+        <span>${esc(t('by'))} <a href="${isPT ? 'wall.pt.html' : 'wall.html'}#author=${encodeURIComponent(cloud.author.username)}"><b>${esc(cloud.author.username)}</b></a>${cloud.author.kind === 'agent' ? ` <span class="pill">${esc(t('agent'))}</span>` : ''}</span>
+        ${vis}<span class="muted">👁 ${cloud.views}</span>
+        <span class="sp"></span>${owner}
+        ${cloud.visibility === 'public' ? `<button class="btn star${cloud.starred ? ' on' : ''}" data-act="star" aria-pressed="${cloud.starred ? 'true' : 'false'}" title="${esc(t('Star'))}">${cloud.starred ? '★' : '☆'} ${cloud.stars}</button>` : ''}
+      </div>${code}`;
+    } else {
+      bar.innerHTML = `<div class="row"><span class="muted">${esc(t('The whole circuit is in this link.'))}</span><span class="sp"></span>
+        <button class="btn" data-act="save">${esc(t('Short link'))}</button>
+        <button class="btn" data-act="publish-new">★ ${esc(t('Publish to the wall'))}</button>
+      </div>${code}`;
+      void me;
+    }
+  };
+  bar.addEventListener('click', async e => {
+    const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+    if (!act) return;
+    try {
+      if ((act === 'save' || act === 'publish-new') && (await ensureSession())) {
+        const c = await api<CloudCircuit>('POST', '/circuits', { doc, visibility: act === 'save' ? 'private' : 'public' });
+        location.href = `${location.pathname}?c=${c.id}`;
+        return;
+      }
+      if (!cloud) return;
+      if (act === 'star') {
+        if (!(await ensureSession())) return;
+        cloud = { ...cloud, ...(await api<CloudCircuit>(cloud.starred ? 'DELETE' : 'PUT', `/circuits/${cloud.id}/star`)) };
+      }
+      if (act === 'publish' || act === 'unpublish') cloud = { ...cloud, ...(await api<CloudCircuit>('PATCH', `/circuits/${cloud.id}`, { visibility: act === 'publish' ? 'public' : 'private' })) };
+      render();
+    } catch (err) {
+      alertLine(bar, err instanceof Error ? err.message : String(err));
+    }
+  });
+  window.addEventListener('cv-session', async () => {
+    if (cloud) {
+      try {
+        cloud = { ...cloud, ...(await api<CloudCircuit>('GET', `/circuits/${cloud.id}`)), doc: undefined };
+      } catch {
+        /* keep the last state */
+      }
+    }
+    render();
+  });
+  render();
+  return bar;
+}
+
+function alertLine(host: HTMLElement, message: string): void {
+  host.querySelector('.err')?.remove();
+  host.appendChild(h(`<p class="err" role="alert">${esc(message)}</p>`));
+}
+
+function renderPcb(panel: HTMLElement, board: NonNullable<ReturnType<typeof boardOf>>, diagnostics: Diagnostic[], panels: Panels): void {
+  const st = board.record.stats;
+  const b = board.record.board;
+  const pcbDiags = diagnostics.filter(d => d.stage === 'pcb');
+  const extra = [st.unplaced ? `<b>${st.unplaced}</b> ${esc(t('unplaced (ghost = suggested spot)'))}` : '', st.offBoard ? `<b>${st.offBoard}</b> ${esc(t('off-board'))}` : ''].filter(Boolean).join(' · ');
+  panel.innerHTML = `<p class="lead"><b>${esc(`${b.width} × ${b.height} mm`)}</b> · ${b.layers} ${esc(t(b.layers > 1 ? 'layers' : 'layer'))} · ${esc(b.tech.toUpperCase())} · <b>${st.placed}</b> ${esc(t('placed'))}${extra ? ` · ${extra}` : ''} · <b>${st.nets}</b> ${esc(t('nets to route'))}, ${st.airwires} ${esc(t('airwires'))} (${st.airwireLength} mm)</p>
+    <div class="pcb-wrap">${boardSvg(board, diagnostics)}</div>
+    <p class="pcb-legend">${[['th', 'through-hole pad'], ['top', 'top copper'], ['bottom', 'bottom copper'], ['rat', 'airwire (to route)'], ['court', 'courtyard']].map(([k, label]) => `<span class="it"><span class="k ${k}"></span>${esc(t(label))}</span>`).join('')}</p>
+    ${pcbDiags.length ? `<p class="lead pcb-issues">${pcbDiags.map(d => `<code>${esc(d.code)}</code> ${esc(d.message)}`).join('<br>')}</p>` : ''}
+    <div class="netlist"><table><thead><tr><th>id</th><th>${esc(t('footprint'))}</th><th>x, y (mm)</th><th>rot</th><th>${esc(t('side'))}</th></tr></thead><tbody>${board.record.placed
+      .map(p => `<tr><td class="id">${esc(p.id)}</td><td>${esc(p.footprint)}</td><td>${p.x}, ${p.y}</td><td>${p.rot}°</td><td>${esc(p.side)}</td></tr>`)
+      .join('')}${board.record.unplaced.map(u => `<tr class="dim"><td class="id">${esc(u.id)}</td><td>${esc(u.footprint)}</td><td colspan="3">${esc(t('not placed'))}${u.suggested ? ` — ${esc(t('free spot'))} ${u.suggested.x}, ${u.suggested.y}${u.suggested.rot ? ` · ${u.suggested.rot}°` : ''}` : ''}</td></tr>`).join('')}${board.record.offBoard.map(id => `<tr class="dim"><td class="id">${esc(id)}</td><td colspan="4">${esc(t('off-board'))}</td></tr>`).join('')}</tbody></table></div>`;
+  const svg = panel.querySelector<SVGSVGElement>('svg.pcb-svg');
+  if (svg) attachPanZoom(svg);
+  if (pcbDiags.some(d => d.severity === 'error')) panel.querySelector('.pcb-issues')?.addEventListener('click', () => panels.show('diagnostics'));
 }
 
 function renderVerdict(card: HTMLElement, vm: VerdictModel, wallMs: number, sim: SimResult): void {

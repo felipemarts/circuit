@@ -11,7 +11,9 @@ import { init } from './init';
 import AGENTS_MD from '../../AGENTS.md';
 import { STAGE_ORDER, type StageName } from '../schema/types';
 import { sweepBench, renderSweepTable } from './sweep';
-import { loadCircuit, docErrorRecord, benchNameFromFile, type LoadedCircuit } from './circuit';
+import { loadCircuit, readDoc, docErrorRecord, benchNameFromFile, type LoadedCircuit } from './circuit';
+import { circuitIdOf } from './service';
+import { circuits, component, docFor, login, logout, metaOf, printShare, register, shareDoc, whoami, type CloudFlags, type ShareOutcome } from './cloud';
 import { toCircuitDoc } from '../doc/convert';
 import { canonicalJson } from '../doc/canonical';
 import { createShareLink, decodeShareUrl, type ShareLink } from '../doc/share';
@@ -22,24 +24,36 @@ import * as fs from 'node:fs';
 import { toLogicVCD } from '../mixed/vcd';
 import { icPart } from '../mixed/part';
 import { writeFileSync } from 'node:fs';
+import { footprintCatalog, getFootprint } from '../pcb/footprints';
+import type { FootprintDef } from '../pcb/types';
 
 const USAGE = `${CLI} — circuits as code; simulation is the feedback loop (${ENGINE})
 
 USAGE
   ${CLI} init [name] [--force]        scaffold <name>.bench.ts + AGENTS.md here
-  ${CLI} verify <bench.ts> [options]  run the ladder: lint → op → dc → ac → tran
-                                    (also verify <file.circuit.json>: same RunRecord, same exit codes)
+  ${CLI} verify <bench.ts> [options]  run the ladder: lint → op → dc → ac → tran → pcb
+                                    (also verify <file.circuit.json> or a share link: same RunRecord, same exit codes)
   ${CLI} export <bench.ts> [-o file.circuit.json] [--set R1=330]
                                     write the circuit document (circuitsvibe-circuit/1), stdout by default
-  ${CLI} share <bench.ts | file.circuit.json> [--base-url URL] [--json]
-                                    print a share link: the whole circuit lives in the URL (#c=1.…)
-  ${CLI} open <url | #c=…> [-o file]  decode a share link back to the circuit document
+  ${CLI} share <bench.ts | file.circuit.json> [--public] [--title T] [--tags a,b] [--json]
+                                    logged in: short link from the circuit cache (private: 24 h; --public: the wall)
+                                    otherwise (or --link): the whole circuit in the URL (#c=1.…)
+  ${CLI} open <link> [-o file]        a share link (?c=<id> or #c=…) → the circuit document
+  ${CLI} register | login --user U [--password P] [--kind agent]
+                                    account for the circuit cache and the component registry (also CIRCUITSVIBE_TOKEN)
+  ${CLI} logout | whoami
+  ${CLI} circuits [query] [--sort stars|recent|views] [--mine]   the public wall (or your circuits)
+  ${CLI} component search [query] [--sort uses|downloads|recent]  ranking of shared custom components
+  ${CLI} component info <user/name>   details, versions and the source
+  ${CLI} component add <user/name[@v]> [-o dir]   install it as components/<name>.part.ts (review it: it is code)
+  ${CLI} component publish <file.ts> [--name n] [--description d] [--tags a,b]
   ${CLI} sweep <bench.ts> --source V1 --from 0 --to 5 [--points 51 | --step 0.1] [--probe out,R1.i] [--json]
                                     DC sweep table/JSON (or --param R1 to sweep a component value)
   ${CLI} log list [--json]            list past runs from the ledger (${LEDGER_DIR}/runs.jsonl)
   ${CLI} log show <runId>             full RunRecord of a past run (JSON)
   ${CLI} explain <code>               docs for a diagnostic code, e.g. ${CLI} explain F101
   ${CLI} catalog [type|part] [--json] component datasheet, real parts (pins, model, ratings) + grammar
+  ${CLI} catalog footprints           PCB footprint library (${CLI} catalog DIP-8: its pads)
   ${CLI} agents                       print the agent playbook (AGENTS.md)
   ${CLI} version                      print the engine version
 
@@ -49,10 +63,13 @@ VERIFY OPTIONS
   --json                 emit the full RunRecord as JSON on stdout
   --no-hints             skip verified sizing hints (faster)
   --no-ledger            do not append this run to ${LEDGER_DIR}/runs.jsonl
-  --share                add a share link (JSON: "share": { "url", "bytes", "warnings" })
+  --share                add a share link (JSON: "share": { "url", "bytes", "warnings", "id"?, "expiresAt"? })
+  --allow-code           run the custom-component code a document or link carries (T019 without it)
 
 SHARE / EXPORT OPTIONS
-  --base-url URL         page that opens links (default https://circuitsvibe.com/app.html)
+  --base-url URL         page that opens #c= links (default https://circuitsvibe.com/app.html)
+  --public / --link      share: list on the public wall / force a self-contained #c= link
+  --api URL              service API (default https://circuitsvibe.com/api, or CIRCUITSVIBE_API)
   --title, --description, --author TEXT   document metadata (kept in share links)
   -o, --out FILE         write to FILE instead of stdout (export, open)
   --json                 share: print { url, bytes, warnings }
@@ -67,9 +84,9 @@ EXIT CODES
 EXAMPLE
   ${CLI} init led-driver && ${CLI} verify led-driver.bench.ts --json`;
 
-const VALUE_OPTIONS = ['--source', '--param', '--from', '--to', '--points', '--step', '--probe', '--base-url', '--title', '--description', '--author', '--out', '--vcd'];
+const VALUE_OPTIONS = ['--source', '--param', '--from', '--to', '--points', '--step', '--probe', '--base-url', '--title', '--description', '--author', '--out', '--vcd', '--user', '--password', '--kind', '--tags', '--name', '--sort', '--api', '--export', '--page'];
 
-interface Flags {
+interface Flags extends CloudFlags {
   json: boolean;
   force: boolean;
   share: boolean;
@@ -83,10 +100,14 @@ interface Flags {
 }
 
 function parseFlags(args: string[]): Flags {
-  const flags: Flags = { json: false, force: false, share: false, hints: true, ledger: true, overrides: {}, options: {}, positional: [] };
+  const flags: Flags = { json: false, force: false, share: false, hints: true, ledger: true, allowCode: false, public: false, link: false, mine: false, overrides: {}, options: {}, positional: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--json') flags.json = true;
+    else if (arg === '--allow-code') flags.allowCode = true;
+    else if (arg === '--public') flags.public = true;
+    else if (arg === '--link') flags.link = true;
+    else if (arg === '--mine') flags.mine = true;
     else if (arg === '--force') flags.force = true;
     else if (arg === '--share') flags.share = true;
     else if (arg === '-o') {
@@ -171,6 +192,19 @@ export async function main(argv: string[]): Promise<number> {
       case 'agents':
         process.stdout.write(AGENTS_MD.endsWith('\n') ? AGENTS_MD : `${AGENTS_MD}\n`);
         return 0;
+      case 'register':
+        return await cloudCommand(() => register(flags), flags);
+      case 'login':
+        return await cloudCommand(() => login(flags), flags);
+      case 'logout':
+        return await cloudCommand(() => logout(flags), flags);
+      case 'whoami':
+        return await cloudCommand(() => whoami(flags), flags);
+      case 'circuits':
+        return await cloudCommand(() => circuits(flags), flags);
+      case 'component':
+      case 'components':
+        return await cloudCommand(() => component(flags), flags);
       default:
         console.error(`error: unknown command '${command}'\n\n${USAGE}`);
         return 3;
@@ -178,6 +212,15 @@ export async function main(argv: string[]): Promise<number> {
   } catch (err) {
     console.error(`error: ${err instanceof Error ? err.message : err}`);
     return 3;
+  }
+}
+
+/** Service commands report CircuitDocError (T019/T020) like document errors: exit 3. */
+async function cloudCommand(run: () => Promise<number>, flags: Flags): Promise<number> {
+  try {
+    return await run();
+  } catch (err) {
+    return reportDocError(err, flags.json);
   }
 }
 
@@ -190,7 +233,7 @@ async function verify(flags: Flags): Promise<number> {
 
   let loaded: LoadedCircuit;
   try {
-    loaded = await loadCircuit(file);
+    loaded = await loadCircuit(file, { allowCode: flags.allowCode });
   } catch (err) {
     if (!isCircuitDocError(err)) {
       console.error(`error: ${err instanceof Error ? err.message : err}`);
@@ -248,22 +291,13 @@ async function verify(flags: Flags): Promise<number> {
   return record.exitCode;
 }
 
-type ShareResult =
-  | { url: string; bytes: number; warnings: Diagnostic[] }
-  | { error: { code: string; message: string } };
-
-function metaFlags(flags: Flags): CircuitMeta {
-  const meta: CircuitMeta = {};
-  for (const k of ['title', 'description', 'author'] as const) if (flags.options[k]) meta[k] = flags.options[k];
-  return meta;
-}
+type ShareResult = ShareOutcome;
 
 /** verify --share: never changes the verify verdict; a failure to share is reported in place. */
 async function shareOf(loaded: LoadedCircuit, overrides: Record<string, number>, flags: Flags): Promise<ShareResult> {
   try {
-    const doc = toCircuitDoc(loaded.desc, overrides, { meta: metaFlags(flags) });
-    const link = await createShareLink(doc, { baseUrl: flags.options['base-url'] });
-    return { url: link.url, bytes: link.bytes, warnings: link.warnings };
+    const doc = toCircuitDoc(loaded.desc, overrides, { meta: metaOf(flags), definitionSources: loaded.definitionSources });
+    return await shareDoc(doc, flags);
   } catch (err) {
     if (isCircuitDocError(err)) return { error: { code: err.code, message: err.diagnostics[0].message } };
     return { error: { code: 'T002', message: err instanceof Error ? err.message : String(err) } };
@@ -271,12 +305,7 @@ async function shareOf(loaded: LoadedCircuit, overrides: Record<string, number>,
 }
 
 function printShareHuman(shared: ShareResult): void {
-  if ('error' in shared) {
-    console.log(`share: not available — ${shared.error.code} ${shared.error.message}`);
-    return;
-  }
-  console.log(`share: ${shared.url}`);
-  for (const w of shared.warnings) console.log(`  warning ${w.code}: ${w.message}`);
+  printShare(shared, line => console.log(line.startsWith('http') ? `share: ${line}` : line));
 }
 
 function reportDocError(err: unknown, json: boolean): number {
@@ -308,8 +337,7 @@ async function exportDoc(flags: Flags): Promise<number> {
     return 3;
   }
   try {
-    const loaded = await loadCircuit(file);
-    const doc = toCircuitDoc(loaded.desc, { ...loaded.overrides, ...flags.overrides }, { meta: metaFlags(flags) });
+    const doc = await docFor(file, flags);
     writeOut(`${canonicalJson(doc, 2)}\n`, flags);
     if (flags.options.out) {
       console.error(`wrote ${flags.options.out} (${doc.components.length} components, ${doc.assertions.length} assertions)`);
@@ -326,20 +354,14 @@ async function share(flags: Flags): Promise<number> {
     console.error(`error: share needs a bench file or a circuit document\n\nEXAMPLE\n  ${CLI} share led-driver.bench.ts`);
     return 3;
   }
-  let link: ShareLink;
+  let shared: ShareOutcome;
   try {
-    const loaded = await loadCircuit(file);
-    const doc = toCircuitDoc(loaded.desc, { ...loaded.overrides, ...flags.overrides }, { meta: metaFlags(flags) });
-    link = await createShareLink(doc, { baseUrl: flags.options['base-url'] });
+    shared = await shareDoc(await docFor(file, flags), flags);
   } catch (err) {
     return reportDocError(err, flags.json);
   }
-  if (flags.json) {
-    console.log(JSON.stringify({ url: link.url, bytes: link.bytes, warnings: link.warnings }, null, 2));
-  } else {
-    console.log(link.url);
-    for (const w of link.warnings) console.error(`warning ${w.code}: ${w.message}`);
-  }
+  if (flags.json) console.log(JSON.stringify(shared, null, 2));
+  else printShare(shared, line => (line.startsWith('http') ? console.log(line) : console.error(line)));
   return 0;
 }
 
@@ -350,7 +372,7 @@ async function open(flags: Flags): Promise<number> {
     return 3;
   }
   try {
-    const doc = await decodeShareUrl(input);
+    const doc = circuitIdOf(input) ? (await readDoc(input)).doc : await decodeShareUrl(input);
     writeOut(`${canonicalJson(doc, 2)}\n`, flags);
     return 0;
   } catch (err) {
@@ -458,6 +480,17 @@ function log(flags: Flags): number {
   return 3;
 }
 
+function renderFootprint(f: FootprintDef): string {
+  const lines = [`${f.name} (${f.tech}) — ${f.description}`, '', '  pad   x        y        shape      size         drill'];
+  for (const p of f.pads) {
+    lines.push(`  ${p.name.padEnd(5)} ${String(p.x).padEnd(8)} ${String(p.y).padEnd(8)} ${p.shape.padEnd(10)} ${`${p.w}×${p.h}`.padEnd(12)} ${p.drill ?? '—'}`);
+  }
+  for (const k of f.courtyard) lines.push(`  courtyard ${k.w}×${k.h} mm centred at (${k.x}, ${k.y})`);
+  for (const h of f.holes ?? []) lines.push(`  hole ⌀${h.d} mm at (${h.x}, ${h.y})`);
+  lines.push('', '  origin = centre of the pads; x right, y up (mm); pads sharing a name are joined inside the part');
+  return lines.join('\n');
+}
+
 function explain(flags: Flags): number {
   const code = flags.positional[0];
   if (!code) {
@@ -477,6 +510,21 @@ function explain(flags: Flags): number {
 
 function catalog(flags: Flags): number {
   const type = flags.positional[0];
+  if (type && type.toLowerCase() === 'footprints') {
+    const list = footprintCatalog();
+    if (flags.json) console.log(JSON.stringify({ footprints: list }, null, 2));
+    else {
+      console.log('Footprints (tb.place(id, { footprint })) — lengths in mm; `catalog <name>` shows the pads\n');
+      for (const f of list) console.log(`  ${f.name.padEnd(12)} ${f.tech.padEnd(4)} ${f.pads !== undefined ? `${String(f.pads).padStart(2)} pads  ` : '         '}${f.description}`);
+    }
+    return 0;
+  }
+  const footprint = type ? getFootprint(type) : undefined;
+  if (footprint && !COMPONENT_CATALOG.some(e => e.type.toLowerCase() === type!.toLowerCase()) && !partDetail(type!)) {
+    if (flags.json) console.log(JSON.stringify({ footprint }, null, 2));
+    else console.log(renderFootprint(footprint));
+    return 0;
+  }
   // An IC alias ('SN74HC04N', 'LM555') shows its IC entry, like the canonical id.
   const ic = type ? (icPart(type) as { partId?: string } | undefined) : undefined;
   const wanted = (ic?.partId ?? type ?? '').toLowerCase();

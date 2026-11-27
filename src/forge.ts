@@ -25,6 +25,14 @@ export * from './schema/types';
 
 // Circuit document (circuitsvibe-circuit/1) and share-by-URL links.
 export * from './doc';
+// Printed circuit board: footprint library, default assignment, layout + checks (P801–P807).
+export { getFootprint, footprintCatalog } from './pcb/footprints';
+export { defaultFootprint, pinMap } from './pcb/assign';
+export { layoutBoard, buildRatsnest } from './pcb/layout';
+export type { BoardLayout, PlacedPart, PlacedPad } from './pcb/layout';
+export { normalizeBoard, normalizePlacement, normalizeFootprintDef, parseLength } from './pcb/normalize';
+export type { BoardInput, PlacementInput, FootprintInput, LengthLike } from './pcb/normalize';
+export type * from './pcb/types';
 // Viewer helpers (browser-safe, no DOM): auto-layout, symbols, the browser simulation driver and panel models.
 export { layoutCircuit } from './view/layout';
 export type { Layout as SchematicLayout, PlacedComponent, Wire as SchematicWire, Port as SchematicPort } from './view/layout';

@@ -19,6 +19,7 @@
  * inside a Web Worker (see worker.ts).
  */
 import { benchFromDoc } from '../doc/convert';
+import { loadDocDefinitions, type PlatformModule } from '../doc/definitions';
 import type { CircuitDoc } from '../doc/types';
 import { runLadderAsync } from '../verify/ladder';
 import { elaborate, type Elaboration } from '../elab/bench';
@@ -364,7 +365,16 @@ function runAcData(elab: Elaboration, config: AcSweepConfig, probes: { probe: st
  * phases; on the main thread the driver yields to the event loop between
  * phases so the UI can repaint.
  */
-export async function simulateDoc(doc: CircuitDoc, onProgress?: (p: SimProgress) => void, opts: { yield?: boolean } = {}): Promise<SimResult> {
+export async function simulateDoc(
+  doc: CircuitDoc,
+  onProgress?: (p: SimProgress) => void,
+  /**
+   * `platform`: the module custom-component code imports as 'circuitsvibe'.
+   * Only the simulation worker passes it — custom components (doc.definitions)
+   * are code and never run on the page's main thread (T019 there).
+   */
+  opts: { yield?: boolean; platform?: PlatformModule } = {},
+): Promise<SimResult> {
   const timing: Record<string, number> = {};
   const notes: string[] = [];
   const tick = async (p: SimProgress) => {
@@ -374,7 +384,8 @@ export async function simulateDoc(doc: CircuitDoc, onProgress?: (p: SimProgress)
 
   await tick({ phase: 'ladder' });
   let t0 = now();
-  const desc = benchFromDoc(doc);
+  const definitions = opts.platform && doc.definitions && doc.definitions.length > 0 ? loadDocDefinitions(doc, opts.platform) : undefined;
+  const desc = benchFromDoc(doc, definitions ? { definitions } : {});
   const record = await runLadderAsync(desc, { overrides: doc.overrides });
   timing.ladder = now() - t0;
 

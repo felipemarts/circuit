@@ -4,7 +4,8 @@
  * and (later) the MCP server and browser UI all consume exactly these shapes.
  *
  * Design rules (see docs/VISION.md):
- *  - Every failure carries a stable code (F1xx structural, S2xx solver, A3xx assertion).
+ *  - Every failure carries a stable code (F1xx structural, S2xx solver, A3xx assertion,
+ *    P8xx board layout).
  *  - Fix suggestions carry a `confidence` contract: `verified` means the fix was
  *    SIMULATED and passes; `mechanical` means a deterministic transformation;
  *    `suggested` means heuristic. Never emit a fix referencing a capability
@@ -13,11 +14,13 @@
  *    identical runs diff clean.
  */
 
-/** Ladder order: lint → op → dc → ac → tran (fail-fast). */
-export type StageName = 'lint' | 'op' | 'dc' | 'ac' | 'tran';
+import type { PcbRecord } from '../pcb/types';
+
+/** Ladder order: lint → op → dc → ac → tran → pcb (fail-fast). */
+export type StageName = 'lint' | 'op' | 'dc' | 'ac' | 'tran' | 'pcb';
 
 /** Canonical stage order. */
-export const STAGE_ORDER: StageName[] = ['lint', 'op', 'dc', 'ac', 'tran'];
+export const STAGE_ORDER: StageName[] = ['lint', 'op', 'dc', 'ac', 'tran', 'pcb'];
 
 export type Severity = 'error' | 'warning';
 
@@ -264,6 +267,8 @@ export interface StageRecord {
    * on op, dc and tran when the circuit contains catalog parts.
    */
   ratings?: RatingResult[];
+  /** pcb: the board layout — placements, unplaced parts, ratsnest (see src/pcb/types.ts). */
+  pcb?: PcbRecord;
 }
 
 /**

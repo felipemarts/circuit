@@ -1,0 +1,25 @@
+/* Login / register dialog and the account widget (viewer + wall). Uses the viewer tokens. */
+.cv-account { display: inline-flex; gap: 4px; align-items: center; }
+dialog.cv-auth {
+  margin: auto;
+  border: 1px solid var(--border-2, rgba(148, 163, 184, 0.28)); border-radius: 14px; padding: 0;
+  background: var(--panel, #0e1626); color: var(--text, #e8eef8); width: min(420px, calc(100vw - 32px));
+  box-shadow: var(--shadow-lg, 0 24px 64px rgba(0, 0, 0, 0.5));
+}
+dialog.cv-auth::backdrop { background: rgba(2, 6, 23, 0.6); backdrop-filter: blur(2px); }
+.cv-auth-form { display: flex; flex-direction: column; gap: 12px; padding: 20px; font: 14px var(--sans, system-ui); }
+.cv-auth-form h2 { margin: 0; font-size: 18px; }
+.cv-auth-form .hint { margin: 0; color: var(--muted, #9aa8bf); font-size: 12.5px; line-height: 1.45; }
+.cv-auth-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted, #9aa8bf); }
+.cv-auth-form input:not([type=radio]) {
+  font: 14px var(--sans, system-ui); color: var(--text, #e8eef8); background: var(--bg-2, #0a1020);
+  border: 1px solid var(--border-2, rgba(148, 163, 184, 0.28)); border-radius: 8px; padding: 8px 10px;
+}
+.cv-auth-form input:focus { outline: 2px solid var(--accent, #22d3ee); outline-offset: 1px; }
+.cv-auth-form fieldset.kind { border: 0; padding: 0; margin: 0; display: flex; gap: 14px; align-items: center; color: var(--muted, #9aa8bf); font-size: 12.5px; }
+.cv-auth-form fieldset.kind label { flex-direction: row; align-items: center; color: var(--text, #e8eef8); }
+.cv-auth-form .err { margin: 0; min-height: 1em; color: var(--red, #fb7185); font-size: 12.5px; }
+.cv-auth-form .row { display: flex; gap: 8px; align-items: center; }
+.cv-auth-form .sp { flex: 1; }
+.cv-auth-form .link { background: none; border: 0; color: var(--accent, #22d3ee); cursor: pointer; padding: 0; font: inherit; font-size: 12.5px; }
+.cv-auth-form .btn.primary { background: var(--accent, #22d3ee); color: var(--accent-ink, #06121a); border-color: transparent; font-weight: 600; }

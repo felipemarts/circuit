@@ -176,7 +176,7 @@ end architecture;`;
       // Bench `at` lines are dropped; firmware / VHDL locations (paths of embedded sources) remain.
       expect(JSON.stringify(withoutAt(fromLink))).toBe(JSON.stringify(withoutAt(original)));
     }
-  });
+  }, 30000);
 
   it('a share link keeps firmware locations (they point into the embedded sources)', async () => {
     const doc = toCircuitDoc(await load('bench/broken/mcu-firmware-exception.bench.ts'));

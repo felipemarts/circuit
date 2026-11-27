@@ -15,6 +15,8 @@ export const DOC_CODES = {
   T016: 'malformed-share-link',
   T017: 'unsupported-share-encoding',
   T018: 'long-share-link',
+  T019: 'custom-code-not-allowed',
+  T020: 'circuit-service-error',
 } as const;
 
 export type DocCode = keyof typeof DOC_CODES;

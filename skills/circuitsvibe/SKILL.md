@@ -28,10 +28,12 @@ were given `circuitsvibe-standalone.mjs`, use `node circuitsvibe-standalone.mjs 
 3. Before each retry run `npx circuitsvibe log list --json` — never repeat a failed
    configuration.
 4. When `--set` values pass, write them into the bench file.
-5. Give the user a link: `npx circuitsvibe share <name>.bench.ts` prints a URL that contains
-   the whole circuit (no server), or use `verify … --json --share` and read `share.url`. The link
-   opens at circuitsvibe.com with the schematic, a browser re-run of the simulation and all
-   results. Links you receive: `npx circuitsvibe open "<link>"` decodes one to the document.
+5. Give the user a link: `npx circuitsvibe share <name>.bench.ts`, or use `verify … --json
+   --share` and read `share.url`. Logged in, it is a short link to the circuit cache (private,
+   24 h; `--public` for the wall); otherwise the whole circuit is in the URL. The link opens at
+   circuitsvibe.com with the schematic, a browser re-run of the simulation and all results.
+   Links you receive: `npx circuitsvibe open "<link>"` gives the document;
+   `npx circuitsvibe verify "<link>" --json` re-runs it.
 
 Never guess component values: declare `tb.param('R1', { min: '100', max: '10k', scale: 'log' })`
 and let the simulator find the passing range. Only `verified` fixes were simulated.
@@ -81,6 +83,12 @@ tran / logic / serial. Details: `npx circuitsvibe agents` (Microcontrollers, VHD
 - `npx circuitsvibe explain <code>` — physics and fixes for one diagnostic code.
 - `npx circuitsvibe export <bench.ts>` — the language-neutral circuit document (JSON);
   `verify x.circuit.json` simulates it exactly like the bench.
+- `npx circuitsvibe share <bench.ts>` — the link to give the user. Logged in
+  (`npx circuitsvibe register --user <name> --kind agent` once) it is a short link, private for
+  24 h (`--public`: the wall at circuitsvibe.com/wall.html); otherwise the circuit is in the URL.
+- `npx circuitsvibe component search | info | add` — shared custom components (ranked by use).
+  They are code: read `component info` before `add`; `verify <link>` of a circuit carrying
+  custom components needs `--allow-code` (T019).
 
 Supported today: Resistor, Capacitor, Inductor, VoltageSource and CurrentSource (DC, SIN,
 PULSE, PWL, PWM, AC stimulus), Diode (Rs, capacitance, Zener breakdown), LED, NPN/PNP
@@ -93,7 +101,9 @@ co-simulated with the transient; microcontrollers running Arduino-style TypeScri
 esp32 / rp2040; firmware imports from `'circuitsvibe/arduino'` and waits with
 `await delay(ms)`; `tb.expect.serial('U1')`); VHDL blocks (`new VhdlBlock({ source:
 importedVhd })`, pins = port bits); DC operating point (with gmin/source stepping), DC sweep,
-AC small-signal, adaptive transient. Not yet: noise analysis.
+AC small-signal, adaptive transient; a PCB stage (`tb.board` + `tb.place`: footprints, pin → pad
+maps, placement checks P801–P807 with a mechanical placement fix, ratsnest — `catalog
+footprints`, docs/PCB.md). Not yet: noise analysis, PCB routing / Gerber.
 
 Real parts: one `Part(id)` covers logic ICs (`Part('74HC04')`), op-amps / comparators
 (`Part('LM358')`/LM741/TL072/MCP6002/NE5532/LM393/LM311) and catalog semiconductors.

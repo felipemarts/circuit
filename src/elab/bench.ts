@@ -11,6 +11,8 @@ import { DcExpect, AcExpect, type DcSweepInput, type AcSweepInput } from './expe
 import { LogicExpect, isLogicCheck } from './logic';
 import { SerialExpect, isSerialCheck } from './serial';
 import { elaborateMixed, type MixedInfo } from '../mixed/elab';
+import { normalizeBoard, normalizePlacement, type BoardInput, type PlacementInput } from '../pcb/normalize';
+import type { BoardSpec, FootprintDef, PcbSpec, PlacementSpec } from '../pcb/types';
 import type {
   AcSweepConfig,
   AssertionSpec,
@@ -69,6 +71,14 @@ export class TB {
   _lastTran?: TranConfig;
   /** @internal */
   _ratings: RatingOptions = normalizeRatingOptions(undefined);
+  /** @internal tb.board(...) */
+  _board?: BoardSpec;
+  /** @internal tb.place(...) per component id */
+  _placements = new Map<string, PlacementSpec>();
+  /** @internal */
+  _placeAt = new Map<string, string | undefined>();
+  /** @internal custom footprints given to tb.place, by name */
+  _footprints: Record<string, FootprintDef> = {};
 
   constructor(circuit: Circuit, overrides: Record<string, number> = {}) {
     this._circuit = circuit;
@@ -140,6 +150,32 @@ export class TB {
    */
   ratings(options: { enabled?: boolean; derate?: number; pd?: 'average' | 'peak'; ignore?: string[] } | false): void {
     this._ratings = normalizeRatingOptions(options as Partial<RatingOptions> | false);
+  }
+
+  /**
+   * Declare the printed circuit board this bench is built on — enables the
+   * pcb stage (footprints, placement checks P801–P807, ratsnest). Lengths in
+   * mm (or strings with a unit: '1.6mm', '2in', '100mil'); origin at the
+   * lower-left corner, y up:
+   *   tb.board({ width: 50, height: 30, tech: 'smd', holes: [{ x: 3, y: 3, d: 3.2 }] })
+   *   tb.board({ preset: 'uno-shield' })            // the Arduino Uno R3 outline
+   */
+  board(spec: BoardInput): void {
+    if (this._board) throw new Error(`tb.board(...) was already called: a bench describes one board`);
+    this._board = normalizeBoard(spec);
+  }
+
+  /**
+   * Place a component on the board: `{ x, y }` (mm) is the footprint origin —
+   * the centre of its pads —, `rot` degrees counter-clockwise, `side` 'top'
+   * (default) or 'bottom'. `footprint` picks a land pattern (default: the
+   * part's catalog package or the board-tech default), `pads` remaps pins,
+   * `{ offBoard: true }` keeps a part (a bench instrument) off the board.
+   */
+  place(id: string, placement: PlacementInput): void {
+    if (this._placements.has(id)) throw new Error(`tb.place('${id}', ...) was already called: one placement per component`);
+    this._placements.set(id, normalizePlacement(id, placement, this._footprints));
+    this._placeAt.set(id, captureLoc());
   }
 
   /** Name the electrical net that contains this pin, so probes can cite it. */
@@ -435,6 +471,10 @@ export interface Elaboration {
   netPins: Map<string, Pin[]>;
   /** Mixed-signal plan (logic ICs / primitives), when the bench has any. */
   mixed?: MixedInfo;
+  /** The board (tb.board / tb.place), when the bench declares one. */
+  pcb?: PcbSpec;
+  /** Source locations of tb.board / tb.place calls. */
+  pcbLocs?: { place: Record<string, string | undefined> };
 }
 
 function stableStringify(value: unknown): string {
@@ -623,6 +663,26 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
     if (!tb._components.has(id)) throw new Error(`tb.ratings({ ignore }): no component with id '${id}'`);
   }
 
+  // Board: placements must name registered components, and need a board.
+  let pcb: PcbSpec | undefined;
+  if (tb._placements.size > 0 && !tb._board) {
+    const [first] = tb._placements.keys();
+    throw new Error(`tb.place('${first}', ...)${tb._placeAt.get(first) ? ` at ${tb._placeAt.get(first)}` : ''}: there is no board — declare it first with tb.board({ width, height }) (mm)`);
+  }
+  if (tb._board) {
+    const placements: Record<string, PlacementSpec> = {};
+    for (const id of [...tb._placements.keys()].sort()) {
+      if (!tb._components.has(id)) {
+        const at = tb._placeAt.get(id);
+        throw new Error(`tb.place('${id}', ...)${at ? ` at ${at}` : ''}: no component with that id. Known ids: ${[...tb._components.keys()].join(', ')}`);
+      }
+      placements[id] = tb._placements.get(id)!;
+    }
+    const used = new Set(Object.values(placements).map(p => p.footprint).filter((f): f is string => f !== undefined));
+    const footprints = Object.fromEntries(Object.keys(tb._footprints).sort().filter(n => used.has(n)).map(n => [n, tb._footprints[n]]));
+    pcb = { board: tb._board, placements, ...(Object.keys(footprints).length > 0 ? { footprints } : {}) };
+  }
+
   // Validate probes now that nets are named.
   const knownNets = [...netNode.keys()].filter(n => n === 'gnd' || !/^n\d+$/.test(n));
   const validateProbe = (probe: string, at: string | undefined): void => {
@@ -758,5 +818,6 @@ export function elaborate(desc: BenchDescriptor, overrides: Record<string, numbe
     netPins,
     ...(mixed ? { mixed } : {}),
     ratingOptions: tb._ratings,
+    ...(pcb ? { pcb, pcbLocs: { place: Object.fromEntries(tb._placeAt) } } : {}),
   };
 }

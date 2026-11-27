@@ -4,6 +4,53 @@ All notable changes to `circuitsvibe`. The diagnostic codes are permanent (see
 [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md)); RunRecords stay `circuitsvibe-run/0.1` with
 additive fields only.
 
+## Unreleased
+
+### Circuit service: short links, the wall, the component registry
+- PHP 8.1 + SQLite API deployed with the site (`server/api` → `/api`, see server/README.md):
+  username + password accounts for people and agents (bearer tokens, no cookies); a **circuit
+  cache** behind short links `app.html?c=<id>` — any size, private links expire after 24 h,
+  public ones go to the **wall** (`wall.html`: search, sort, tags, stars); a **component
+  registry** of `defineComponent` modules with immutable SHA-256-identified versions and a
+  ranking by distinct users.
+- CLI: `register`, `login`, `logout`, `whoami`; `share` uploads when logged in (`--public`,
+  `--title`, `--tags`; `--link` keeps the fragment link); `open` / `verify` accept `?c=` links;
+  `circuits` lists the wall; `component search | info | add | publish`.
+- Custom components travel in circuit documents as the source of the module that exports them
+  (`definitions[]` + `sources[]`, with registry provenance). Running that code needs
+  `--allow-code` in the CLI (**T019**); the viewer runs it only in its simulation worker.
+  New codes T019 (custom code not allowed) and T020 (service error); T013 now means "the
+  definition is not in its own exported module".
+- Viewer: opens `?c=` links, shows author / visibility / expiry / views, stars, publish and
+  short-link actions, a notice when the circuit runs custom code, and a login dialog.
+
+### Schematic layout
+- Op-amp feedback parts sit over / under their amplifier instead of looping around it; stacks
+  hanging from an IC or MCU are ordered to avoid crossings and aligned in rows; rail and
+  ground buses get separate columns when they overlap. Across the 88 benches: wire detours
+  4520 → 2040 px, overlapping nets 5 → 0.
+
+### PCB, phase 1: board, footprints and placement
+- `tb.board({ width, height | outline | preset: 'uno-shield', layers, thickness, tech, holes,
+  rules })` and `tb.place(id, { x, y, rot, side, footprint, pads } | { offBoard: true })`. Lengths
+  in mm (unit strings accepted in the DSL), origin lower-left, y up, rotation CCW.
+- New last rung of the ladder, the **pcb** stage (`--stage pcb`): footprint and pin → pad map for
+  every component, placement checks **P801–P807** (outside the board / edge clearance,
+  overlapping courtyards and mounting holes, no footprint, pin without pad, not placed — with a
+  mechanical `tb.place` patch at a free spot —, off-board part without a connector, bad pad
+  map), and the ratsnest (MST airwires per net) in `stages.pcb.pcb`.
+- Parametric footprint library following the KiCad libraries: axial, DO-35/41, disc and radial
+  capacitors, 3/5 mm and chip LEDs, 0402–1210, SOD-123, SMA, TO-92, TO-220, TO-126, SOT-23,
+  DIP-n, SOIC-8/14/16, pin headers, screw terminals, tactile and slide switches, and the Arduino
+  Uno R3 shield headers (`UNO-SHIELD`). Catalog parts keep their datasheet package and pin
+  numbers; ICs follow the board tech (DIP ↔ SOIC); generic parts use the `tech` default.
+  Custom footprints as data. `circuitsvibe catalog footprints` / `catalog <footprint>`.
+- Circuit document field `pcb` (schema + `validateCircuitDoc`), carried by share links; the
+  viewer has a **PCB** tab (board, pads by layer, courtyards, silkscreen, ratsnest, ghosts at the
+  suggested spot of unplaced parts). docs/PCB.md.
+- Next: autorouter and DRC (P81x), current-aware trace widths from the simulation, Gerber /
+  Excellon / BOM / pick-and-place output, 3D view.
+
 ## 0.2.0
 
 First publishable release under the `circuitsvibe` name (formerly "Circuit Forge").

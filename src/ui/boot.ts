@@ -9,8 +9,13 @@ function hasShareHash(hash: string): boolean {
   return frag.split('&').some(p => p.startsWith('c='));
 }
 
+/** `app.html?c=<id>`: a circuit stored by the service (short link). */
+function hasCircuitId(): boolean {
+  return /^[A-Za-z0-9]{6,16}$/.test(new URLSearchParams(location.search).get('c') ?? '');
+}
+
 async function boot(): Promise<void> {
-  if (hasShareHash(location.hash)) {
+  if (hasShareHash(location.hash) || hasCircuitId()) {
     const { mountViewer } = await import('../view/viewer');
     const root = document.body;
     // The editor markup (and its inline welcome script) is replaced by the viewer.

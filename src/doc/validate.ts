@@ -5,6 +5,8 @@ import { buildComponent, describeComponent, isOverridable, kindOf, restoreModelC
 import { asQuantityDevice } from '../elab/quantity';
 import { CIRCUIT_SCHEMA, type CircuitDoc } from './types';
 import { docDiagnostic, type DocCode } from './errors';
+import { normalizeBoard, normalizeFootprintDef, normalizePlacement, type BoardInput, type FootprintInput, type PlacementInput } from '../pcb/normalize';
+import type { FootprintDef } from '../pcb/types';
 
 /**
  * Custom component definitions, keyed by type name or given as a list. Each
@@ -48,7 +50,7 @@ const PIN_PROBE_RE = /^([A-Za-z][A-Za-z0-9_]*)\.(.+)$/;
 const LANGUAGE_RE = /^[a-z][a-z0-9+#.-]*$/;
 const MAX_DIAGNOSTICS = 50;
 
-const TOP_KEYS = ['schema', 'name', 'meta', 'components', 'nets', 'assertions', 'overrides', 'ratings', 'sources', 'layout'];
+const TOP_KEYS = ['schema', 'name', 'meta', 'components', 'nets', 'assertions', 'overrides', 'ratings', 'sources', 'definitions', 'layout', 'pcb'];
 const RATINGS_KEYS = ['enabled', 'derate', 'pd', 'ignore'];
 /** Types that may carry a `modelCard` (built with <Type>.fromModel). */
 const MODEL_CARD_TYPES = ['Diode', 'LED', 'NPN', 'PNP', 'NMOS', 'PMOS'];
@@ -434,6 +436,11 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
     }
   }
 
+  // ── pcb (board, placements, custom footprints) ──
+  if (value.pcb !== undefined) checkPcb(c, value.pcb, ids);
+  // ── definitions (custom components: declarations + module paths) ──
+  const declared = value.definitions !== undefined ? checkDefinitions(c, value.definitions, value.sources) : new Map<string, string[]>();
+
   if (c.count > 0) return { ok: false, diagnostics: c.diagnostics };
 
   // ── semantic: every component rebuilds from type + params with exactly its pins ──
@@ -446,6 +453,14 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
   }
   const builtById = new Map<string, Component>();
   for (const { id, type, obj, path } of comps) {
+    // A declared custom component without its code loaded: check the pins against the declaration only.
+    const declaredPins = declared.get(type);
+    if (declaredPins && !(type in defs)) {
+      const given = Object.keys(obj.pins as Obj);
+      for (const pin of given) if (!declaredPins.includes(pin)) c.add('T014', `${path}/pins/${pin}`, `${type} ${id} has no pin '${pin}' (declared pins: ${declaredPins.join(', ')})`, [id]);
+      for (const pin of declaredPins) if (!given.includes(pin)) c.add('T014', `${path}/pins`, `${type} ${id} is missing pin '${pin}'`, [id]);
+      continue;
+    }
     let built: Component;
     try {
       built = buildComponent(type, obj.params as Record<string, never>, defs, Array.isArray(value.sources) ? (value.sources as { path: string; text: string }[]) : undefined);
@@ -512,6 +527,101 @@ export function validateCircuitDoc(value: unknown, opts: ValidateOptions = {}): 
   }
   if (c.count > 0) return { ok: false, diagnostics: c.diagnostics };
   return { ok: true, doc: value as unknown as CircuitDoc, diagnostics: [] };
+}
+
+const REF_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{2,31}\/[a-z][a-z0-9-]{1,39}@\d+$/;
+const HASH_RE = /^sha256:[0-9a-f]{64}$/;
+
+/** Structure of `definitions`; returns type → declared pins. */
+function checkDefinitions(c: Collector, defs: unknown, sources: unknown): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  if (!Array.isArray(defs)) {
+    c.add('T010', '/definitions', 'definitions must be an array of { type, pins, source, export?, registry? }');
+    return out;
+  }
+  const paths = new Set(Array.isArray(sources) ? sources.filter(isObj).map(s => s.path) : []);
+  defs.forEach((d, i) => {
+    const p = `/definitions/${i}`;
+    if (!isObj(d)) return c.add('T010', p, 'a definition must be an object { type, pins, source }');
+    unknownKeys(c, d, ['type', 'pins', 'source', 'export', 'registry'], p);
+    if (typeof d.type !== 'string' || !ID_RE.test(d.type)) return c.add('T010', `${p}/type`, 'type must be the ComponentDef name (letters, digits, _)');
+    if (out.has(d.type)) return c.add('T010', `${p}/type`, `type '${d.type}' is defined twice`);
+    if (!Array.isArray(d.pins) || d.pins.length === 0 || !d.pins.every(x => typeof x === 'string' && x !== '') || new Set(d.pins).size !== d.pins.length) {
+      return c.add('T010', `${p}/pins`, "pins must be the non-empty list of the definition's unique pin names");
+    }
+    if (typeof d.source !== 'string' || !paths.has(d.source)) c.add('T010', `${p}/source`, `source must be the path of a module in sources (got ${JSON.stringify(d.source)})`);
+    if (d.export !== undefined && (typeof d.export !== 'string' || !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(d.export))) c.add('T010', `${p}/export`, 'export must be an export name');
+    if (d.registry !== undefined) {
+      const r = d.registry;
+      if (!isObj(r) || typeof r.ref !== 'string' || !REF_RE.test(r.ref) || typeof r.hash !== 'string' || !HASH_RE.test(r.hash)) {
+        c.add('T010', `${p}/registry`, "registry must be { ref: '<user>/<name>@<version>', hash: 'sha256:<hex>' }");
+      }
+    }
+    out.set(d.type, d.pins as string[]);
+  });
+  return out;
+}
+
+/** Lengths in a document are numbers (mm); unit strings are a DSL convenience. */
+function onlyNumbers(v: unknown, path: string, c: Collector): boolean {
+  if (typeof v === 'string') {
+    c.add('T010', path, `pcb lengths are numbers in mm, not strings (got ${JSON.stringify(v)})`);
+    return false;
+  }
+  if (Array.isArray(v)) return v.every((x, i) => onlyNumbers(x, `${path}/${i}`, c));
+  if (isObj(v)) return Object.entries(v).every(([k, x]) => k === 'name' || k === 'description' || k === 'shape' || k === 'tech' || k === 'side' || k === 'footprint' || k === 'pads' || k === 'kind' || k === 'preset' || onlyNumbers(x, `${path}/${k}`, c));
+  return true;
+}
+
+function checkPcb(c: Collector, pcb: unknown, ids: Set<string>): void {
+  const tidy = (m: string) => m.replace(/^tb\.board:? ?/, '').replace(/^tb\.place\('([^']+)'\):? ?/, '');
+  if (!isObj(pcb)) return c.add('T010', '/pcb', 'pcb must be an object { board, placements, footprints? }');
+  unknownKeys(c, pcb, ['board', 'placements', 'footprints'], '/pcb');
+  if (!isObj(pcb.board)) c.add('T010', '/pcb/board', 'pcb.board must be an object { width, height, … } (mm)');
+  else if (onlyNumbers(pcb.board, '/pcb/board', c)) {
+    try {
+      normalizeBoard(pcb.board as BoardInput);
+    } catch (err) {
+      c.add('T010', '/pcb/board', tidy(err instanceof Error ? err.message : String(err)));
+    }
+  }
+  const custom: Record<string, FootprintDef> = {};
+  if (pcb.footprints !== undefined) {
+    if (!isObj(pcb.footprints)) c.add('T010', '/pcb/footprints', 'pcb.footprints must be an object keyed by footprint name');
+    else {
+      for (const [name, def] of Object.entries(pcb.footprints)) {
+        const p = `/pcb/footprints/${name}`;
+        if (!isObj(def) || !onlyNumbers(def, p, c)) {
+          if (!isObj(def)) c.add('T010', p, 'a footprint must be an object { name, pads, … }');
+          continue;
+        }
+        try {
+          const n = normalizeFootprintDef(def as unknown as FootprintInput);
+          if (n.name !== name) c.add('T010', `${p}/name`, `footprint key '${name}' and its name '${n.name}' differ`);
+          custom[name] = n;
+        } catch (err) {
+          c.add('T010', p, err instanceof Error ? err.message : String(err));
+        }
+      }
+    }
+  }
+  if (pcb.placements === undefined || !isObj(pcb.placements)) return c.add('T010', '/pcb/placements', 'pcb.placements must be an object keyed by component id');
+  for (const [id, pl] of Object.entries(pcb.placements)) {
+    const p = `/pcb/placements/${id}`;
+    if (!ids.has(id)) c.add('T010', p, `placement for unknown component '${id}'`);
+    if (!isObj(pl)) {
+      c.add('T010', p, 'a placement must be an object { x, y, rot?, side?, footprint?, pads? } or { offBoard: true }');
+      continue;
+    }
+    const { at, ...rest } = pl;
+    if (at !== undefined && typeof at !== 'string') c.add('T010', `${p}/at`, 'at must be a "file:line" string');
+    if (!onlyNumbers(rest, p, c)) continue;
+    try {
+      normalizePlacement(id, rest as PlacementInput, { ...custom });
+    } catch (err) {
+      c.add('T010', p, tidy(err instanceof Error ? err.message : String(err)));
+    }
+  }
 }
 
 function validPath(p: string): boolean {

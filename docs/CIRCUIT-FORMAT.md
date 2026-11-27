@@ -56,7 +56,9 @@ No unit strings (`'4.7k'` is a DSL convenience, not part of the document).
 | `overrides` | no | `{ id: number }` — `--set` values applied when the document was made |
 | `ratings` | no | `{ enabled?, derate?, pd?, ignore? }` — `tb.ratings(...)` settings, only when not the defaults |
 | `sources` | no | embedded text files `[{ path, language, text }]`, ascending `path` |
+| `definitions` | no | custom components (`defineComponent` code) used by `components[].type`: `[{ type, pins, source, export?, registry? }]`, ascending `type` |
 | `layout` | no | viewer placement hints; never affects simulation |
+| `pcb` | no | the printed circuit board: `{ board, placements, footprints? }` — lengths in **mm** (see below and docs/PCB.md) |
 
 Unknown fields are **rejected** (T010) everywhere except inside `layout`, so a reader never
 silently drops meaning it does not understand.
@@ -221,6 +223,32 @@ degrees clockwise; a wire joins two pin refs on the **same** net. Extra viewer-o
 are allowed at every level of `layout`. Benches carry no layout today, so exported
 documents have none; a document that has one keeps it through `benchFromDoc` → `toCircuitDoc`.
 
+### `pcb` (board, placements, footprints)
+
+```json
+{ "board": { "width": 30, "height": 20, "layers": 2, "thickness": 1.6, "tech": "tht",
+             "rules": { "trace": 0.25, "clearance": 0.2, "via": { "drill": 0.3, "diameter": 0.6 }, "edgeClearance": 0.5 },
+             "holes": [{ "x": 3, "y": 3, "d": 3.2 }] },
+  "placements": { "R1": { "x": 15, "y": 10, "at": "bench/pcb/x.bench.ts:24" },
+                  "D1": { "x": 25, "y": 8, "rot": 90, "footprint": "LED-5MM" },
+                  "V1": { "offBoard": true } },
+  "footprints": { "MY-R": { "name": "MY-R", "description": "custom footprint", "tech": "tht",
+                            "pads": [{ "name": "1", "x": -2, "y": 0, "shape": "rect", "w": 1.2, "h": 1.2, "drill": 0.6 }, …],
+                            "courtyard": [{ "x": 0, "y": 0, "w": 5.7, "h": 1.7 }] } } }
+```
+
+The exception to the SI rule: PCB lengths are **millimetres** (the EDA convention), angles are
+degrees counter-clockwise, the origin is the lower-left corner of a rectangular board, y up.
+`board` is either `{ width, height, cornerRadius? }`, `{ outline: [[x, y], …] }` or
+`{ preset: "uno-shield" }`; the writer fills every default (`layers` 2, `thickness` 1.6, `tech`
+`"tht"`, the rules above, `holes` []), a reader accepts them omitted. Values are numbers: a
+unit string (`"30mm"`) is T010. `placements` is keyed by component id; a placement without `x`/`y`
+only chooses a footprint (the part is unplaced, P805). `footprint` names a library footprint
+(`circuitsvibe catalog footprints`) or a key of `footprints`; `pads` maps pin names to pad
+names (`"1"` or `["8", "22"]`). `at` is the `tb.place` location: informational, dropped from
+share links like `components[].at`. The board never changes simulation results or the
+netlist hash; it drives the `pcb` stage.
+
 ## Guarantees
 
 - **Round trip**: for every bench, `runLadderAsync(bench)` and
@@ -232,11 +260,33 @@ documents have none; a document that has one keeps it through `benchFromDoc` →
 - **Determinism**: the same bench gives a byte-identical document and the same share URL.
 - **Inline firmware**: an MCU given `{ setup, loop }` functions (not a file) cannot be
   serialized either (T013); give it a firmware file.
-- **Custom components**: `defineComponent` parts are code and cannot be serialized. The CLI
-  refuses with T013 naming the parts; the library accepts a definition registry
-  (`toCircuitDoc(bench, overrides, { definitions })`, `benchFromDoc(doc, { definitions })`) and
-  then writes `type: "<definition name>"` with its numeric params. Every reader needs the
-  same definitions (T012 otherwise).
+- **Custom components**: a `defineComponent` part is code; the document carries it as the
+  **source of the module that exports it** (see `definitions` below). A definition written
+  inside the bench file, or not exported, has no such module: the CLI refuses with T013. The
+  library also accepts an in-memory registry (`toCircuitDoc(bench, overrides, { definitions })`,
+  `benchFromDoc(doc, { definitions })`), in which case every reader needs the same definitions.
+
+### `definitions` (custom components)
+
+```json
+"definitions": [{ "type": "Ntc", "pins": ["1", "2"], "source": "components/ntc.part.ts",
+                  "registry": { "ref": "alice/ntc@3", "hash": "sha256:2faf…" } }],
+"sources": [{ "path": "components/ntc.part.ts", "language": "typescript", "text": "import { defineComponent } from 'circuitsvibe'; export default defineComponent({ … })" }]
+```
+
+- `type` is the ComponentDef `name` used by `components[].type`; `pins` its pin names in order;
+  `source` the module in `sources` that exports it (`export`: the export name, default the
+  default export). The module may import `'circuitsvibe'` and relative files of `sources`.
+- **Reading** a document needs only the declaration: validation checks every component of a
+  declared type against `pins`, without running anything.
+- **Simulating** evaluates the modules (`loadDocDefinitions(doc, platform)` →
+  `benchFromDoc(doc, { definitions })`); the code must export a definition with the declared
+  name and pins (T014 otherwise). `benchFromDoc` without the code is **T019**. The CLI evaluates
+  it only with `--allow-code`; the web viewer only inside its simulation worker (no DOM, no
+  storage, no login token).
+- `registry` (optional) is the provenance of a part installed with `circuitsvibe component add`:
+  the published ref and the SHA-256 of its source. The CLI writes it only while the installed
+  file is unmodified; the service counts it in the component ranking.
 
 ## Canonical form
 
@@ -271,6 +321,11 @@ and verify identically.
    `base64.urlsafe_b64encode(...).rstrip(b"=")`. Or run `npx circuitsvibe share my.circuit.json`.
 
 ## Share links
+
+Two forms. **Short links** (`https://circuitsvibe.com/app.html?c=<id>`) point at the circuit
+cache of the CircuitsVibe service (server/README.md): `circuitsvibe share` uses them when you
+are logged in — any document size, private for 24 h by default, `--public` to list it on the
+wall. **Fragment links** carry the whole document and need no account or server:
 
 ```
 <baseUrl>#c=1.<base64url(deflate-raw(utf8(canonical JSON)))>

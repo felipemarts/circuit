@@ -7,8 +7,12 @@ import type { ComponentDef } from '../core/CustomComponent';
 import type { Pin } from '../core/Pin';
 import type { AssertionSpec, Diagnostic, ParamValue, ScalarCheck } from '../schema/types';
 import { canonicalJson } from './canonical';
-import { CIRCUIT_SCHEMA, type CircuitDoc, type CircuitMeta, type CircuitRatings } from './types';
+import { CIRCUIT_SCHEMA, type CircuitDefinition, type CircuitDoc, type CircuitMeta, type CircuitRatings } from './types';
+import { describeDefinitions } from './definitions';
+import { firmwareLanguage } from '../mcu/firmware';
 import type { RatingOptions } from '../verify/ratings';
+import type { PlacementInput } from '../pcb/normalize';
+import type { PcbSpec } from '../pcb/types';
 import { CircuitDocError, docDiagnostic } from './errors';
 import { normalizeDefinitions, validateCircuitDoc, type ComponentDefinitions } from './validate';
 
@@ -20,9 +24,28 @@ export interface DocBenchDescriptor extends BenchDescriptor {
   definitions?: Record<string, ComponentDef>;
 }
 
+/** Where a custom component's code lives: the module that exports it, with its relative imports. */
+export interface DefinitionSource {
+  /** POSIX path of the module (cwd-relative in the CLI). */
+  path: string;
+  /** Export name ('default' for the default export). */
+  export: string;
+  /** The module and every file it imports relatively, as embedded `sources`. */
+  files: { path: string; text: string }[];
+  /** Registry provenance (a file installed with `circuitsvibe component add`, unmodified). */
+  registry?: { ref: string; hash: string };
+}
+
 export interface ToCircuitDocOptions {
-  /** Custom (`defineComponent`) definitions; without them such parts are T013. */
+  /** Custom (`defineComponent`) definitions known to every reader; the document declares nothing for them. */
   definitions?: ComponentDefinitions;
+  /**
+   * The source module of a custom definition (the CLI knows every file a bench
+   * loaded). A definition with a source is carried by the document as code:
+   * `definitions[]` + its files in `sources[]`. Without one (and not in
+   * `definitions`) a custom part is T013.
+   */
+  definitionSources?: (def: ComponentDef) => DefinitionSource | undefined;
   /** Metadata to record (merged over the metadata of a document-derived bench). */
   meta?: CircuitMeta;
   /** Keep `at` origin locations (default true). */
@@ -45,6 +68,7 @@ export function stripLocations(doc: CircuitDoc): CircuitDoc {
   const d = clone(doc);
   for (const c of d.components) delete c.at;
   for (const a of d.assertions) delete a.at;
+  for (const pl of Object.values(d.pcb?.placements ?? {})) delete pl.at;
   return d;
 }
 
@@ -82,9 +106,21 @@ export function toCircuitDoc(
 
   const offenders: string[] = [];
   const inlineFirmware: string[] = [];
+  // Custom components carried as code: type → declaration + files.
+  const declared = new Map<string, { def: CircuitDefinition; files: { path: string; text: string }[] }>();
+  for (const d of carried?.definitions ?? []) declared.set(d.type, { def: clone(d), files: [] });
   for (const [id, comp] of elab.components) {
-    const isCustom = (comp as { _def?: unknown })._def !== undefined;
-    if (isCustom && !(kindOf(comp) in defs)) offenders.push(id);
+    const def = (comp as { _def?: ComponentDef })._def;
+    if (def !== undefined) {
+      const type = kindOf(comp);
+      const src = declared.has(type) ? undefined : options.definitionSources?.(def);
+      if (src) {
+        declared.set(type, {
+          def: { type, pins: [...def.pins], source: src.path, ...(src.export !== 'default' ? { export: src.export } : {}), ...(src.registry ? { registry: { ...src.registry } } : {}) },
+          files: src.files,
+        });
+      } else if (!declared.has(type) && !(type in defs)) offenders.push(id);
+    }
     if ((comp as { serializable?: boolean }).serializable === false) inlineFirmware.push(id);
   }
   if (inlineFirmware.length > 0) {
@@ -105,15 +141,20 @@ export function toCircuitDoc(
     throw new CircuitDocError([
       docDiagnostic(
         'T013',
-        `${named} ${offenders.length > 1 ? 'are' : 'is a'} defineComponent part${offenders.length > 1 ? 's' : ''}: a circuit document carries data, not code, so ${offenders.length > 1 ? 'they' : 'it'} cannot be exported or shared`,
+        `${named} ${offenders.length > 1 ? 'are' : 'is a'} defineComponent part${offenders.length > 1 ? 's' : ''} whose definition is not exported from its own module file, so the document cannot carry ${offenders.length > 1 ? 'their' : 'its'} code`,
         {
           components: offenders,
-          note: 'custom components are TypeScript functions (stamp/ac); only built-in component types are serializable without a definition registry',
+          note: 'a document carries a custom component as the SOURCE of the module that exports it; a defineComponent written inside the bench file (or not exported) has no such module',
           fixes: [
+            {
+              kind: 'module-file',
+              confidence: 'mechanical',
+              detail: "move the definition into its own file and export it (e.g. thermistor.part.ts: export default defineComponent({ name: 'Thermistor', ... })), then import it in the bench",
+            },
             {
               kind: 'use-builtin',
               confidence: 'suggested',
-              detail: 'model the part with built-in components (circuitsvibe catalog), or export through the library with toCircuitDoc(bench, {}, { definitions }) and give the reader the same definitions',
+              detail: 'or model the part with built-in components (circuitsvibe catalog), or install one from the registry (circuitsvibe component search / add)',
             },
           ],
         },
@@ -159,6 +200,17 @@ export function toCircuitDoc(
       sourceMap.set(f.path, { ...f });
     }
   }
+  for (const { files } of declared.values()) {
+    for (const f of files) {
+      const prev = sourceMap.get(f.path);
+      if (prev && prev.text !== f.text) {
+        throw new CircuitDocError([docDiagnostic('T014', `two different files are embedded under the same source path '${f.path}'`, { fixes: [{ kind: 'rename-file', confidence: 'suggested', detail: 'give the files distinct paths' }] })]);
+      }
+      sourceMap.set(f.path, { path: f.path, language: firmwareLanguage(f.path), text: f.text });
+    }
+  }
+  const usedTypes = new Set(components.map(c => c.type));
+  const definitions = [...declared.values()].map(d => d.def).filter(d => usedTypes.has(d.type)).sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
   const sources = [...sourceMap.values()];
   const meta: CircuitMeta = { ...(carried?.meta ?? {}), ...(options.meta ?? {}) };
   for (const k of Object.keys(meta) as (keyof CircuitMeta)[]) if (!meta[k]) delete meta[k];
@@ -173,9 +225,18 @@ export function toCircuitDoc(
     ...(Object.keys(overrides).length > 0 ? { overrides: { ...overrides } } : {}),
     ...(ratings ? { ratings } : {}),
     ...(sources.length > 0 ? { sources } : {}),
+    ...(definitions.length > 0 ? { definitions } : {}),
     ...(carried?.layout ? { layout: clone(carried.layout) } : {}),
+    ...(elab.pcb ? { pcb: pcbField(elab.pcb, keepAt ? elab.pcbLocs?.place : undefined) } : {}),
   };
   return canonicalizeDoc(doc);
+}
+
+/** The board as a document field: placements carry their tb.place location (`at`) when kept. */
+function pcbField(pcb: PcbSpec, at: Record<string, string | undefined> | undefined): PcbSpec {
+  const out = clone(pcb);
+  for (const [id, pl] of Object.entries(out.placements)) if (at?.[id]) pl.at = at[id];
+  return out;
 }
 
 /** tb.ratings(...) settings as a document field: only the non-default keys, undefined when all are defaults. */
@@ -205,6 +266,17 @@ export function benchFromDoc(input: unknown, opts: { definitions?: ComponentDefi
   if (!result.ok) throw new CircuitDocError(result.diagnostics);
   const doc = clone(result.doc);
   const defs = normalizeDefinitions(opts.definitions);
+  const missing = (doc.definitions ?? []).filter(d => !(d.type in defs) && doc.components.some(c => c.type === d.type));
+  if (missing.length > 0) {
+    throw new CircuitDocError([
+      docDiagnostic('T019', `the document runs custom-component code (${missing.map(d => d.type).join(', ')}) that was not loaded`, {
+        components: doc.components.filter(c => missing.some(d => d.type === c.type)).map(c => c.id),
+        evidence: { definitions: describeDefinitions({ ...doc, definitions: missing }) },
+        note: 'simulating these parts executes their TypeScript modules (embedded in sources[])',
+        fixes: [{ kind: 'allow-code', confidence: 'suggested', detail: 'review the sources, then re-run with --allow-code (CLI), or pass the evaluated definitions: benchFromDoc(doc, { definitions: loadDocDefinitions(doc, platform) })' }],
+      }),
+    ]);
+  }
 
   const build = (tb: TB): void => {
     const comps = new Map<string, Component>();
@@ -235,6 +307,16 @@ export function benchFromDoc(input: unknown, opts: { definitions?: ComponentDefi
     }
     for (const c of doc.components) if (c.free) tb.param(c.id, c.free);
     if (doc.ratings) tb.ratings(clone(doc.ratings));
+    if (doc.pcb) {
+      tb.board(clone(doc.pcb.board));
+      const custom = doc.pcb.footprints ?? {};
+      for (const id of Object.keys(doc.pcb.placements).sort()) {
+        const { at, ...pl } = clone(doc.pcb.placements[id]);
+        const footprint = pl.footprint !== undefined && custom[pl.footprint] ? clone(custom[pl.footprint]) : pl.footprint;
+        tb.place(id, { ...pl, ...(footprint !== undefined ? { footprint } : {}) } as PlacementInput);
+        tb._placeAt.set(id, at);
+      }
+    }
     for (const a of doc.assertions) {
       const before = tb._assertions.length;
       replayAssertion(tb, a);

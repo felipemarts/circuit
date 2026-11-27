@@ -6,3 +6,4 @@ dist-site/
 .circuitsvibe/
 .forge/
 .playwright-mcp/
+server/api/config.local.php

@@ -14,10 +14,12 @@
  *   F14x  firmware lint (F140–F149)
  *   F107–F110 semiconductor lint · R401–R404 datasheet ratings · T005–T008 .model cards
  *   F120–F124 op-amp / comparator lint · R420–R425 op-amp / comparator ratings
+ *   P801–P807 board layout (src/pcb) · P81x reserved for routing / DRC
  */
 import { AMPLIFIER_DIAGNOSTIC_DOCS } from '../opamps/registry';
 
 import { MCU_INTEGRATION_DOCS } from './registry-mcu';
+import { PCB_DIAGNOSTIC_DOCS } from '../pcb/registry';
 
 export interface DiagnosticDoc {
   code: string;
@@ -261,15 +263,47 @@ definitions it needs.`,
   {
     code: 'T013',
     slug: 'custom-component-not-serializable',
-    title: 'bench with custom components cannot be exported or shared',
-    explanation: `export / share / verify --share turn a bench into a circuit document, which
-is plain data in any language. A defineComponent part is TypeScript code
-(its stamp and ac functions), which a document cannot carry, so the command
-refuses and names the parts instead of producing a document that cannot be
-simulated elsewhere. verify itself is unaffected.
-Fix: model the part with built-in components, or export through the library
-with toCircuitDoc(bench, overrides, { definitions }) and give every reader
-the same definitions.`,
+    title: 'a custom component cannot be exported or shared',
+    explanation: `export / share / verify --share turn a bench into a circuit document. A
+defineComponent part is TypeScript code: the document carries it as the SOURCE
+of the module that exports it (definitions[] + sources[]). That only works
+when the definition lives in its own module file and is exported from it —
+a defineComponent written inside the bench file, or not exported, has no
+source the document can carry, so the command names the parts and refuses.
+verify itself is unaffected.
+Fix: move the definition into its own file and export it —
+  // thermistor.part.ts
+  import { defineComponent } from 'circuitsvibe';
+  export default defineComponent({ name: 'Thermistor', pins: ['1', '2'], stamp(ctx) { … } });
+— then import it in the bench. Registry parts (circuitsvibe component add) are
+already such files. Library users can also pass { definitions } to
+toCircuitDoc and give every reader the same definitions.`,
+  },
+  {
+    code: 'T019',
+    slug: 'custom-code-not-allowed',
+    title: 'the document contains custom-component code and --allow-code was not given',
+    explanation: `The circuit document declares custom components (definitions[]): simulating it
+means EXECUTING their TypeScript modules (embedded in sources[]) on this machine,
+with the same access as the CLI itself. A document can come from anyone (a link,
+the public wall), so the CLI refuses until you allow it explicitly. The
+diagnostic lists every definition, its source file and, for registry parts,
+the published ref and SHA-256.
+Fix: read the sources first (circuitsvibe open <link> -o x.circuit.json shows
+them), then re-run with --allow-code. Your own bench files never need the flag;
+the web viewer runs such code inside its simulation worker.`,
+  },
+  {
+    code: 'T020',
+    slug: 'circuit-service-error',
+    title: 'the circuit / component service refused the request or could not be reached',
+    explanation: `A command that talks to the CircuitsVibe service (login, share upload,
+open/verify of a ?c= link, component publish/add/search) got an error: no
+network, wrong credentials (log in again: circuitsvibe login), a private link
+that expired (24 h), a document above the size limit, or a rate limit. The
+message carries the service's error code and text.
+Fix: follow the message; for an expired private link, ask the author to share
+it again (or to publish it: circuitsvibe share x.bench.ts --public).`,
   },
   {
     code: 'T014',
@@ -1424,6 +1458,7 @@ are accepted silently.`,
   // ── op-amps and comparators (src/opamps): F120–F124 lint, R420–R425 datasheet checks ──
   ...AMPLIFIER_DIAGNOSTIC_DOCS,
   ...MCU_INTEGRATION_DOCS,
+  ...PCB_DIAGNOSTIC_DOCS,
 ];
 
 export function findDiagnosticDoc(code: string): DiagnosticDoc | undefined {

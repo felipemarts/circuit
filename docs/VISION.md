@@ -185,6 +185,9 @@ $ circuitsvibe catalog                                 # component datasheet for
   document, so share links reproduce MCU benches; the firmware path is browser-safe
   (sucrase + eval from source text) for the web viewer. The transient is a step generator
   that awaits firmware only where it is due (`runLadderAsync`).
+- ✅ PCB phase 1 (docs/PCB.md): `tb.board` / `tb.place`, a parametric footprint library (catalog
+  parts keep their datasheet package and pin numbers), placement checks P801–P807 with a
+  mechanical placement fix, ratsnest, the `pcb` stage, the document field and the viewer's PCB tab.
 - ✅ The existing canvas UI keeps working (the engine is the same).
 
 ## Roadmap
@@ -198,6 +201,7 @@ $ circuitsvibe catalog                                 # component datasheet for
 | v0.6 | UI = RunRecord viewer: assertion chips on the schematic, bands on the oscilloscope, ledger timeline | human and agent see the same artifact |
 | v0.7 | SPICE export + ngspice cross-check in CI with a tolerance table (ordering by ref in the matrix already shipped); sparse LU once benches pass ~500 nodes | public numerical credibility |
 | v0.8 | ~~Level-1 MOSFET, Gummel-Poon BJT, real parts with ratings~~ (done), behavioral sources; ~~op-amp macro-model~~ (done) | unlocks real specs |
+| v0.9 | **PCB to fabrication**: ~~board, footprints, placement checks, ratsnest~~ (done); autorouter + DRC (P81x) with trace widths sized from the simulated currents; Gerber X2 / Excellon / BOM / pick-and-place; 3D view (GLB) | code → simulation → board, in one verified loop |
 | v1.0 | **CircuitBench**: public eval of "iterations-to-green" per model, tasks with hidden assertions; freeze of the `circuitsvibe-run/1.0` schema | the standard wins because agents provably converge on it |
 
 Sequencing rules (from the architecture-panel judges): the terminal loop stands on its own

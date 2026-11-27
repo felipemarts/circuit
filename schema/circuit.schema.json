@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:circuitsvibe:schema:circuitsvibe-circuit:1",
   "title": "CircuitsVibe circuit document (circuitsvibe-circuit/1)",
-  "description": "Language-neutral circuit document: components and wiring, free parameters, assertions with their analysis configs, optional metadata, embedded sources and viewer layout. Spec: docs/CIRCUIT-FORMAT.md. All quantities are SI numbers (ohm, F, H, V, A, s, Hz, dB, degrees). Cross-field rules this schema cannot express (unique ids, pins exactly matching the component type, references to components and nets) are checked by validateCircuitDoc and reported as T010-T014.",
+  "description": "Language-neutral circuit document: components and wiring, free parameters, assertions with their analysis configs, optional metadata, embedded sources, viewer layout and the printed circuit board (pcb, lengths in mm). Spec: docs/CIRCUIT-FORMAT.md. All quantities are SI numbers (ohm, F, H, V, A, s, Hz, dB, degrees). Cross-field rules this schema cannot express (unique ids, pins exactly matching the component type, references to components and nets) are checked by validateCircuitDoc and reported as T010-T014.",
   "type": "object",
   "required": [
     "schema",
@@ -90,7 +90,7 @@
       }
     },
     "sources": {
-      "description": "Embedded text files (reserved for VHDL / firmware sources). Carried verbatim; not executed by circuitsvibe-circuit/1 readers.",
+      "description": "Embedded text files: VHDL, firmware and custom-component modules (paths referenced by component params and definitions[].source). Carried verbatim.",
       "type": "array",
       "items": {
         "type": "object",
@@ -115,8 +115,14 @@
         }
       }
     },
+    "definitions": {
+      "$ref": "#/$defs/definitions"
+    },
     "layout": {
       "$ref": "#/$defs/layout"
+    },
+    "pcb": {
+      "$ref": "#/$defs/pcb"
     }
   },
   "$defs": {
@@ -1115,6 +1121,425 @@
                 "items": {
                   "$ref": "#/$defs/point"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "pcb": {
+      "description": "The printed circuit board (tb.board / tb.place): board, placement per component id, custom footprints. Lengths in millimetres, angles in degrees counter-clockwise, origin at the lower-left corner of a rectangular board, y up. Spec: docs/PCB.md. Cross-field rules (placements name components, footprint names resolve) are checked by validateCircuitDoc.",
+      "type": "object",
+      "required": [
+        "board",
+        "placements"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "board": {
+          "$ref": "#/$defs/pcbBoard"
+        },
+        "placements": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/pcbPlacement"
+          }
+        },
+        "footprints": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/pcbFootprint"
+          }
+        }
+      }
+    },
+    "pcbXY": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number"
+      }
+    },
+    "pcbBoard": {
+      "description": "Rectangle { width, height, cornerRadius? }, a polygon { outline }, or { preset: \"uno-shield\" }; defaults: layers 2, thickness 1.6, tech \"tht\", rules { trace 0.25, clearance 0.2, via { drill 0.3, diameter 0.6 }, edgeClearance 0.5 }, holes [].",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "cornerRadius": {
+          "type": "number",
+          "minimum": 0
+        },
+        "outline": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "$ref": "#/$defs/pcbXY"
+          }
+        },
+        "preset": {
+          "enum": [
+            "uno-shield"
+          ]
+        },
+        "layers": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "thickness": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tech": {
+          "enum": [
+            "tht",
+            "smd"
+          ]
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "d"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "d": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        "rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "trace": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "clearance": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "edgeClearance": {
+              "type": "number",
+              "minimum": 0
+            },
+            "via": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "drill": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "diameter": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "pcbPlacement": {
+      "description": "Footprint origin x/y (mm; absent = not placed yet, P805), rot (degrees CCW), side, footprint name, pin → pad overrides; or { offBoard: true }.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "rot": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360
+        },
+        "side": {
+          "enum": [
+            "top",
+            "bottom"
+          ]
+        },
+        "footprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pads": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        },
+        "offBoard": {
+          "const": true
+        },
+        "at": {
+          "type": "string",
+          "description": "Origin location (file:line of the tb.place call). Informational; dropped from share links."
+        }
+      }
+    },
+    "pcbPad": {
+      "type": "object",
+      "required": [
+        "name",
+        "x",
+        "y",
+        "w"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "shape": {
+          "enum": [
+            "rect",
+            "circle",
+            "oval",
+            "roundrect"
+          ]
+        },
+        "w": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "h": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "drill": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "pcbFootprint": {
+      "description": "A custom land pattern (footprint-local mm): pads, optional courtyard rectangles (default: the pads plus 0.25 mm), mounting holes, silkscreen.",
+      "type": "object",
+      "required": [
+        "name",
+        "pads"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tech": {
+          "enum": [
+            "tht",
+            "smd"
+          ]
+        },
+        "pads": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/pcbPad"
+          }
+        },
+        "courtyard": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "w",
+              "h"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "w": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "h": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "d"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "d": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        "silk": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "points"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "line"
+                  },
+                  "points": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {
+                      "$ref": "#/$defs/pcbXY"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "x",
+                  "y",
+                  "r"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "circle"
+                  },
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "r": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "definitions": {
+      "description": "Custom components (defineComponent parts) used by components[].type, ascending type. Each one is CODE: the module at `source` (in sources[]) exports the definition; reading the document needs only the declaration, simulating it evaluates the module (the CLI only with --allow-code). `registry` is the provenance of a part installed from the component registry.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "pins",
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "$ref": "#/$defs/id"
+          },
+          "pins": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "unique pin names (checked by validateCircuitDoc)"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "export": {
+            "type": "string",
+            "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+          },
+          "registry": {
+            "type": "object",
+            "required": [
+              "ref",
+              "hash"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "ref": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{2,31}/[a-z][a-z0-9-]{1,39}@[0-9]+$"
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
               }
             }
           }

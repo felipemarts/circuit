@@ -1,0 +1,58 @@
+/* wall.html — public circuits, component ranking, my circuits. Tokens and .btn from viewer.css. */
+.vw-top .vw-brand { color: var(--text); font-weight: 700; text-decoration: none; }
+.vw-top .vw-crumb { color: var(--muted); }
+.wall { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+.wall-hero h1 { font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.01em; }
+.wall-hero p { color: var(--muted); margin-top: 6px; max-width: 70ch; }
+.wall-hero code, .wall .lead code { font-family: var(--mono); font-size: 12px; color: var(--text); }
+.wall-tabs { display: flex; gap: 4px; margin: 20px 0 12px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.wall-tabs button { padding: 10px 14px; color: var(--muted); border: 0; border-bottom: 2px solid transparent; background: none; font: 600 13px var(--sans); cursor: pointer; white-space: nowrap; }
+.wall-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.wall-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.wall-tools .q { flex: 1 1 260px; min-width: 0; height: 36px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--border-2); background: var(--bg-2); color: var(--text); font: 13px var(--sans); }
+.wall-tools select { height: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border-2); background: var(--bg-2); color: var(--text); font: 13px var(--sans); }
+.wall-tools .chip a { color: var(--muted); text-decoration: none; margin-left: 4px; }
+.wall-list:not(.table) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.wall-list .empty { grid-column: 1 / -1; color: var(--dim); text-align: center; padding: 32px 8px; }
+.wall-list .empty.err { color: var(--red); }
+.wall-more { display: flex; justify-content: center; margin-top: 16px; }
+.ccard { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: var(--radius-lg); background: var(--panel); border: 1px solid var(--border); min-width: 0; }
+.ccard .title { color: var(--text); font-weight: 650; font-size: 15px; text-decoration: none; overflow-wrap: anywhere; }
+.ccard .title:hover { color: var(--accent); }
+.ccard .desc { color: var(--muted); font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; border: 1px solid var(--border-2); color: var(--muted); text-decoration: none; }
+.chip.tag { color: var(--accent); }
+.chip.type { font-family: var(--mono); font-size: 11px; }
+.ccard .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; color: var(--muted); font-size: 12px; margin-top: auto; }
+.ccard .meta a { color: var(--text); text-decoration: none; font-weight: 600; }
+.ccard .meta .sp { flex: 1; }
+.ccard .owner { display: flex; gap: 6px; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border-2); color: var(--muted); }
+.pill.priv { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
+.btn.star.on { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 50%, transparent); }
+.wall .lead { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
+table.rank { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.rank th { text-align: left; color: var(--dim); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+table.rank td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.rank tr[tabindex] { cursor: pointer; }
+table.rank tr[tabindex]:hover td, table.rank tr[tabindex]:focus td { background: var(--panel-2); }
+table.rank .n { text-align: right; font-variant-numeric: tabular-nums; }
+table.rank .rk { color: var(--dim); font-variant-numeric: tabular-nums; width: 2.5em; }
+table.rank code { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+table.rank .desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+@media (max-width: 640px) { table.rank th:nth-child(4), table.rank td:nth-child(4), table.rank th:nth-child(6), table.rank td:nth-child(6) { display: none; } }
+dialog.cv-component { margin: auto; border: 1px solid var(--border-2); border-radius: 14px; background: var(--panel); color: var(--text); width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 18px; font: 13px var(--sans); }
+dialog.cv-component::backdrop { background: rgba(2, 6, 23, 0.6); }
+dialog.cv-component .head { display: flex; align-items: center; gap: 8px; }
+dialog.cv-component h2 { font-size: 18px; flex: 1; overflow-wrap: anywhere; }
+dialog.cv-component h2 small { color: var(--dim); font-weight: 500; margin-left: 6px; font-size: 13px; }
+dialog.cv-component > p { margin-top: 8px; color: var(--muted); }
+dialog.cv-component code { font-family: var(--mono); font-size: 12px; color: var(--text); }
+dialog.cv-component a { color: var(--accent); }
+dialog.cv-component .install { display: flex; gap: 8px; align-items: center; margin-top: 12px; padding: 8px 10px; border-radius: 9px; background: var(--bg-2); border: 1px solid var(--border); overflow-x: auto; }
+dialog.cv-component .install code { flex: 1; white-space: nowrap; }
+dialog.cv-component .warn { color: var(--amber) !important; font-size: 12px; }
+dialog.cv-component pre.src { margin-top: 10px; padding: 12px; border-radius: 9px; background: var(--bg-2); border: 1px solid var(--border); font: 12px/1.55 var(--mono); overflow: auto; max-height: 50vh; white-space: pre; }
+dialog.cv-component details { margin-top: 10px; color: var(--muted); }
+dialog.cv-component details ul { margin: 6px 0 0 18px; }

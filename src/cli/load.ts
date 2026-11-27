@@ -2,6 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vm from 'node:vm';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
+import type { ComponentDef } from '../core/CustomComponent';
+import type { DefinitionSource } from '../doc/convert';
 import { transform } from 'sucrase';
 import * as platform from '../forge';
 import type { BenchDescriptor } from '../elab/bench';
@@ -31,12 +34,76 @@ export const EXAMPLE = `a bench file looks like:
  * module instance the CLI runs, so a bench needs no local install and the CLI
  * and the bench can never disagree on versions.
  */
-const PLATFORM_MODULE: Record<string, unknown> = Object.freeze({ __esModule: true, ...platform });
+export const PLATFORM_MODULE: Record<string, unknown> = Object.freeze({ __esModule: true, ...platform });
 
 const RESOLVE_EXTENSIONS = ['.ts', '.mts', '.cts', '.js', '.mjs', '.cjs', '.json'];
 
 interface LoadedModule {
   exports: Record<string, unknown>;
+  /** Source text (TS/JS modules), for documents that embed custom components. */
+  text?: string;
+  /** Absolute paths of the local files this module imported. */
+  deps: string[];
+}
+
+/** First line of a component installed from the registry (circuitsvibe component add). */
+export const REGISTRY_HEADER_RE = /^\/\/ @circuitsvibe-component (\S+\/\S+@\d+) (sha256:[0-9a-f]{64})\r?\n/;
+
+const definitionSourceMaps = new WeakMap<BenchDescriptor, (def: ComponentDef) => DefinitionSource | undefined>();
+
+/**
+ * Where each custom component a bench loaded is exported from (circuit
+ * documents carry that module's source). Undefined for objects not returned
+ * by loadBench.
+ */
+export function definitionSourcesOf(desc: BenchDescriptor): ((def: ComponentDef) => DefinitionSource | undefined) | undefined {
+  return definitionSourceMaps.get(desc);
+}
+
+function isDefinition(v: unknown): ComponentDef | undefined {
+  const def = (v as { _componentDef?: ComponentDef } | null | undefined)?._componentDef ?? (v as ComponentDef | null | undefined);
+  return def && typeof def === 'object' && typeof def.name === 'string' && Array.isArray(def.pins) && typeof def.stamp === 'function' ? def : undefined;
+}
+
+/** Source path of a file inside a document: cwd-relative, or external/<name> outside the working directory. */
+export function docPath(abs: string): string {
+  const rel = path.relative(process.cwd(), abs);
+  return rel.startsWith('..') || path.isAbsolute(rel) ? `external/${path.basename(abs)}` : rel.split(path.sep).join('/');
+}
+
+function sha256(text: string): string {
+  return `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
+}
+
+/** Registry provenance of an installed component file: valid only while the body is unmodified. */
+export function registryProvenance(text: string): { ref: string; hash: string } | undefined {
+  const m = text.match(REGISTRY_HEADER_RE);
+  if (!m) return undefined;
+  return sha256(text.slice(m[0].length)) === m[2] ? { ref: m[1], hash: m[2] } : undefined;
+}
+
+function buildDefinitionSources(cache: Map<string, LoadedModule>): (def: ComponentDef) => DefinitionSource | undefined {
+  const found = new Map<ComponentDef, DefinitionSource>();
+  for (const [abs, mod] of cache) {
+    if (mod.text === undefined) continue;
+    for (const [name, value] of Object.entries(mod.exports)) {
+      const def = isDefinition(value);
+      if (!def || found.has(def)) continue;
+      const files: { path: string; text: string }[] = [];
+      const queue = [abs];
+      while (queue.length > 0) {
+        const f = queue.shift()!;
+        if (files.some(x => x.path === docPath(f))) continue;
+        const m = cache.get(f);
+        if (m?.text === undefined) continue;
+        files.push({ path: docPath(f), text: m.text });
+        queue.push(...m.deps);
+      }
+      const registry = registryProvenance(mod.text);
+      found.set(def, { path: docPath(abs), export: name, files, ...(registry ? { registry } : {}) });
+    }
+  }
+  return def => found.get(def);
 }
 
 /**
@@ -59,12 +126,26 @@ export async function loadBench(file: string): Promise<BenchDescriptor> {
     throw new Error(`bench file not found: ${file}\n\n${EXAMPLE}`);
   }
 
-  const mod = loadModule(abs, new Map());
+  const cache = new Map<string, LoadedModule>();
+  const mod = loadModule(abs, cache);
   const desc = mod.default as BenchDescriptor | undefined;
   if (!desc || typeof desc !== 'object' || typeof desc.name !== 'string' || typeof desc.build !== 'function') {
     throw new Error(`${file} must default-export a bench(...) descriptor\n\n${EXAMPLE}`);
   }
+  definitionSourceMaps.set(desc, buildDefinitionSources(cache));
   return desc;
+}
+
+/**
+ * Load one module file (a custom component) the way bench files are loaded,
+ * and return its exports with its source map (for `component publish`).
+ */
+export function loadComponentModule(file: string): { exports: Record<string, unknown>; sourceOf: (def: ComponentDef) => DefinitionSource | undefined } {
+  const abs = path.resolve(file);
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) throw new Error(`file not found: ${file}`);
+  const cache = new Map<string, LoadedModule>();
+  const exports = loadModule(abs, cache);
+  return { exports, sourceOf: buildDefinitionSources(cache) };
 }
 
 function loadModule(abs: string, cache: Map<string, LoadedModule>): Record<string, unknown> {
@@ -72,7 +153,7 @@ function loadModule(abs: string, cache: Map<string, LoadedModule>): Record<strin
   if (cached) return cached.exports;
 
   const source = fs.readFileSync(abs, 'utf8');
-  const module: LoadedModule = { exports: {} };
+  const module: LoadedModule = { exports: {}, deps: [] };
   cache.set(abs, module);
 
   if (abs.endsWith('.json')) {
@@ -88,6 +169,7 @@ function loadModule(abs: string, cache: Map<string, LoadedModule>): Record<strin
     return module.exports;
   }
 
+  module.text = source;
   const rel = displayPath(abs);
   let code: string;
   try {
@@ -107,7 +189,9 @@ function loadModule(abs: string, cache: Map<string, LoadedModule>): Record<strin
   const localRequire = (specifier: string): unknown => {
     if (specifier === PACKAGE_NAME) return PLATFORM_MODULE;
     if (specifier.startsWith('.') || path.isAbsolute(specifier)) {
-      return loadModule(resolveLocal(specifier, abs), cache);
+      const dep = resolveLocal(specifier, abs);
+      if (!module.deps.includes(dep)) module.deps.push(dep);
+      return loadModule(dep, cache);
     }
     return nodeRequire(specifier);
   };

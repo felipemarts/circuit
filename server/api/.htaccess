@@ -1,0 +1,20 @@
+# CircuitsVibe API: every request goes to index.php; the bearer token reaches PHP
+# even under CGI/FastCGI; the SQLite files and the PHP sources are never served.
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  RewriteRule ^(lib|data)(/|$) - [F,L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+<FilesMatch "\.(sqlite|sqlite3|db|db-wal|db-shm|sqlite-wal|sqlite-shm|log|md)$|^config(\.local)?\.php$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Deny from all
+  </IfModule>
+</FilesMatch>

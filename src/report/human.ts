@@ -1,5 +1,6 @@
 import { STAGE_ORDER, type LogicCapture, type SerialCapture, type RatingResult, type AssertionResult, type CheckSpec, type Diagnostic, type RunRecord, type ScalarCheck, type StageRecord } from '../schema/types';
 import { formatEng } from '../elab/units';
+import type { PcbRecord } from '../pcb/types';
 import { CLI } from '../schema/version';
 
 /**
@@ -43,6 +44,7 @@ export function renderHuman(record: RunRecord): string {
     if (stage?.logic && stage.logic.length > 0) lines.push(...renderLogic(stage.logic));
     if (stage?.serial && stage.serial.length > 0) lines.push(...renderSerial(stage.serial));
     if (stage?.ratings && stage.ratings.length > 0) lines.push(...renderRatings(stage.ratings));
+    if (stage?.pcb) lines.push(renderPcb(stage.pcb));
   }
 
   lines.push('');
@@ -84,6 +86,13 @@ function renderDiagnostic(d: Diagnostic): string[] {
   }
   lines.push(`          docs: ${CLI} explain ${d.code}`);
   return lines;
+}
+
+/** One line per board: size, parts, ratsnest. */
+function renderPcb(p: PcbRecord): string {
+  const b = p.board;
+  const parts = [`${p.stats.placed} placed`, ...(p.stats.unplaced ? [`${p.stats.unplaced} unplaced`] : []), ...(p.stats.offBoard ? [`${p.stats.offBoard} off-board`] : [])];
+  return `        board ${b.width}×${b.height} mm, ${b.layers} layer${b.layers > 1 ? 's' : ''}, ${b.tech} · ${parts.join(', ')} · ${p.stats.nets} nets to route, ${p.stats.airwires} airwires (${p.stats.airwireLength} mm)`;
 }
 
 const LOGIC_SIGNALS_SHOWN = 8;
