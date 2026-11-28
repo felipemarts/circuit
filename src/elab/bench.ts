@@ -476,10 +476,11 @@ export interface Elaboration {
   /** Source locations of tb.board / tb.place calls. */
   pcbLocs?: { place: Record<string, string | undefined> };
   /**
-   * Pin currents ('R1.1' → A) captured for the pcb stage on benches with a
-   * board, which sizes the traces with them: `op` by the op stage at the
-   * operating point, `tran` by the tran stage (RMS over each run, the largest
-   * run wins).
+   * Net currents (net → A, the largest current any copper segment of the net
+   * carries: src/verify/currents.ts netBound) captured for the pcb stage on
+   * benches with a board, which sizes the traces with them: `op` by the op
+   * stage, `tran` by the tran stage (RMS over the second half of each run,
+   * the largest run wins).
    */
   pcbCurrents?: { op?: Record<string, number>; tran?: Record<string, number> };
 }

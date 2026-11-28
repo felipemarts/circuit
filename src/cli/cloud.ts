@@ -276,7 +276,8 @@ async function publishComponent(flags: CloudFlags): Promise<number> {
   const r = await request<ComponentInfo & { version: number; hash: string; created: boolean }>('POST', '/components', { name, source, typeName: def.name, pins: def.pins, params: def.params ?? {}, ...(flags.options.description ? { description: flags.options.description } : {}), ...(tags ? { tags } : {}) }, { api: flags.options.api });
   if (flags.json) console.log(JSON.stringify(r, null, 2));
   else {
-    console.log(`${r.created ? 'published' : 'unchanged (same source as)'} ${r.ref}@${r.version}  ${r.hash}`);
+    const meta = [flags.options.description ? 'description' : '', tags ? 'tags' : ''].filter(Boolean).join(' and ');
+    console.log(r.created ? `published ${r.ref}@${r.version}  ${r.hash}` : `same source as ${r.ref}@${r.version} (no new version)${meta ? `; ${meta} updated` : ''}  ${r.hash}`);
     console.log(`  install: ${r.install}`);
   }
   return 0;

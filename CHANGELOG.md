@@ -17,6 +17,10 @@ additive fields only.
   new codes P808, P810 (unrouted), P811 (clearance), P812 (trace current), P813 (warning).
 - `stages.pcb.pcb.routing`: tracks, vias, unrouted airwires and completion; the viewer draws
   the copper by layer and lists each net's current and width.
+- Net currents: pins without a reported current (ICs, MCUs, custom parts) get their share by
+  KCL; the transient RMS uses the second half of the run (no start-up inrush) and
+  charge-consistent interval currents (no trapezoidal ringing). An absurd current or width
+  no longer crashes the stage (T002): widths are capped at 5 mm and rated (P812).
 
 ### Circuit service: short links, the wall, the component registry
 - PHP 8.1 + SQLite API deployed with the site (`server/api` → `/api`, see server/README.md):

@@ -141,8 +141,10 @@ unexpected: move the parts around the reported spot apart and report the bench.`
     slug: 'trace-current',
     title: 'a trace is too narrow for the current it carries (rating, exit 1)',
     explanation: `Each net's current is taken from the simulation — half the sum of its pins'
-current magnitudes (no copper segment of the net carries more), at the
-operating point and as the RMS of each transient run, the larger of the two —
+current magnitudes (no copper segment of the net carries more; pins whose
+current the models do not report, such as ICs, MCUs and custom parts, get
+their share by KCL), at the operating point and as the RMS over the second
+half of each transient run (start-up inrush left out), the larger of the two —
 and compared with what the trace width carries per IPC-2221B §6.2:
   I = 0.048 · ΔT^0.44 · A^0.725   (A in mil², outer layer)
 with ΔT = rules.tempRise (default 10 °C) and the copper of rules.copper

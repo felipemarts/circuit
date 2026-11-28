@@ -8,8 +8,9 @@
 // Each bench runs twice and the two --json RunRecords must be byte-identical
 // (the determinism contract). Each bench is also exported to a circuit
 // document and verified from it: the RunRecord must be byte-identical (a bench
-// with defineComponent parts must instead refuse export with T013), and the
-// share-link length is reported.
+// that writes a defineComponent inline must instead refuse export with T013;
+// one that imports it from its own module carries the code and is verified
+// with --allow-code), and the share-link length is reported.
 //
 //   node scripts/check-benches.mjs          # via the dev launcher (src/)
 //   node scripts/check-benches.mjs --dist   # via dist/circuitsvibe-standalone.mjs
@@ -53,8 +54,8 @@ function cv(args) {
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
-function verify(rel) {
-  return cv(['verify', rel, '--json', '--no-ledger']);
+function verify(rel, ...extra) {
+  return cv(['verify', rel, '--json', '--no-ledger', ...extra]);
 }
 
 const docDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'circuitsvibe-docs-'));
@@ -94,7 +95,8 @@ for (const file of findBenches(path.join(root, 'bench'))) {
   } else if (exported.status !== 0) {
     problems.push(`export failed (exit ${exported.status}): ${exported.stderr.trim()}`);
   } else {
-    const fromDoc = verify(docFile);
+    // A document that carries the bench's own custom components runs their code only with --allow-code (T019).
+    const fromDoc = verify(docFile, ...(JSON.parse(fs.readFileSync(docFile, 'utf8')).definitions ? ['--allow-code'] : []));
     if (fromDoc.status !== first.status) problems.push(`verify of the exported document exited ${fromDoc.status}, bench exited ${first.status}`);
     if (fromDoc.stdout !== first.stdout) problems.push('verify of the exported document produced a different RunRecord');
     const shared = cv(['share', rel, '--json']);

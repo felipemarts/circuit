@@ -12,7 +12,7 @@ import { evaluateLogicCheck } from '../mixed/measure';
 import { evaluateTranRatings, ratingProbes } from './ratings';
 
 import { COMPONENT_PROBE_RE, asQuantityDevice } from '../elab/quantity';
-import { currentProbeSpecs } from './currents';
+import { currentProbeSpecs, netBound, netPins } from './currents';
 
 /** Probe expression → engine probe spec (component quantity or named net). */
 export function probeSpecFor(elab: Elaboration, expr: string): ProbeSpec {
@@ -84,6 +84,7 @@ export function* runTranSteps(elab: Elaboration): Steps<StageOutcome> {
   const extraProbes = ratingProbes(elab, 'tran');
   // Boards: every pin current rides along too, for the trace widths (RMS per run).
   const pinSpecs = elab.pcb ? currentProbeSpecs(elab) : [];
+  const boardNets = elab.pcb ? netPins(elab, new Set(pinSpecs.map(p => p.ref))) : [];
 
   for (const key of [...groups.keys()].sort()) {
     const { config, assertions: all } = groups.get(key)!;
@@ -132,14 +133,18 @@ export function* runTranSteps(elab: Elaboration): Steps<StageOutcome> {
       );
       waveforms = new Map(result.probes.map(p => [p.label, { t: result.timePoints, y: p.values } as Waveform]));
       if (pinSpecs.length > 0) {
-        const rms = { ...elab.pcbCurrents?.tran };
+        const series = new Map<string, ArrayLike<number>>();
         pinSpecs.forEach((p, k) => {
           const wf = waveforms.get(pinLabels[k]);
           if (!wf) return;
-          const v = rmsOf(wf);
-          if (!(p.ref in rms) || v > rms[p.ref]) rms[p.ref] = v;
+          series.set(p.ref, p.sign === 1 ? wf.y : Array.from(wf.y, v => -v));
           waveforms.delete(pinLabels[k]);
         });
+        const rms = { ...elab.pcbCurrents?.tran };
+        for (const n of boardNets) {
+          const v = netRms(result.timePoints, n.refs.map(r => series.get(r) ?? []), n.unknown);
+          if (!(n.net in rms) || v > rms[n.net]) rms[n.net] = v;
+        }
         elab.pcbCurrents = { ...elab.pcbCurrents, tran: rms };
       }
       const t = result.telemetry!;
@@ -305,12 +310,28 @@ function excerptAround(wf: Waveform, time: number): [number, number][] {
   return excerpt;
 }
 
-/** Root mean square over the whole window (trapezoidal in time: the samples are non-uniform). */
-function rmsOf(wf: Waveform): number {
-  const { t, y } = wf;
-  if (t.length < 2) return Math.abs(y[0] ?? 0);
+/**
+ * RMS of a net's current bound (netBound) over the second half of the window.
+ * The first half is left out: a transient that starts from the zero state
+ * charges every capacitor through ideal sources, and that start-up inrush says
+ * nothing about what a trace carries in use. Each interval uses the average
+ * current of each pin, (iₙ + iₙ₊₁)/2 — the charge-consistent current of the
+ * trapezoidal rule — so the ±i ringing that rule leaves on a capacitor across
+ * an ideal source cancels instead of counting as current.
+ */
+function netRms(t: ArrayLike<number>, pins: ArrayLike<number>[], unknown: boolean): number {
+  const n = t.length;
+  if (n < 2) return netBound(pins.map(y => y[0] ?? 0), unknown);
+  const from = t[0] + (t[n - 1] - t[0]) / 2;
   let acc = 0;
-  for (let i = 1; i < t.length; i++) acc += ((y[i - 1] * y[i - 1] + y[i] * y[i]) / 2) * (t[i] - t[i - 1]);
-  const span = t[t.length - 1] - t[0];
-  return span > 0 ? Math.sqrt(acc / span) : Math.abs(y[y.length - 1]);
+  const mean = new Array<number>(pins.length);
+  for (let i = 1; i < n; i++) {
+    const [a, b] = [Math.max(t[i - 1], from), t[i]];
+    if (b <= a) continue;
+    for (let k = 0; k < pins.length; k++) mean[k] = ((pins[k][i - 1] ?? 0) + (pins[k][i] ?? 0)) / 2;
+    const bound = netBound(mean, unknown);
+    acc += bound * bound * (b - a);
+  }
+  const span = t[n - 1] - from;
+  return span > 0 ? Math.sqrt(acc / span) : netBound(pins.map(y => y[n - 1] ?? 0), unknown);
 }

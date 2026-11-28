@@ -85,3 +85,49 @@ export function currentProbeSpecs(elab: Elaboration): { ref: string; spec: Probe
   }
   return out;
 }
+
+/** A net of the circuit: the pins whose current is known, and whether some pin's current is not. */
+export interface NetPins {
+  net: string;
+  refs: string[];
+  /** A pin of an IC, an MCU, a logic or custom part is on the net: its current comes from KCL. */
+  unknown: boolean;
+}
+
+export function netPins(elab: Elaboration, known: Set<string>): NetPins[] {
+  const map = new Map<string, NetPins>();
+  for (const c of elab.netlist.components) {
+    for (const [pin, net] of Object.entries(c.pins)) {
+      const e = map.get(net) ?? { net, refs: [], unknown: false };
+      const ref = `${c.id}.${pin}`;
+      if (known.has(ref)) e.refs.push(ref);
+      else e.unknown = true;
+      map.set(net, e);
+    }
+  }
+  return [...map.values()].sort((a, b) => (a.net < b.net ? -1 : a.net > b.net ? 1 : 0));
+}
+
+/**
+ * The largest current any copper segment of a net carries, from the signed
+ * currents entering its known pins: half of Σ|i| (KCL — what flows in flows
+ * out), plus, when some pin's current is unknown, the share KCL leaves for
+ * it, |Σi|.
+ */
+export function netBound(currents: number[], unknown: boolean): number {
+  let abs = 0;
+  let sum = 0;
+  for (const i of currents) {
+    abs += Math.abs(i);
+    sum += i;
+  }
+  return (abs + (unknown ? Math.abs(sum) : 0)) / 2;
+}
+
+/** Net → current bound at the operating point (the pin currents of the last DC solve). */
+export function opNetCurrents(elab: Elaboration): Record<string, number> {
+  const pins = pinCurrents(elab);
+  const out: Record<string, number> = {};
+  for (const n of netPins(elab, new Set(Object.keys(pins)))) out[n.net] = netBound(n.refs.map(r => pins[r]), n.unknown);
+  return out;
+}

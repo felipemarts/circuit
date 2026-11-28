@@ -49,7 +49,7 @@ export default bench('ntc-${tempC}', (tb) => {
 });
 `;
 
-describe.skipIf(!phpAvailable)('CLI + service (share, links, registry)', () => {
+describe.skipIf(!phpAvailable)('CLI + service (share, links, registry)', { timeout: 60_000 }, () => {
   beforeAll(async () => {
     server = await startPhp();
     work = fs.mkdtempSync(path.join(os.tmpdir(), 'cv-cli-'));

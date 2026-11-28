@@ -13,6 +13,8 @@ import type { StageOutcome } from './op';
 const RATED_CURRENT = 1e-3;
 /** Auto-sized widths are rounded up to this step (mm). */
 const WIDTH_STEP = 0.05;
+/** Widest trace the stage sizes by itself (mm); beyond it the trace is rated and fails P812. */
+const MAX_AUTO_WIDTH = 5;
 /** At most this many P811 diagnostics; the rest are counted in the last one. */
 const MAX_DRC = 20;
 
@@ -58,7 +60,7 @@ export function runPcb(elab: Elaboration): StageOutcome {
     const current = netCurrent.get(net);
     const required = current !== undefined ? requiredWidth(current, copperOz, tempRise) : undefined;
     const override = board.nets?.[net]?.width;
-    const auto = required !== undefined && required > board.rules.trace ? round(Math.ceil(required / WIDTH_STEP - 1e-9) * WIDTH_STEP) : board.rules.trace;
+    const auto = required !== undefined && required > board.rules.trace ? Math.min(MAX_AUTO_WIDTH, round(Math.ceil(required / WIDTH_STEP - 1e-9) * WIDTH_STEP)) : board.rules.trace;
     return {
       net,
       width: override ?? auto,
@@ -118,8 +120,18 @@ export function runPcb(elab: Elaboration): StageOutcome {
       ...(fail
         ? {
             message: `net ${r.net} carries ${formatEng(r.current, 'A')} but its ${r.width} mm trace is rated ${formatEng(allowed, 'A')} (${(r.current / allowed).toFixed(2)}×) — it heats more than ${tempRise} °C`,
-            note: `the width comes from tb.board({ nets: { ${r.net}: { width: ${r.width} } } }); the simulated current needs ≥ ${widen} mm`,
-            fixes: [{ kind: 'widen-trace', confidence: 'mechanical', detail: `tb.board({ …, nets: { ${r.net}: { width: ${widen} } } }) — or drop the override and let the pcb stage size it from the current` }],
+            ...(r.widthFrom === 'net'
+              ? {
+                  note: `the width comes from tb.board({ nets: { ${r.net}: { width: ${r.width} } } }); the simulated current needs ≥ ${widen} mm`,
+                  fixes: [{ kind: 'widen-trace', confidence: 'mechanical' as const, detail: `tb.board({ …, nets: { ${r.net}: { width: ${widen} } } }) — or drop the override and let the pcb stage size it from the current` }],
+                }
+              : {
+                  note: `the current needs a ${widen} mm trace; the stage sizes traces up to ${MAX_AUTO_WIDTH} mm by itself`,
+                  fixes: [
+                    { kind: 'heavier-copper', confidence: 'suggested' as const, detail: `use heavier copper (tb.board({ rules: { copper: 2 } }) halves the width) or allow more heating (rules.tempRise), then set the width with tb.board({ nets: { ${r.net}: { width } } })` },
+                    { kind: 'check-current', confidence: 'suggested' as const, detail: `check that ${formatEng(r.current, 'A')} is the real continuous current of net ${r.net} (stages op and tran)` },
+                  ],
+                }),
           }
         : {}),
     });
@@ -133,27 +145,16 @@ export function runPcb(elab: Elaboration): StageOutcome {
 }
 
 /**
- * The current each net carries between its pads: half the sum of the
- * magnitudes of its pin currents (KCL: what flows in flows out, so no copper
- * segment of the net carries more), at the operating point and as the RMS of
- * each transient run — the larger of the two.
+ * The current each net carries between its pads (the largest current any
+ * copper segment of it carries, src/verify/currents.ts netBound): at the
+ * operating point and as the transient RMS — the larger of the two.
  */
 function netCurrents(elab: Elaboration): { netCurrent: Map<string, number>; source: PcbRouting['currents'] } {
   const { op, tran } = elab.pcbCurrents ?? {};
   const netCurrent = new Map<string, number>();
-  const accumulate = (pins: Record<string, number>): Map<string, number> => {
-    const sum = new Map<string, number>();
-    for (const c of elab.netlist.components) {
-      for (const [pin, net] of Object.entries(c.pins)) {
-        const i = pins[`${c.id}.${pin}`];
-        if (i !== undefined && Number.isFinite(i)) sum.set(net, (sum.get(net) ?? 0) + Math.abs(i) / 2);
-      }
-    }
-    return sum;
-  };
-  for (const pins of [op, tran]) {
-    if (!pins) continue;
-    for (const [net, i] of accumulate(pins)) netCurrent.set(net, Math.max(netCurrent.get(net) ?? 0, i));
+  for (const per of [op, tran]) {
+    if (!per) continue;
+    for (const [net, i] of Object.entries(per)) if (Number.isFinite(i)) netCurrent.set(net, Math.max(netCurrent.get(net) ?? 0, i));
   }
   return { netCurrent, source: tran ? 'op+tran' : op ? 'op' : 'none' };
 }

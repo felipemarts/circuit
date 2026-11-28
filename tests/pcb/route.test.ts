@@ -164,6 +164,38 @@ describe('autorouter', () => {
     expect(one.stats.completion).toBeLessThanOrEqual(two.stats.completion);
   });
 
+  it('start-up inrush does not size the traces (RMS over the second half of the transient)', () => {
+    // An ideal 9 V step into 330 nF: kiloamps for nanoseconds at t = 0, nothing in steady state.
+    const inrush = bench('inrush', tb => {
+      const v1 = tb.add('V1', new VoltageSource(9));
+      const c1 = tb.add('C1', new Capacitor('330n'));
+      const r1 = tb.add('R1', new Resistor('1k'));
+      v1.pin('+').connect(c1.pin('1'));
+      c1.pin('2').connect(tb.gnd);
+      v1.pin('+').connect(r1.pin('1'));
+      r1.pin('2').connect(tb.gnd);
+      v1.pin('-').connect(tb.gnd);
+      tb.name('vin', v1.pin('+'));
+      tb.expect.tran({ tstop: '1m', maxStep: '20u' }).probe('vin').toEndCloseTo(9, 0.01);
+      tb.board({ width: 40, height: 20 });
+      tb.place('V1', { x: 5, y: 10, rot: 90 });
+      tb.place('C1', { x: 17, y: 10 });
+      tb.place('R1', { x: 30, y: 10 });
+    });
+    const r = runLadder(inrush);
+    expect(r.exitCode).toBe(0);
+    const vin = r.stages.pcb!.pcb!.routing!.nets.find(n => n.net === 'vin')!;
+    expect(vin.current).toBeCloseTo(0.009, 4);
+    expect(vin.widthFrom).toBe('rule');
+  });
+
+  it('an absurd width never crashes the stage: the net is unrouted (P810) and rated (P812)', () => {
+    const r = runLadder(power('1k', { width: 40, height: 20, nets: { vin: { width: 30 } } }));
+    expect(r.diagnostics.filter(d => d.code === 'T002')).toEqual([]);
+    expect(codes(r.diagnostics)).toContain('P810');
+    expect(r.exitCode).toBe(2);
+  });
+
   it('round-trips through the circuit document (routing included) and validates against the schema', () => {
     const desc = power('1', { width: 40, height: 20, rules: { copper: 2, tempRise: 20, grid: 0.2 }, nets: { vin: { width: 2 } } });
     const doc = toCircuitDoc(desc);

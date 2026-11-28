@@ -4,8 +4,8 @@ import { bench, VoltageSource, Resistor, Part } from 'circuitsvibe';
  * A 12 V, 3 A load switched by a logic-level IRLZ44N on a 50 × 30 mm board.
  * The load (modelled as RL, 4 Ω) and the 12 V supply connect through screw
  * terminals: RL's footprint is the TERM-2 the load is wired to. The pcb stage
- * takes each net's current from the simulation (≈ 2.8 A RMS while the gate
- * is driven) and widens the power traces per IPC-2221; the gate trace keeps
+ * takes each net's current from the simulation (≈ 3 A in steady state) and
+ * widens the power traces per IPC-2221; the gate trace keeps
  * the 0.25 mm minimum.
  */
 export default bench('mosfet-load-board', (tb) => {

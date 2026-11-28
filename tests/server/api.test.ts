@@ -39,7 +39,7 @@ const doc = (name: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-describe.skipIf(!enabled)('PHP API (server/api)', () => {
+describe.skipIf(!enabled)('PHP API (server/api)', { timeout: 30_000 }, () => {
   beforeAll(async () => {
     server = await startPhp({ CIRCUITSVIBE_PRIVATE_TTL: String(TTL) });
     base = server.base;

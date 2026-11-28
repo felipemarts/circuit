@@ -155,7 +155,10 @@ export class McuCosim implements McuPinBus {
         message: `${this.id} (${this.mcu.profile.part}) is held in reset: VCC−GND = ${fmtV(this.vs)} at t = 0, below the ${fmtV(e.resetBelow)} reset threshold — the firmware never runs and every pin stays high-Z`,
         note: `${e.resetSource}. The MCU starts only if it is powered at t = 0 (a delayed power-up is not modelled)`,
         evidence: { supply: this.vs, resetBelow: e.resetBelow, time: 0 },
-        fixes: [{ kind: 'rewire', confidence: 'suggested', detail: `power ${this.id}.${this.mcu.vccName} from a stiff ${fmtV(this.mcu.profile.vcc)} source and ${this.id}.GND from tb.gnd` }],
+        fixes: [
+          { kind: 'start-from-op', confidence: 'suggested', detail: `if ${this.id}.${this.mcu.vccName} is fed through a regulator, a resistor or an RC, it is still at 0 V at t = 0 of a transient that starts from the zero state: start from the operating point with tb.expect.tran({ …, ic: 'op' })` },
+          { kind: 'rewire', confidence: 'suggested', detail: `power ${this.id}.${this.mcu.vccName} from a stiff ${fmtV(this.mcu.profile.vcc)} source and ${this.id}.GND from tb.gnd` },
+        ],
         time: 0,
       });
       return;

@@ -203,8 +203,11 @@ Once the placement passes, the stage routes the board (unless `route: false`):
   copper keeps `clearance` from other nets, `clearance` from holes and `edgeClearance` from
   the edge. A separate design-rule check measures the final copper again (P811).
 - **Trace width from the simulation**: a net's current is half the sum of its pins' current
-  magnitudes (no copper segment of the net carries more), at the operating point and as the
-  RMS over each transient run, whichever is larger. Its width is `rules.trace`, widened in
+  magnitudes (no copper segment of the net carries more); pins whose current the models do
+  not report (ICs, MCUs, custom parts) get their share by KCL. It is taken at the operating
+  point and as the RMS over the second half of each transient run (the start-up inrush from
+  the zero state is left out; each interval uses its charge-consistent average current, so
+  trapezoidal ringing does not count), whichever is larger. Its width is `rules.trace`, widened in
   0.05 mm steps when IPC-2221B (outer layer, `rules.copper`, `rules.tempRise`) needs more:
   `I = 0.048 · ΔT^0.44 · A^0.725`, A in mil². 0.25 mm on 1 oz carries ≈ 0.87 A at 10 °C;
   2.5 A needs ≈ 1.1 mm. Each net with ≥ 1 mA gets a **P812** row in `stages.pcb.ratings[]`

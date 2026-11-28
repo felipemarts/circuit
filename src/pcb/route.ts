@@ -19,6 +19,8 @@ import { CopperIndex, distSegShape, item, onLayer, padShape, type CopperItem } f
 import { round } from './geometry';
 
 const PASSES = 4;
+/** Widest trace the router attempts (mm). */
+const MAX_WIDTH = 20;
 /** Cost of a via, in mm of track. */
 const VIA_COST_MM = 2.5;
 /** Extra cost of a 45° / 90° / sharper turn, in grid steps. */
@@ -176,7 +178,9 @@ export function routeBoard(layout: BoardLayout, plans: NetPlan[], currents: PcbR
   }
 
   // ── fixed copper: pads and holes ──
-  const maxHalf = Math.max(rules.trace / 2, ...plans.map(p => p.width / 2), viaR);
+  // A trace wider than this cannot be routed on any board the stage handles: it fails (P810) without a search.
+  const routable = (p: NetPlan): boolean => p.width <= MAX_WIDTH;
+  const maxHalf = Math.max(rules.trace / 2, ...plans.filter(routable).map(p => p.width / 2), viaR);
   const reach = maxHalf + clearance + g * 1.5;
   const padItems: CopperItem[] = [];
   for (const part of layout.parts) {
@@ -232,6 +236,11 @@ export function routeBoard(layout: BoardLayout, plans: NetPlan[], currents: PcbR
 
     for (const job of order) {
       const net = job.plan.net;
+      if (!routable(job.plan)) {
+        results.set(net, { tracks: [], vias: [], items: [], missing: job.groups.map((_, k) => k).slice(1), connected: [0] });
+        failed.push(net);
+        continue;
+      }
       const hw = job.plan.width / 2;
       const need = hw + clearance;
       clear[0].fill(-1);
