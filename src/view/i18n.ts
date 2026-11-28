@@ -143,6 +143,7 @@ const PT: Record<string, string> = {
   'Made with': 'Feito com',
   'Open in the editor': 'Abrir no editor',
   'Share links carry the whole circuit in the URL — no server, nothing stored.': 'Links de compartilhamento carregam o circuito inteiro na URL — sem servidor, nada armazenado.',
+  'Short links (?c=) live in the circuit cache: private for 24 h, or public on the wall. #c= links carry the whole circuit in the URL.': 'Links curtos (?c=) ficam no cache de circuitos: privados por 24 h, ou públicos no mural. Links #c= carregam o circuito inteiro na URL.',
   'How to fix': 'Como corrigir',
   'Try it': 'Experimente',
   'Code': 'Código',

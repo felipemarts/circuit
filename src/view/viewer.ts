@@ -321,7 +321,7 @@ export async function mountViewer(root: HTMLElement, hash: string): Promise<void
   netlistPanel.innerHTML = netlistHtml(doc, layout);
   panels.show('netlist');
 
-  root.appendChild(h(`<footer class="vw-foot">${esc(t('Share links carry the whole circuit in the URL — no server, nothing stored.'))} · <code>npx circuitsvibe share x.bench.ts</code> · <a href="docs.html">docs</a></footer>`));
+  root.appendChild(h(`<footer class="vw-foot">${esc(t('Short links (?c=) live in the circuit cache: private for 24 h, or public on the wall. #c= links carry the whole circuit in the URL.'))} · <code>npx circuitsvibe share x.bench.ts</code> · <a href="docs.html">docs</a></footer>`));
 
   // 3. simulate
   const progressText = $(verdictCard, '#vw-progress-text');
